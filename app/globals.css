@@ -23,6 +23,28 @@
   src: local('Poppins Bold'), url('/fonts/Poppins-Bold.woff') format('woff');
 }
 
+/* Poppins Font Faces */
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 400;
+  src: local('Poppins Regular'), url('/fonts/Poppins-Regular.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 600;
+  src: local('Poppins SemiBold'), url('/fonts/Poppins-SemiBold.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Poppins';
+  font-style: normal;
+  font-weight: 700;
+  src: local('Poppins Bold'), url('/fonts/Poppins-Bold.woff') format('woff');
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
