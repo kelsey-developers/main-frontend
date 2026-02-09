@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 
 /**
  * SingleDatePicker — pick one date via dropdown calendar.
- * Matches app design: rounded-xl, shadow, #0B5858 accent. One calendar panel only (no range).
+ * Matches app design: rounded-lg to align with container, shadow, #0B5858 accent. One calendar panel only (no range).
  */
 export interface SingleDatePickerProps {
   /** Selected date (YYYY-MM-DD); empty string when none */
@@ -99,17 +99,16 @@ export default function SingleDatePicker({
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     const shouldOpenUpward = spaceBelow < dropdownHeight && spaceAbove > dropdownHeight;
-    const rightPx = window.innerWidth - rect.right;
     if (shouldOpenUpward) {
       dropdownRef.current.style.top = 'auto';
       dropdownRef.current.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-      dropdownRef.current.style.left = 'auto';
-      dropdownRef.current.style.right = `${rightPx}px`;
+      dropdownRef.current.style.left = `${rect.left}px`;
+      dropdownRef.current.style.right = 'auto';
     } else {
       dropdownRef.current.style.top = `${rect.bottom + 8}px`;
       dropdownRef.current.style.bottom = 'auto';
-      dropdownRef.current.style.left = 'auto';
-      dropdownRef.current.style.right = `${rightPx}px`;
+      dropdownRef.current.style.left = `${rect.left}px`;
+      dropdownRef.current.style.right = 'auto';
     }
   }, [isOpen, monthStart]);
 
@@ -150,7 +149,7 @@ export default function SingleDatePicker({
         tabIndex={0}
         onClick={() => setIsOpen(!isOpen)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsOpen((o) => !o); } }}
-        className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white pl-2.5 pr-2.5 py-1.5 text-sm font-medium text-gray-800 focus-within:ring-2 focus-within:ring-[#0B5858]/30 focus-within:border-[#0B5858] transition-colors hover:bg-gray-50/80 cursor-pointer w-full"
+        className="inline-flex items-center gap-2 justify-start rounded-lg border border-gray-200 bg-white pl-2.5 pr-2.5 py-1.5 text-sm font-medium text-gray-800 focus-within:ring-2 focus-within:ring-[#0B5858]/30 focus-within:border-[#0B5858] transition-colors hover:bg-gray-50/80 cursor-pointer w-full text-left"
         style={{ fontFamily: 'var(--font-poppins)' }}
         aria-label="Select date"
         aria-expanded={isOpen}
@@ -164,7 +163,7 @@ export default function SingleDatePicker({
       {isOpen && createPortal(
         <div
           ref={dropdownRef}
-          className="fixed bg-white rounded-xl shadow-lg border border-gray-200 p-2.5 flex flex-col"
+          className="fixed bg-white rounded-lg shadow-lg border border-gray-200 p-2.5 flex flex-col"
           onClick={(e) => e.stopPropagation()}
           style={{ width: 'min(90vw, 280px)', zIndex: 10000 }}
         >

@@ -11,7 +11,7 @@ export interface AgentPointsBalance {
   updatedAt: string; // ISO
 }
 
-/** Payment method for cash redemptions (e-wallet or bank transfer). */
+/** Payment method for cash redemptions (e-wallet or bank transfer). Display: GCash, Maya, Bank transfer. */
 export type CashPaymentMethod = 'gcash' | 'paymaya' | 'bank_transfer';
 
 export interface PointsTransaction {

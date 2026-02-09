@@ -138,3 +138,9 @@ body {
   line-height: 1.5;
   /* Avoid antialiased (makes fonts look thinner on macOS); use default rendering. */
 }
+
+/* Remove browser default blue focus outline on inputs/textareas so custom teal focus ring (focus:ring-[#0B5858]/30) shows instead */
+input:focus,
+textarea:focus {
+  outline: none;
+}

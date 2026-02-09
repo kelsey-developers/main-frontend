@@ -74,7 +74,7 @@ export default function RewardsPage() {
   const [redeemQuantity, setRedeemQuantity] = useState<number>(1);
   /** After confirm: show success modal with this reward name (pending admin approval message); null when dismissed */
   const [redeemSuccessReward, setRedeemSuccessReward] = useState<RewardOption | null>(null);
-  /** Cash redemption only: payment method (gcash, paymaya, bank transfer); reset when modal opens */
+  /** Cash redemption only: payment method (gcash, Maya, bank transfer); reset when modal opens */
   const [redeemPaymentMethod, setRedeemPaymentMethod] = useState<CashPaymentMethod | ''>('');
   /** Cash redemption only: recipient mobile/account number; reset when modal opens */
   const [redeemRecipientNumber, setRedeemRecipientNumber] = useState('');
@@ -82,6 +82,9 @@ export default function RewardsPage() {
   const [redeemRecipientName, setRedeemRecipientName] = useState('');
   /** Staycation redemption only: preferred date (YYYY-MM-DD), single date; reset when modal opens */
   const [redeemPreferredDate, setRedeemPreferredDate] = useState('');
+  /** Cash redemption: payment method dropdown open (stats-style); close on outside click */
+  const [paymentDropdownOpen, setPaymentDropdownOpen] = useState(false);
+  const paymentDropdownRef = useRef<HTMLDivElement>(null);
   /** Stats card period: This Week, This Month, or All Time */
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month' | 'all'>('month');
   /** Stats period dropdown open state; click outside to close */
@@ -147,6 +150,11 @@ export default function RewardsPage() {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [redeemConfirmReward]);
 
+  /** Reset payment dropdown when confirm modal closes */
+  useEffect(() => {
+    if (!redeemConfirmReward) setPaymentDropdownOpen(false);
+  }, [redeemConfirmReward]);
+
   /** Close stats period dropdown on click outside */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -157,6 +165,18 @@ export default function RewardsPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  /** Close payment method dropdown (in redeem modal) on click outside */
+  useEffect(() => {
+    if (!paymentDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (paymentDropdownRef.current && !paymentDropdownRef.current.contains(e.target as Node)) {
+        setPaymentDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [paymentDropdownOpen]);
 
   /** Load balance and history from API (or mock when backend not connected) */
   useEffect(() => {
@@ -466,7 +486,7 @@ export default function RewardsPage() {
             </div>
             {history.length === 0 ? (
               <div className="py-10 text-center text-sm text-gray-500" style={{ fontFamily: 'var(--font-poppins)' }}>
-                No transactions yet.
+                No activity yet.
               </div>
             ) : (
               <ul className="space-y-2">
@@ -660,7 +680,7 @@ export default function RewardsPage() {
                 <div className="px-4 sm:px-6 py-4 overflow-y-auto flex-1 min-h-0">
                   {filteredByTab.length === 0 ? (
                     <div className="py-8 text-center text-sm text-gray-500">
-                      No transactions yet.
+                      No activity yet.
                     </div>
                   ) : (
                     <ul className="space-y-3">
@@ -966,7 +986,7 @@ export default function RewardsPage() {
                   </button>
                 </div>
 
-                <div className="p-4 sm:p-6 space-y-4">
+                <div className="p-4 sm:p-6 space-y-3">
                   {/* Reward preview card: image + name */}
                   <div className="flex justify-center">
                     <div className="rounded-xl border border-gray-200 overflow-hidden w-full max-w-[200px]">
@@ -1019,52 +1039,100 @@ export default function RewardsPage() {
                     </div>
                   </div>
 
-                  {/* Cash redemption: payment method, recipient number, recipient name (required for cash only) */}
+                  {/* Cash redemption: payment method, recipient number & name — sub-details in container */}
                   {redeemConfirmReward.id.startsWith('cash-') && (
-                    <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50/50 p-3" style={{ fontFamily: 'var(--font-poppins)' }}>
+                    <div className="space-y-1.5 mb-5" style={{ fontFamily: 'var(--font-poppins)' }}>
                       <p className="text-sm font-semibold text-black">Payment details</p>
-                      <div>
-                        <label htmlFor="redeem-payment-method" className="block text-xs text-gray-600 mb-1">Payment method</label>
-                        <select
-                          id="redeem-payment-method"
-                          value={redeemPaymentMethod}
-                          onChange={(e) => setRedeemPaymentMethod(e.target.value as CashPaymentMethod)}
-                          className="w-full py-2 px-3 rounded-lg border border-gray-300 text-sm text-black bg-white cursor-pointer"
+                      <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
+                        <div className="relative" ref={paymentDropdownRef}>
+                          <label className="block text-xs text-gray-500 mb-0.5">Payment method</label>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentDropdownOpen((o) => !o)}
+                          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white pl-2.5 pr-2.5 py-1.5 text-sm font-medium text-gray-800 cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-colors min-w-[125px] justify-between w-full"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                          aria-expanded={paymentDropdownOpen}
+                          aria-haspopup="listbox"
+                          aria-label="Payment method"
                         >
-                          <option value="">Select method</option>
-                          <option value="gcash">GCash</option>
-                          <option value="paymaya">PayMaya</option>
-                          <option value="bank_transfer">Bank transfer</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="redeem-recipient-number" className="block text-xs text-gray-600 mb-1">Recipient number</label>
-                        <input
-                          id="redeem-recipient-number"
-                          type="text"
-                          placeholder={redeemPaymentMethod === 'bank_transfer' ? 'Account number' : 'Mobile number'}
-                          value={redeemRecipientNumber}
-                          onChange={(e) => setRedeemRecipientNumber(e.target.value)}
-                          className="w-full py-2 px-3 rounded-lg border border-gray-300 text-sm text-black bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="redeem-recipient-name" className="block text-xs text-gray-600 mb-1">Recipient name</label>
-                        <input
-                          id="redeem-recipient-name"
-                          type="text"
-                          placeholder="Full name"
-                          value={redeemRecipientName}
-                          onChange={(e) => setRedeemRecipientName(e.target.value)}
-                          className="w-full py-2 px-3 rounded-lg border border-gray-300 text-sm text-black bg-white"
-                        />
+                          <span>
+                            {redeemPaymentMethod === 'gcash' ? 'GCash' : redeemPaymentMethod === 'paymaya' ? 'Maya' : redeemPaymentMethod === 'bank_transfer' ? 'Bank transfer' : 'Select method'}
+                          </span>
+                          <svg
+                            className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${paymentDropdownOpen ? 'rotate-180' : ''}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            aria-hidden
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {paymentDropdownOpen && (
+                          <div className="absolute right-0 top-full pt-1 w-full min-w-[125px] z-50" role="listbox">
+                            <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden px-3 py-1.5">
+                              {(
+                                [
+                                  { value: 'gcash' as const, label: 'GCash' },
+                                  { value: 'paymaya' as const, label: 'Maya' },
+                                  { value: 'bank_transfer' as const, label: 'Bank transfer' },
+                                ] as const
+                              ).map(({ value, label }) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  role="option"
+                                  aria-selected={redeemPaymentMethod === value}
+                                  onClick={() => {
+                                    setRedeemPaymentMethod(value);
+                                    setPaymentDropdownOpen(false);
+                                  }}
+                                  className={`block w-full text-left py-1 text-sm transition-opacity cursor-pointer ${
+                                    redeemPaymentMethod === value ? 'font-semibold opacity-100' : 'hover:opacity-70'
+                                  }`}
+                                  style={{
+                                    fontFamily: 'var(--font-poppins)',
+                                    color: redeemPaymentMethod === value ? '#0B5858' : 'black',
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <div>
+                            <label htmlFor="redeem-recipient-number" className="block text-xs text-gray-500 mb-0.5">Recipient number</label>
+                            <input
+                              id="redeem-recipient-number"
+                              type="text"
+                              placeholder={redeemPaymentMethod === 'bank_transfer' ? 'Account no.' : 'Mobile no.'}
+                              value={redeemRecipientNumber}
+                              onChange={(e) => setRedeemRecipientNumber(e.target.value)}
+                              className="w-full py-1.5 px-2.5 rounded-lg border border-gray-200 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858]"
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="redeem-recipient-name" className="block text-xs text-gray-500 mb-0.5">Recipient name</label>
+                            <input
+                              id="redeem-recipient-name"
+                              type="text"
+                              placeholder="Full name"
+                              value={redeemRecipientName}
+                              onChange={(e) => setRedeemRecipientName(e.target.value)}
+                              className="w-full py-1.5 px-2.5 rounded-lg border border-gray-200 text-sm text-black bg-white focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858]"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Staycation redemption: preferred date — single date picker dropdown */}
+                  {/* Staycation redemption: preferred date — single date picker dropdown, no container */}
                   {redeemConfirmReward.id === 'tshirt' && (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3" style={{ fontFamily: 'var(--font-poppins)' }}>
+                    <div className="mb-5" style={{ fontFamily: 'var(--font-poppins)' }}>
                       <p className="text-sm font-semibold text-black mb-2">Preferred date</p>
                       <SingleDatePicker
                         value={redeemPreferredDate}
@@ -1076,7 +1144,7 @@ export default function RewardsPage() {
                   )}
 
                   {/* Points breakdown — body text */}
-                  <div className="space-y-3 text-sm text-gray-600" style={{ fontFamily: 'var(--font-poppins)' }}>
+                  <div className="space-y-2 text-sm text-gray-600" style={{ fontFamily: 'var(--font-poppins)' }}>
                     <div className="flex justify-between items-center">
                       <span>Points per item</span>
                       <span className="font-semibold text-black">{perItemPoints.toLocaleString()} pts</span>
@@ -1091,7 +1159,7 @@ export default function RewardsPage() {
                       <span>Your Balance</span>
                       <span className="font-semibold text-black">{currentBalance.toLocaleString()} pts</span>
                     </div>
-                    <div className="border-t border-gray-200 pt-2 mt-2">
+                    <div className="border-t border-gray-200 pt-1.5 mt-1.5">
                       <div className="flex justify-between items-center">
                         <span>Balance After</span>
                         <span className="font-semibold text-[#0B5858]">{balanceAfter.toLocaleString()} pts</span>
@@ -1110,7 +1178,7 @@ export default function RewardsPage() {
                   </p>
 
                   {/* Actions */}
-                  <div className="flex gap-3 pt-2">
+                  <div className="flex gap-3 pt-1.5">
                     <button
                       type="button"
                       className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
