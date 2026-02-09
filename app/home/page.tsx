@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
 import Hero from '@/app/home/components/Hero';
 import ResultsSection from '@/app/home/components/ResultsSection';
 import type { ListingView } from '@/types/listing';
@@ -93,7 +91,6 @@ export default function Home() {
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Navbar />
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Something went wrong</h2>
@@ -106,14 +103,12 @@ export default function Home() {
             </button>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
 
   return (
     <div className="App">
-      <Navbar />
       
       {/* Hero Section */}
       <Hero
@@ -137,8 +132,6 @@ export default function Home() {
         isLoading={isLoading}
         onApartmentClick={handleListingClick}
       />
-
-      <Footer />
     </div>
   );
 }

@@ -15,8 +15,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="min-h-screen flex flex-col font-sans">
+    <html lang="en" suppressHydrationWarning>
+      <body className="min-h-screen flex flex-col font-sans" suppressHydrationWarning>
         <MockAuthProvider>
           <Navbar />
           <main className="flex-1">{children}</main>
