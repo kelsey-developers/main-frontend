@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -12,7 +12,7 @@ import PropertiesInSameArea from './components/PropertiesInSameArea';
 import ShareModal from './components/ShareModal';
 import { getListingById, getListingsByCity } from '@/lib/mockData';
 
-const UnitView: React.FC = () => {
+function UnitViewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get('id') || '1'; // Default to property 1
@@ -261,6 +261,29 @@ const UnitView: React.FC = () => {
       <Footer />
     </div>
   );
-};
+}
 
-export default UnitView;
+function UnitViewFallback() {
+  return (
+    <div className="min-h-screen bg-white text-black">
+      <Navbar />
+      <div className="h-16" />
+      <section className="bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col xl:flex-row gap-8 animate-pulse">
+            <div className="flex-1 h-96 bg-gray-200 rounded" />
+            <div className="w-full xl:w-96 h-96 bg-gray-200 rounded" />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export default function UnitViewPage() {
+  return (
+    <Suspense fallback={<UnitViewFallback />}>
+      <UnitViewContent />
+    </Suspense>
+  );
+}

@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
 
 type BookingStatus = 'completed' | 'cancelled' | 'ongoing' | 'pending' | 'pending-payment' | 'declined';
 
@@ -243,7 +241,6 @@ const BookingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar />
       
       <div className="pt-20 pb-8 min-h-[calc(100vh-5rem)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -447,7 +444,6 @@ const BookingPage: React.FC = () => {
         </div>
       </div>
 
-      <Footer />
     </div>
   );
 };

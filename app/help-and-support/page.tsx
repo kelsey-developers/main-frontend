@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
 
 // Icon components
 const QuestionIcon = () => (
@@ -359,7 +357,6 @@ const HelpAndSupport: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navbar />
       <main className="pt-20 sm:pt-24 pb-8 sm:pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         {/* Header Section */}
         <div className="text-center mb-8 sm:mb-12">
@@ -959,7 +956,6 @@ const HelpAndSupport: React.FC = () => {
           </div>
         </div>
       </main>
-      <Footer />
     </div>
   );
 };
