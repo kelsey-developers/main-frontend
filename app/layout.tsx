@@ -5,8 +5,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Kelsey's Homestay",
-  description: "Kelsey's Homestay - Frontend",
+  title: "Kelsey's Homestay - Feel at home anytime, anywhere!",
+  description: "Find your perfect home away from home while you're on your dream vacation",
 };
 
 export default function RootLayout({
