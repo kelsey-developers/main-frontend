@@ -8,9 +8,10 @@ import {
   getPointsHistory,
   POINTS_HISTORY_MAX_LIMIT,
 } from '@/services/rewardsService';
-import type { AgentPointsBalance, PointsTransaction } from '@/types/rewards';
+import type { AgentPointsBalance, PointsTransaction, CashPaymentMethod } from '@/types/rewards';
 import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import DateRangePicker from '@/components/DateRangePicker';
+import SingleDatePicker from '@/components/SingleDatePicker';
 
 /**
  * Rewards page - Agent point system.
@@ -73,6 +74,14 @@ export default function RewardsPage() {
   const [redeemQuantity, setRedeemQuantity] = useState<number>(1);
   /** After confirm: show success modal with this reward name (pending admin approval message); null when dismissed */
   const [redeemSuccessReward, setRedeemSuccessReward] = useState<RewardOption | null>(null);
+  /** Cash redemption only: payment method (gcash, paymaya, bank transfer); reset when modal opens */
+  const [redeemPaymentMethod, setRedeemPaymentMethod] = useState<CashPaymentMethod | ''>('');
+  /** Cash redemption only: recipient mobile/account number; reset when modal opens */
+  const [redeemRecipientNumber, setRedeemRecipientNumber] = useState('');
+  /** Cash redemption only: recipient full name; reset when modal opens */
+  const [redeemRecipientName, setRedeemRecipientName] = useState('');
+  /** Staycation redemption only: preferred date (YYYY-MM-DD), single date; reset when modal opens */
+  const [redeemPreferredDate, setRedeemPreferredDate] = useState('');
   /** Stats card period: This Week, This Month, or All Time */
   const [statsPeriod, setStatsPeriod] = useState<'week' | 'month' | 'all'>('month');
   /** Stats period dropdown open state; click outside to close */
@@ -898,8 +907,12 @@ export default function RewardsPage() {
                         style={{ fontFamily: 'var(--font-poppins)' }}
                         onClick={() => {
                           if (canRedeem) {
-                            // Reset quantity every time the confirmation modal opens so user starts from 1
+                            // Reset quantity and cash-redemption fields every time the confirmation modal opens
                             setRedeemQuantity(1);
+                            setRedeemPaymentMethod('');
+                            setRedeemRecipientNumber('');
+                            setRedeemRecipientName('');
+                            setRedeemPreferredDate('');
                             setRedeemConfirmReward(reward);
                           }
                         }}
@@ -1006,6 +1019,62 @@ export default function RewardsPage() {
                     </div>
                   </div>
 
+                  {/* Cash redemption: payment method, recipient number, recipient name (required for cash only) */}
+                  {redeemConfirmReward.id.startsWith('cash-') && (
+                    <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50/50 p-3" style={{ fontFamily: 'var(--font-poppins)' }}>
+                      <p className="text-sm font-semibold text-black">Payment details</p>
+                      <div>
+                        <label htmlFor="redeem-payment-method" className="block text-xs text-gray-600 mb-1">Payment method</label>
+                        <select
+                          id="redeem-payment-method"
+                          value={redeemPaymentMethod}
+                          onChange={(e) => setRedeemPaymentMethod(e.target.value as CashPaymentMethod)}
+                          className="w-full py-2 px-3 rounded-lg border border-gray-300 text-sm text-black bg-white cursor-pointer"
+                        >
+                          <option value="">Select method</option>
+                          <option value="gcash">GCash</option>
+                          <option value="paymaya">PayMaya</option>
+                          <option value="bank_transfer">Bank transfer</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="redeem-recipient-number" className="block text-xs text-gray-600 mb-1">Recipient number</label>
+                        <input
+                          id="redeem-recipient-number"
+                          type="text"
+                          placeholder={redeemPaymentMethod === 'bank_transfer' ? 'Account number' : 'Mobile number'}
+                          value={redeemRecipientNumber}
+                          onChange={(e) => setRedeemRecipientNumber(e.target.value)}
+                          className="w-full py-2 px-3 rounded-lg border border-gray-300 text-sm text-black bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="redeem-recipient-name" className="block text-xs text-gray-600 mb-1">Recipient name</label>
+                        <input
+                          id="redeem-recipient-name"
+                          type="text"
+                          placeholder="Full name"
+                          value={redeemRecipientName}
+                          onChange={(e) => setRedeemRecipientName(e.target.value)}
+                          className="w-full py-2 px-3 rounded-lg border border-gray-300 text-sm text-black bg-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Staycation redemption: preferred date — single date picker dropdown */}
+                  {redeemConfirmReward.id === 'tshirt' && (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3" style={{ fontFamily: 'var(--font-poppins)' }}>
+                      <p className="text-sm font-semibold text-black mb-2">Preferred date</p>
+                      <SingleDatePicker
+                        value={redeemPreferredDate}
+                        onChange={setRedeemPreferredDate}
+                        placeholder="Select preferred date"
+                        className="w-full"
+                      />
+                    </div>
+                  )}
+
                   {/* Points breakdown — body text */}
                   <div className="space-y-3 text-sm text-gray-600" style={{ fontFamily: 'var(--font-poppins)' }}>
                     <div className="flex justify-between items-center">
@@ -1051,23 +1120,40 @@ export default function RewardsPage() {
                     </button>
                     <button
                       type="button"
-                      className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold bg-[#0B5858] text-white hover:bg-[#094848] transition-colors cursor-pointer"
+                      className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold bg-[#0B5858] text-white hover:bg-[#094848] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={
+                        (redeemConfirmReward.id.startsWith('cash-') &&
+                          (!redeemPaymentMethod || !redeemRecipientNumber.trim() || !redeemRecipientName.trim())) ||
+                        (redeemConfirmReward.id === 'tshirt' && !redeemPreferredDate)
+                      }
                       onClick={() => {
+                        // Cash redemptions require payment details; staycation requires preferred dates
+                        const isCash = redeemConfirmReward.id.startsWith('cash-');
+                        const isStaycation = redeemConfirmReward.id === 'tshirt';
+                        if (isCash && (!redeemPaymentMethod || !redeemRecipientNumber.trim() || !redeemRecipientName.trim())) return;
+                        if (isStaycation && !redeemPreferredDate) return;
+
                         // Frontend-only: append pending redemption to local state for Recent Activity until backend is connected.
-                        // When API is wired: call redemption API, then refetch history (API will return pending/rejected/completed).
+                        // When API is wired: call redemption API with payment details or preferred dates, then refetch history.
                         const totalPointsRequired = redeemConfirmReward.pointsCost * redeemQuantity;
-                        setHistory((prev) => [
-                          {
-                            id: `pending-${Date.now()}`,
-                            agentId: 'mock-1',
-                            points: -totalPointsRequired,
-                            type: 'redemption',
-                            description: redeemConfirmReward.name,
-                            createdAt: new Date().toISOString(),
-                            status: 'pending',
-                          },
-                          ...prev,
-                        ]);
+                        const baseTx: PointsTransaction = {
+                          id: `pending-${Date.now()}`,
+                          agentId: 'mock-1',
+                          points: -totalPointsRequired,
+                          type: 'redemption',
+                          description: redeemConfirmReward.name,
+                          createdAt: new Date().toISOString(),
+                          status: 'pending',
+                        };
+                        if (isCash && redeemPaymentMethod) {
+                          baseTx.paymentMethod = redeemPaymentMethod;
+                          baseTx.recipientNumber = redeemRecipientNumber.trim();
+                          baseTx.recipientName = redeemRecipientName.trim();
+                        }
+                        if (isStaycation && redeemPreferredDate) {
+                          baseTx.preferredDates = redeemPreferredDate;
+                        }
+                        setHistory((prev) => [baseTx, ...prev]);
                         setRedeemSuccessReward(redeemConfirmReward);
                         setRedeemConfirmReward(null);
                       }}
