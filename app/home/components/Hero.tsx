@@ -19,7 +19,7 @@ interface HeroProps {
 
 const Hero: React.FC<HeroProps> = ({
   searchLocation,
-  setSearchLocation,
+  setSearchLocation, 
   priceRange,
   setPriceRange,
   onSearch,

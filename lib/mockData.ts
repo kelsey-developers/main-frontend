@@ -1,4 +1,4 @@
-import type { ListingView } from '@/types/listing';
+import type { ListingView, Listing } from '@/types/listing';
 
 export const mockListings: ListingView[] = [
   {
@@ -77,4 +77,100 @@ export const getFeaturedListings = (): ListingView[] => {
 
 export const getAvailableLocations = (): string[] => {
   return mockLocations;
+};
+
+// Detailed unit listings for unit-view pages
+export const unitListings: Record<string, Listing> = {
+  '1': {
+    id: '1',
+    title: 'Apartment complex in Davao',
+    location: 'Medina, Apilaya Davao City',
+    city: 'Davao City',
+    price: 4320,
+    currency: '₱',
+    price_unit: 'night',
+    bedrooms: 2,
+    bathrooms: 1,
+    square_feet: 800,
+    property_type: 'Apartment',
+    description: 'A beautiful apartment complex in the heart of Davao City with modern amenities and great location. This spacious 2-bedroom unit features a modern kitchen, comfortable living area, and stunning city views. Perfect for families or business travelers looking for a home away from home.',
+    main_image_url: '/heroimage.png',
+    image_urls: ['/heroimage.png', '/heroimage.png', '/heroimage.png'],
+    amenities: ['WiFi', 'Air Conditioning', 'Kitchen', 'Parking', 'TV', 'Washing Machine', 'Security', '24/7 Reception'],
+    is_featured: true,
+    is_available: true,
+    latitude: 7.1907,
+    longitude: 125.4553,
+    country: 'Philippines',
+    check_in_time: '14:00',
+    check_out_time: '11:00',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  '2': {
+    id: '2',
+    title: 'Modern Condo in Manila',
+    location: 'Makati, Metro Manila',
+    city: 'Manila',
+    price: 3500,
+    currency: '₱',
+    price_unit: 'night',
+    bedrooms: 1,
+    bathrooms: 1,
+    square_feet: 600,
+    property_type: 'Condo',
+    description: 'Modern condominium in the business district of Makati with stunning city views. This stylish studio unit offers a contemporary living space with premium finishes and access to world-class amenities including a swimming pool, gym, and sky lounge.',
+    main_image_url: '/heroimage.png',
+    image_urls: ['/heroimage.png', '/heroimage.png'],
+    amenities: ['WiFi', 'Air Conditioning', 'Pool', 'Gym', 'Parking', 'Security'],
+    is_featured: false,
+    is_available: true,
+    latitude: 14.5547,
+    longitude: 121.0244,
+    country: 'Philippines',
+    check_in_time: '15:00',
+    check_out_time: '12:00',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  },
+  '3': {
+    id: '3',
+    title: 'Cozy House in Cebu',
+    location: 'Lahug, Cebu City',
+    city: 'Cebu City',
+    price: 2800,
+    currency: '₱',
+    price_unit: 'night',
+    bedrooms: 3,
+    bathrooms: 2,
+    square_feet: 1200,
+    property_type: 'House',
+    description: 'Cozy family house in a quiet neighborhood of Cebu with garden and parking space. This charming 3-bedroom home provides a peaceful retreat with modern comforts, spacious rooms, and a lovely outdoor area perfect for relaxation and family gatherings.',
+    main_image_url: '/heroimage.png',
+    image_urls: ['/heroimage.png', '/heroimage.png', '/heroimage.png', '/heroimage.png'],
+    amenities: ['WiFi', 'Air Conditioning', 'Garden', 'Parking', 'Kitchen', 'BBQ Area', 'Pet Friendly'],
+    is_featured: false,
+    is_available: true,
+    latitude: 10.3157,
+    longitude: 123.8854,
+    country: 'Philippines',
+    check_in_time: '13:00',
+    check_out_time: '10:00',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  }
+};
+
+export const getListingById = (id: string): Listing | undefined => {
+  return unitListings[id];
+};
+
+export const getListingsByCity = (city: string, excludeId?: string): Listing[] => {
+  return Object.values(unitListings).filter(
+    l => l.city === city && l.id !== excludeId
+  );
+};
+
+export const getAllUnitListings = (): Listing[] => {
+  return Object.values(unitListings);
 };
