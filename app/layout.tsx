@@ -3,6 +3,7 @@ import "./globals.css";
 import { MockAuthProvider } from "@/contexts/MockAuthContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import Chatbot from "@/components/Chatbot";
 
 export const metadata: Metadata = {
   title: "Kelsey's Homestay - Feel at home anytime, anywhere!",
@@ -21,6 +22,7 @@ export default function RootLayout({
           <Navbar />
           <main className="flex-1">{children}</main>
           <Footer />
+          <Chatbot />
         </MockAuthProvider>
       </body>
     </html>
