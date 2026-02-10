@@ -17,7 +17,7 @@ const Navbar: React.FC = () => {
         <div className="flex items-center h-14 sm:h-16 relative">
           {/* Left side - Logo */}
           <div className="flex-shrink-0">
-            <Link href="/" className="block cursor-pointer">
+            <Link href="/home" className="block cursor-pointer">
               <div className="h-14 w-auto hover:opacity-80 transition-opacity flex items-center">
                 <span className="text-2xl font-bold text-[#0B5858]">Kelsey&apos;s</span>
               </div>
@@ -44,7 +44,7 @@ const Navbar: React.FC = () => {
           <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 translate-x-[-137px]">
             <div className="flex items-baseline">
               <Link
-                href="/"
+                href="/home"
                 className="text-black font-sans font-medium uppercase text-sm hover:text-teal-900 transition-colors px-4 py-2 mx-1"
               >
                 HOME
@@ -88,7 +88,7 @@ const Navbar: React.FC = () => {
           <div className="md:hidden py-4 border-t border-gray-200">
             <div className="flex flex-col space-y-2">
               <Link
-                href="/"
+                href="/home"
                 className="text-black font-sans font-medium uppercase text-sm hover:text-teal-900 transition-colors px-4 py-2"
                 onClick={() => setIsMobileMenuOpen(false)}
               >
