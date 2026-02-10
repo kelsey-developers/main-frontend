@@ -6,7 +6,7 @@ import Footer from "@/components/Footer";
 import Chatbot from "@/components/Chatbot";
 
 export const metadata: Metadata = {
-  title: "Kelsey's Homestay - Feel at home anytime, anywhere!",
+  title: "Kelsey's Homestay - Never feel the homesickness again",
   description: "Find your perfect home away from home while you're on your dream vacation",
 };
 
