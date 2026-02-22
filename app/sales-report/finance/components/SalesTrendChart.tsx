@@ -41,8 +41,10 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
           </svg>
         </button>
       </div>
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+      <div className="overflow-x-auto overflow-y-hidden -mx-1 px-1">
+        <div className="min-w-[320px] w-full h-[280px]" style={{ width: 'max(320px, 100%)' }}>
+          <ResponsiveContainer width="100%" height="100%" debounce={50}>
+            <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis
             dataKey="name"
@@ -57,7 +59,7 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
             tick={{ fontFamily: 'Poppins' }}
           />
           <Tooltip
-            formatter={(value: number) => formatTooltip(value)}
+            formatter={(value: number | undefined) => (value != null ? formatTooltip(value) : ['', 'Sales'])}
             contentStyle={{
               backgroundColor: 'white',
               border: '1px solid #e5e7eb',
@@ -74,7 +76,9 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
             dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
           />
         </LineChart>
-      </ResponsiveContainer>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 };

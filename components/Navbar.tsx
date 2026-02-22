@@ -377,13 +377,6 @@ export default function Navbar() {
             >
               HOME
             </Link>
-            <Link
-              href="/sales-report"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={mobileNavLinkClass}
-            >
-              SALES
-            </Link>
             <span
               className={mobileNavLinkClass.replace('cursor-pointer', 'cursor-default') + ' opacity-90'}
               aria-hidden
