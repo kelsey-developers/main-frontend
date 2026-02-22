@@ -1,12 +1,31 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 /**
  * Footer - Exact same design as oop-dev.
  * Teal background (#0B5858), logo left, email CTA right, divider, copyright + social.
+ * Renders after mount to avoid hydration mismatch from browser extensions (e.g. fdprocessedid on inputs).
  */
 export default function Footer() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <footer
+        className="bg-[#0B5858] text-white py-8 sm:py-10 md:py-12 px-4 sm:px-6 lg:px-8 relative z-10 min-h-[200px]"
+        style={{ position: 'relative', zIndex: 10 }}
+        aria-hidden
+      >
+        <div className="max-w-7xl mx-auto" />
+      </footer>
+    );
+  }
+
   return (
     <footer
       className="bg-[#0B5858] text-white py-8 sm:py-10 md:py-12 px-4 sm:px-6 lg:px-8 animate-fade-in-up relative z-10"
