@@ -31,9 +31,35 @@ export interface SalesReportFilters {
   searchName: string;
   propertyType: string;
   location: string;
+  /** Quick select: 'quick' | 'custom' */
+  filterMethod: 'quick' | 'custom';
+  /** Quick select: view by week | month | year */
+  timePeriod: 'week' | 'month' | 'year';
+  /** Quick select: this period or last period */
+  timePeriodScope: 'this' | 'last';
+  /** Custom: start month (e.g. Jan) */
   timePeriodStart: string;
+  /** Custom: start year (e.g. 2025) */
+  timePeriodStartYear: string;
+  /** Custom: end month */
   timePeriodEnd: string;
+  /** Custom: end year */
+  timePeriodEndYear: string;
 }
+
+/** Default values for SalesReportFilters */
+export const defaultSalesReportFilters: SalesReportFilters = {
+  searchName: '',
+  propertyType: 'All',
+  location: 'All',
+  filterMethod: 'quick',
+  timePeriod: 'week',
+  timePeriodScope: 'this',
+  timePeriodStart: '',
+  timePeriodStartYear: '',
+  timePeriodEnd: '',
+  timePeriodEndYear: '',
+};
 
 /** Revenue by property/unit */
 export interface RevenueByProperty {

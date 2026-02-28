@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import FinanceBreadcrumb from './components/FinanceBreadcrumb';
 import FilterSidebar from './components/FilterSidebar';
 import FinanceDashboardLinks from './components/FinanceDashboardLinks';
 import FinanceSummaryCards from './components/FinanceSummaryCards';
@@ -23,8 +22,13 @@ const defaultFilters: SalesReportFilters = {
   searchName: '',
   propertyType: 'All',
   location: 'All',
-  timePeriodStart: 'Jan',
-  timePeriodEnd: 'Dec',
+  filterMethod: 'quick',
+  timePeriod: 'week',
+  timePeriodScope: 'this',
+  timePeriodStart: '',
+  timePeriodStartYear: '',
+  timePeriodEnd: '',
+  timePeriodEndYear: '',
 };
 
 export default function SalesReportPage() {
@@ -32,8 +36,7 @@ export default function SalesReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-18 bg-gray-50">
-        <FinanceBreadcrumb />
+      <div className="  mx-auto px-4 sm:px-6 lg:px-8 pb-18 bg-gray-50">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-4xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
