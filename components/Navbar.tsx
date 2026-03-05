@@ -142,9 +142,9 @@ export default function Navbar() {
               <Link href="/" className={navLinkClass}>
                 HOME
               </Link>
-              <span className={navLinkClass + ' cursor-default opacity-90'} aria-hidden>
+              <Link href="/listings" className={navLinkClass}>
                 LISTINGS
-              </span>
+              </Link>
               <Link href="/calendar" className={navLinkClass}>
                 CALENDAR
               </Link>
@@ -377,12 +377,13 @@ export default function Navbar() {
             >
               HOME
             </Link>
-            <span
-              className={mobileNavLinkClass.replace('cursor-pointer', 'cursor-default') + ' opacity-90'}
-              aria-hidden
+            <Link
+              href="/listings"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={mobileNavLinkClass}
             >
               LISTINGS
-            </span>
+            </Link>
             <Link
               href="/calendar"
               onClick={() => setIsMobileMenuOpen(false)}
