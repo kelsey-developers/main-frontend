@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import Link from 'next/link';
 import type { InventoryUnit } from '../types';
 
 interface SearchUnitsProps {
@@ -93,9 +94,10 @@ const SearchUnits: React.FC<SearchUnitsProps> = ({ units }) => {
           </p>
         ) : (
           filteredUnits.map((unit) => (
-            <div
+            <Link
               key={unit.id}
-              className="flex-shrink-0 flex gap-3 p-2 rounded-lg border border-gray-100 bg-gray-50/80 hover:border-[#0B5858]/30 hover:bg-teal-50/30 transition-colors cursor-pointer"
+              href={`/sales-report/inventory/units/${unit.id}`}
+              className="flex-shrink-0 flex gap-3 p-2 rounded-lg border border-gray-100 bg-gray-50/80 hover:border-[#0B5858]/30 hover:bg-teal-50/30 transition-colors cursor-pointer block"
             >
               <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200">
                 <img
@@ -126,7 +128,7 @@ const SearchUnits: React.FC<SearchUnitsProps> = ({ units }) => {
                   </p>
                 )}
               </div>
-            </div>
+            </Link>
           ))
         )}
       </div>

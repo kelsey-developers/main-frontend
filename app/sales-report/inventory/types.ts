@@ -1,9 +1,11 @@
 export type ItemType = 'consumable' | 'reusable';
+export type ItemCategory = 'Cleaning' | 'Hygiene' | 'Food & Drinks' | 'Cooking' | 'Appliances' | 'furniture' | 'Cloth & Sheets' | 'Kitchenware' | 'Other';
 
 export interface InventoryItem {
   id: string;
   name: string;
   type: ItemType;
+  category: ItemCategory;
   unit: string;
   currentStock: number;
   minStock: number;
@@ -15,6 +17,7 @@ export interface ReplenishmentItem {
   id: string;
   name: string;
   type: ItemType;
+  category: ItemCategory;
   currentStock: number;
   minStock: number;
   shortfall: number;
@@ -37,4 +40,10 @@ export interface InventoryUnit {
   location?: string;
   itemCount?: number;
   imageUrl?: string;
+}
+
+export interface InventoryFeatureLink {
+  href: string;
+  title: string;
+  icon: 'items';
 }
