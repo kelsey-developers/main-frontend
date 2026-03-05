@@ -85,6 +85,7 @@ export default function Chatbot() {
         onClick={() => setIsOpen((o) => !o)}
         className="chatbot-fab fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-[var(--brand-teal)] text-white shadow-lg transition-all duration-300 hover:scale-110 hover:bg-[var(--brand-teal-hover)] hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-[var(--brand-teal)] focus:ring-offset-2"
         aria-label={isOpen ? 'Close chat' : 'Open chat'}
+        suppressHydrationWarning
       >
         {isOpen ? (
           <CloseIcon className="h-6 w-6" />
@@ -144,6 +145,7 @@ export default function Chatbot() {
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message..."
                 className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm placeholder:text-gray-400 focus:border-[var(--brand-teal)] focus:bg-white focus:ring-2 focus:ring-[var(--brand-teal)]/20"
+                suppressHydrationWarning
               />
               <button
                 type="button"

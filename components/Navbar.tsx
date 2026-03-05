@@ -9,8 +9,10 @@ import { ROLE_COLORS } from '@/lib/constants';
  * Navbar - Matches oop-dev design exactly.
  * Fixed top, white bg, logo left, nav center, user/signup right.
  * Uses mock auth for now; ready to swap to real AuthContext/API.
+ * Renders after mount to avoid hydration mismatch from browser extensions (e.g. fdprocessedid).
  */
 export default function Navbar() {
+  const [mounted, setMounted] = useState(false);
   const { user, signOut, userRole, userProfile, isAdmin, isAgent, roleLoading } =
     useMockAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -19,6 +21,10 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profileImageError, setProfileImageError] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const getInitials = () => {
     if (userProfile?.fullname) {
@@ -71,6 +77,16 @@ export default function Navbar() {
 
   /* Nav structure matches oop-dev; links use font-sans font-medium */
   /* If you change h-14/h-16 here, update LAYOUT_NAVBAR_OFFSET in lib/constants.ts so page content stays visually clear of the nav */
+  if (!mounted) {
+    return (
+      <nav className="fixed top-0 left-0 right-0 bg-white z-[100] shadow-sm" aria-hidden>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center h-14 sm:h-16 relative" />
+        </div>
+      </nav>
+    );
+  }
+
   return (
     <nav className="fixed top-0 left-0 right-0 bg-white z-[100] shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

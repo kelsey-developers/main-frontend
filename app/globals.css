@@ -183,3 +183,9 @@ input:focus,
 textarea:focus {
   outline: none;
 }
+
+.scrollbar-no-arrows::-webkit-scrollbar { width: 8px; }
+.scrollbar-no-arrows::-webkit-scrollbar-button { display: none; }
+.scrollbar-no-arrows::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+.scrollbar-no-arrows::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.scrollbar-no-arrows::-webkit-scrollbar-thumb:hover { background: #94a3b8; }

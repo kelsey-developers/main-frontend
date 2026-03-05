@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import dynamic from "next/dynamic";
 import "./globals.css";
+import Chatbot from "@/components/Chatbot";
 import { MockAuthProvider } from "@/contexts/MockAuthContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import Chatbot from "@/components/Chatbot";
 
 export const metadata: Metadata = {
   title: "Kelsey's Homestay - Never feel the homesickness again",
