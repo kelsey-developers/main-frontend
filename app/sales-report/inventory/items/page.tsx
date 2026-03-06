@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import AddModal from '../components/AddModal';
-import type { AddModalChoice } from '../components/AddModal';
+import { useRouter } from 'next/navigation';
 import InventoryTable from '../components/InventoryTable';
 import { mockReplenishmentItems } from '../lib/mockData';
 
 export default function InventoryItemsPage() {
-  const [addModalOpen, setAddModalOpen] = useState(false);
+  const router = useRouter();
+
 
   return (
     <>
@@ -16,10 +16,10 @@ export default function InventoryItemsPage() {
         <div>
           <nav className="flex items-center gap-2 text-sm text-gray-600 mb-2" style={{ fontFamily: 'Poppins' }}>
             <Link href="/sales-report/inventory" className="text-[#0B5858] hover:underline">
-              Inventory
+              Dashboard
             </Link>
             <span>/</span>
-            <span className="text-gray-900 font-medium">Inventory items</span>
+            <span className="text-gray-900 font-medium">Inventory</span>
           </nav>
           <h1 className="text-4xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             Inventory items
@@ -41,7 +41,7 @@ export default function InventoryItemsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setAddModalOpen(true)}
+            onClick={() => router.push('/sales-report/inventory/AddStock')}
             className="px-4 py-2 rounded-lg border border-gray-200 bg-green-400 text-white text-md font-medium hover:bg-green-500 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none inline-flex items-center gap-2"
             style={{ fontFamily: 'Poppins' }}
           >
@@ -56,19 +56,7 @@ export default function InventoryItemsPage() {
       <InventoryTable items={mockReplenishmentItems} />
 
 
-      <AddModal
-        isOpen={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
-        onSelect={(choice: AddModalChoice) => {
-          setAddModalOpen(false);
-          if (choice === 'item') {
-            // TODO: open add-new-item flow
-          }
-          if (choice === 'stock') {
-            // TODO: open add-new-stock flow
-          }
-        }}
-      />
+
     </>
   );
 }

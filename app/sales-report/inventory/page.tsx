@@ -8,6 +8,7 @@ import SearchUnits from './components/SearchUnits';
 import UnitAlert from './components/UnitAlert';
 import type { InventoryDashboardSummary } from './types';
 import { mockReplenishmentItems, mockUnits, mockUnitItems } from './lib/mockData';
+import InventoryDashboardLinks from './components/InventoryDashboardLinks';
 
 export default function InventoryDashboardPage() {
   const summary = useMemo((): InventoryDashboardSummary => {
@@ -36,6 +37,9 @@ export default function InventoryDashboardPage() {
       <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
         <aside className="w-full lg:w-80 flex-shrink-0">
           <SearchUnits units={mockUnits} />
+          <div className="mt-6">
+            <InventoryDashboardLinks />
+          </div>
         </aside>
         <div className="flex-1 min-w-0 space-y-6">
           <InventorySummaryCards summary={summary} />
@@ -48,23 +52,6 @@ export default function InventoryDashboardPage() {
             </p>    
           </div>
           <InventoryTable items={mockReplenishmentItems} />
-          <Link
-            href="/sales-report/inventory/items"
-            className="block p-4 rounded-xl border border-gray-200 bg-white shadow-sm hover:border-[#0B5858]/30 hover:shadow-md transition-all text-left"
-          >
-            <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
-              Inventory items
-            </h3>
-            <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
-              View all inventory items, stock out, and add new items
-            </p>
-            <span className="inline-flex items-center gap-1 text-[#0B5858] text-sm font-medium mt-2" style={{ fontFamily: 'Poppins' }}>
-              View items
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </span>
-          </Link>
           <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
         </div>
       </div>
