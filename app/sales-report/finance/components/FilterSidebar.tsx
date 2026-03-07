@@ -33,7 +33,7 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
 
   return (
     <div className="w-full lg:w-72 flex-shrink-0 space-y-3">
-    <aside className="w-full">
+    <div className="w-full">
       <h2
         className="text-xl font-bold text-gray-900 mb-4"
         style={{ fontFamily: 'Poppins' }}
@@ -41,25 +41,6 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
         Filters
       </h2>
       <div className="space-y-4">
-        <div>
-          <label
-            htmlFor="filter-sidebar-search"
-            className="block text-sm font-medium text-gray-700 mb-1"
-            style={{ fontFamily: 'Poppins' }}
-          >
-            Search
-          </label>
-          <input
-            id="filter-sidebar-search"
-            type="search"
-            value={filters.searchName}
-            onChange={(e) => update('searchName', e.target.value)}
-            placeholder="Search by name..."
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
-            style={{ fontFamily: 'Poppins' }}
-          />
-          <div className="border-b-2 border-gray-300 py-2"></div>
-        </div>
         <div>
           <label
             htmlFor="property-type"
@@ -228,7 +209,7 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
           )}
         </div>
       </div>
-    </aside>
+    </div>
       <div className="flex flex-row gap-2 justify-end">
         <button
           type="button"

@@ -26,7 +26,7 @@ export default function InventoryDashboardPage() {
   return (
     <>
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
           Inventory dashboard
         </h1>
         <p className="text-gray-600" style={{ fontFamily: 'Poppins' }}>

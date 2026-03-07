@@ -21,7 +21,7 @@ export default function InventoryItemsPage() {
             <span>/</span>
             <span className="text-gray-900 font-medium">Inventory</span>
           </nav>
-          <h1 className="text-4xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+          <h1 className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             Inventory items
           </h1>
           <p className="text-gray-600 mt-1" style={{ fontFamily: 'Poppins' }}>
