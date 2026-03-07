@@ -85,14 +85,19 @@ const TimeTrackingCard: React.FC<{
   onTimeOut: () => void;
   isLoading: boolean;
 }> = ({ currentDTR, onTimeIn, onTimeOut, isLoading }) => {
-  const [currentTime, setCurrentTime] = useState<string>(new Date().toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  }));
+  const [currentTime, setCurrentTime] = useState<string>('');
+  const [isMounted, setIsMounted] = useState(false);
 
+  // Initialize time on client only
   useEffect(() => {
+    setIsMounted(true);
+    setCurrentTime(new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    }));
+
     const timer = setInterval(() => {
       setCurrentTime(new Date().toLocaleTimeString('en-US', {
         hour: '2-digit',
@@ -105,6 +110,12 @@ const TimeTrackingCard: React.FC<{
     return () => clearInterval(timer);
   }, []);
 
+  // Show placeholder until mounted on client
+  if (!isMounted) {
+    return null; // or return a loading skeleton
+  }
+
+  // Rest of your component code stays the same
   const isTimedIn = currentDTR && currentDTR.status === 'OPEN';
   const timeInFormatted = currentDTR?.time_in ? new Date(currentDTR.time_in).toLocaleTimeString('en-US', {
     hour: '2-digit',
