@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import AdminSummaryCards from './components/AdminSummaryCards';
 import AdminCharts from './components/AdminCharts';
 import CalendarWidget from '../../components/CalendarWidget';
@@ -100,7 +101,8 @@ const AdminPage: React.FC = React.memo(() => {
                 </svg>
                 Booking Requests
               </button>
-              <button
+              <Link
+                href="/manage-users"
                 className="bg-[#0B5858] text-white px-4 py-2 rounded-lg hover:bg-[#0a4a4a] transition-all duration-200 flex items-center shadow-md hover:shadow-lg cursor-pointer text-sm"
                 style={{fontFamily: 'Poppins'}}
               >
@@ -108,8 +110,9 @@ const AdminPage: React.FC = React.memo(() => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
                 </svg>
                 Manage Users
-              </button>
-              <button
+              </Link>
+              <Link
+                href="/manage-units"
                 className="bg-gradient-to-br from-gray-600 to-gray-700 text-white px-4 py-2 rounded-lg hover:from-gray-700 hover:to-gray-800 transition-all duration-200 flex items-center shadow-md hover:shadow-lg cursor-pointer text-sm"
                 style={{fontFamily: 'Poppins'}}
               >
@@ -117,7 +120,17 @@ const AdminPage: React.FC = React.memo(() => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
                 Manage Listings
-              </button>
+              </Link>
+              <Link
+                href="/admin/agent-registration"
+                className="border border-[#0B5858] text-[#0B5858] bg-white px-4 py-2 rounded-lg hover:bg-[#0B5858] hover:text-white transition-all duration-200 flex items-center shadow-md hover:shadow-lg cursor-pointer text-sm"
+                style={{fontFamily: 'Poppins'}}
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                Agent Registration
+              </Link>
 
             </div>
         </div>

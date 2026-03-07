@@ -33,10 +33,10 @@ interface MockAuthContextValue {
 
 const MockAuthContext = createContext<MockAuthContextValue | null>(null);
 
-/** Mock data for development - agent with points context for rewards page */
-const MOCK_USER: MockUser = { email: 'agent@example.com', id: 'mock-1' };
-const MOCK_ROLE: MockUserRole = { role: 'agent', fullname: 'Jane Agent' };
-const MOCK_PROFILE: MockUserProfile = { fullname: 'Jane Agent', profile_photo: null };
+/** Mock data for development - set role to 'admin' to access admin pages (e.g. Agent Registration) */
+const MOCK_USER: MockUser = { email: 'admin@example.com', id: 'mock-1' };
+const MOCK_ROLE: MockUserRole = { role: 'admin', fullname: 'Admin User' };
+const MOCK_PROFILE: MockUserProfile = { fullname: 'Admin User', profile_photo: null };
 
 export function MockAuthProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<MockAuthContextValue>(
@@ -45,8 +45,8 @@ export function MockAuthProvider({ children }: { children: React.ReactNode }) {
       userRole: MOCK_ROLE,
       userProfile: MOCK_PROFILE,
       roleLoading: false,
-      isAdmin: false,
-      isAgent: true,
+      isAdmin: true,
+      isAgent: false,
       signOut: async () => {},
     }),
     []
