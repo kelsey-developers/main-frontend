@@ -270,7 +270,7 @@ const DailyPayrollRow: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                💼 Earnings (Daily Worker)
+                Earnings (Daily Worker)
               </h4>
               <div className="space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-200">
@@ -295,7 +295,7 @@ const DailyPayrollRow: React.FC<{
                   <span className="text-gray-600" style={{fontFamily: 'Poppins'}}>Overtime ({payroll.overtimeHours}h)</span>
                   <span className="font-semibold text-gray-900" style={{fontFamily: 'Poppins'}}>
                     ₱ {payroll.overtimePay.toLocaleString('en-PH', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                  </span>
+                  </span> 
                 </div>
                 <div className="flex justify-between items-center bg-blue-50 px-3 py-2 rounded mt-4">
                   <span className="text-blue-900 font-semibold" style={{fontFamily: 'Poppins'}}>Gross Income</span>
@@ -308,7 +308,7 @@ const DailyPayrollRow: React.FC<{
 
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                📊 Deductions
+                Deductions
               </h4>
               <div className="space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-200">
@@ -433,7 +433,7 @@ const MonthlyPayrollRow: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                💰 Earnings (Monthly Worker)
+                Earnings (Monthly Worker)
               </h4>
               <div className="space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-200">
@@ -465,7 +465,7 @@ const MonthlyPayrollRow: React.FC<{
 
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                📊 Deductions
+                Deductions
               </h4>
               <div className="space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-200">
@@ -590,7 +590,7 @@ const CommissionPayrollRow: React.FC<{
           <div className="grid grid-cols-1 gap-6">
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                📋 Booking Details & Commission
+                Booking Details & Commission
               </h4>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {payroll.bookingDetails?.map((booking, idx) => (
@@ -619,7 +619,7 @@ const CommissionPayrollRow: React.FC<{
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                  💵 Commission Totals
+                  Commission Totals
                 </h4>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center pb-2 border-b border-gray-200">
@@ -645,7 +645,7 @@ const CommissionPayrollRow: React.FC<{
 
               <div>
                 <h4 className="text-sm font-semibold text-gray-900 mb-4 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
-                  📊 Taxes
+                  Taxes
                 </h4>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center pb-2 border-b border-gray-200">
@@ -816,214 +816,226 @@ export default function PayrollPage() {
             </p>
           </div>
 
-          {/* Summary Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
+          {/* Main Layout: Sidebar + Scrollable List */}
+          <div className="flex gap-6 items-start">
+
+            {/* Sticky Sidebar - Summary Cards */}
+            <div className="hidden lg:flex flex-col gap-5 w-56 flex-shrink-0 top-8">
+              <div className="bg-blue-50 rounded-lg border border-blue-200 p-5 shadow-sm">
+                <p className="text-s font-semibold text-blue-700 uppercase tracking-wide mb-3" style={{fontFamily: 'Poppins'}}>
                   Daily Workers
                 </p>
-                <span className="text-xl">👷</span>
+                <p className="text-3xl font-bold text-blue-700" style={{fontFamily: 'Poppins'}}>
+                  {dailyPayroll.length}
+                </p>
               </div>
-              <p className="text-3xl font-bold text-blue-700" style={{fontFamily: 'Poppins'}}>
-                {dailyPayroll.length}
-              </p>
-            </div>
 
-            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
+              <div className="bg-purple-50 rounded-lg border border-purple-200 p-5 shadow-sm">
+                <p className="text-s font-semibold text-purple-700 uppercase tracking-wide mb-3" style={{fontFamily: 'Poppins'}}>
                   Monthly Staff
                 </p>
-                <span className="text-xl">💼</span>
+                <p className="text-3xl font-bold text-purple-700" style={{fontFamily: 'Poppins'}}>
+                  {monthlyPayroll.length}
+                </p>
               </div>
-              <p className="text-3xl font-bold text-purple-700" style={{fontFamily: 'Poppins'}}>
-                {monthlyPayroll.length}
-              </p>
-            </div>
 
-            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
+              <div className="bg-amber-50 rounded-lg border border-amber-200 p-5 shadow-sm">
+                <p className="text-s font-semibold text-amber-700 uppercase tracking-wide mb-3" style={{fontFamily: 'Poppins'}}>
                   Agents
                 </p>
-                <span className="text-xl">🤝</span>
+                <p className="text-3xl font-bold text-amber-700" style={{fontFamily: 'Poppins'}}>
+                  {commissionPayroll.length}
+                </p>
               </div>
-              <p className="text-3xl font-bold text-amber-700" style={{fontFamily: 'Poppins'}}>
-                {commissionPayroll.length}
-              </p>
-            </div>
 
-            <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide" style={{fontFamily: 'Poppins'}}>
+              <div className="bg-white rounded-lg border border-gray-200 p-5 shadow-sm">
+                <p className="text-s font-semibold text-gray-600 uppercase tracking-wide mb-3" style={{fontFamily: 'Poppins'}}>
                   Total Payroll
                 </p>
-                <span className="text-xl">💰</span>
+                <p className="text-3xl font-bold text-[#0B5858]" style={{fontFamily: 'Poppins'}}>
+                  {dailyPayroll.length + monthlyPayroll.length + commissionPayroll.length}
+                </p>
               </div>
-              <p className="text-3xl font-bold text-[#0B5858]" style={{fontFamily: 'Poppins'}}>
-                {(dailyPayroll.length + monthlyPayroll.length + commissionPayroll.length)}
-              </p>
+            </div>
+
+            {/* Right Panel - Filter + Scrollable Records */}
+            <div className="flex-1 min-w-0">
+
+              {/* Mobile summary cards (horizontal, only on small screens) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 lg:hidden">
+                <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 shadow-sm">
+                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1" style={{fontFamily: 'Poppins'}}>Daily</p>
+                  <p className="text-2xl font-bold text-blue-700" style={{fontFamily: 'Poppins'}}>{dailyPayroll.length}</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg border border-purple-200 p-4 shadow-sm">
+                  <p className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1" style={{fontFamily: 'Poppins'}}>Monthly</p>
+                  <p className="text-2xl font-bold text-purple-700" style={{fontFamily: 'Poppins'}}>{monthlyPayroll.length}</p>
+                </div>
+                <div className="bg-amber-50 rounded-lg border border-amber-200 p-4 shadow-sm">
+                  <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1" style={{fontFamily: 'Poppins'}}>Agents</p>
+                  <p className="text-2xl font-bold text-amber-700" style={{fontFamily: 'Poppins'}}>{commissionPayroll.length}</p>
+                </div>
+                <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1" style={{fontFamily: 'Poppins'}}>Total</p>
+                  <p className="text-2xl font-bold text-[#0B5858]" style={{fontFamily: 'Poppins'}}>{dailyPayroll.length + monthlyPayroll.length + commissionPayroll.length}</p>
+                </div>
+              </div>
+
+              {/* Bordered scrollable container */}
+              <div className="border border-gray-200 rounded-xl shadow-sm bg-white">
+                {/* Filter bar - sticky inside the container */}
+                <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setEmploymentTypeFilter('all')}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        employmentTypeFilter === 'all'
+                          ? 'bg-[#0B5858] text-white'
+                          : 'bg-white text-gray-800 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                      style={{fontFamily: 'Poppins'}}
+                    >
+                      All Types
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmploymentTypeFilter('DAILY')}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        employmentTypeFilter === 'DAILY'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-800 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                      style={{fontFamily: 'Poppins'}}
+                    >
+                      Daily
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmploymentTypeFilter('MONTHLY')}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        employmentTypeFilter === 'MONTHLY'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white text-gray-800 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                      style={{fontFamily: 'Poppins'}}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmploymentTypeFilter('COMMISSION')}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        employmentTypeFilter === 'COMMISSION'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-white text-gray-800 border border-gray-200 hover:bg-gray-100'
+                      }`}
+                      style={{fontFamily: 'Poppins'}}
+                    >
+                      Commission
+                    </button>
+                  </div>
+                </div>
+
+                {/* Scrollable records area */}
+                <div className="overflow-y-auto" style={{maxHeight: '70vh'}}>
+                  {isLoading ? (
+                    <div className="p-12 text-center">
+                      <p className="text-gray-600 text-lg" style={{fontFamily: 'Poppins'}}>
+                        Loading payroll data...
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-5">
+                      {/* DAILY WORKERS */}
+                      {(employmentTypeFilter === 'all' || employmentTypeFilter === 'DAILY') && dailyPayroll.length > 0 && (
+                        <div className="mb-8">
+                          <div className="flex items-center space-x-3 mb-4">
+                            <h2 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
+                              Daily Workers
+                            </h2>
+                            <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-semibold" style={{fontFamily: 'Poppins'}}>
+                              {dailyPayroll.length}
+                            </span>
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                            {dailyPayroll.map((record) => (
+                              <DailyPayrollRow
+                                key={record.id}
+                                payroll={record}
+                                onView={handleView}
+                                onDownloadPayslip={handleDownloadPayslip}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* MONTHLY STAFF */}
+                      {(employmentTypeFilter === 'all' || employmentTypeFilter === 'MONTHLY') && monthlyPayroll.length > 0 && (
+                        <div className="mb-8">
+                          <div className="flex items-center space-x-3 mb-4">
+                            <h2 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
+                              Monthly Staff
+                            </h2>
+                            <span className="text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-full font-semibold" style={{fontFamily: 'Poppins'}}>
+                              {monthlyPayroll.length}
+                            </span>
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                            {monthlyPayroll.map((record) => (
+                              <MonthlyPayrollRow
+                                key={record.id}
+                                payroll={record}
+                                onView={handleView}
+                                onDownloadPayslip={handleDownloadPayslip}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* COMMISSION AGENTS */}
+                      {(employmentTypeFilter === 'all' || employmentTypeFilter === 'COMMISSION') && commissionPayroll.length > 0 && (
+                        <div className="mb-8">
+                          <div className="flex items-center space-x-3 mb-4">
+                            <h2 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
+                              Commission-Based Agents
+                            </h2>
+                            <span className="text-sm bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-semibold" style={{fontFamily: 'Poppins'}}>
+                              {commissionPayroll.length}
+                            </span>
+                          </div>
+                          <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                            {commissionPayroll.map((record) => (
+                              <CommissionPayrollRow
+                                key={record.id}
+                                payroll={record}
+                                onView={handleView}
+                                onDownloadPayslip={handleDownloadPayslip}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Empty State */}
+                      {dailyPayroll.length === 0 && monthlyPayroll.length === 0 && commissionPayroll.length === 0 && (
+                        <div className="p-12 text-center">
+                          <h3 className="text-lg font-semibold text-gray-900 mb-2" style={{fontFamily: 'Poppins'}}>
+                            No payroll records found
+                          </h3>
+                          <p className="text-gray-600" style={{fontFamily: 'Poppins'}}>
+                            Start by creating a new payroll period for your employees.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Filter */}
-          <div className="mb-6 flex flex-col sm:flex-row gap-4">
-            <div className="flex gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setEmploymentTypeFilter('all')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  employmentTypeFilter === 'all'
-                    ? 'bg-[#0B5858] text-white'
-                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                }`}
-                style={{fontFamily: 'Poppins'}}
-              >
-                All Types
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmploymentTypeFilter('DAILY')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  employmentTypeFilter === 'DAILY'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                }`}
-                style={{fontFamily: 'Poppins'}}
-              >
-                👷 Daily
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmploymentTypeFilter('MONTHLY')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  employmentTypeFilter === 'MONTHLY'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                }`}
-                style={{fontFamily: 'Poppins'}}
-              >
-                💼 Monthly
-              </button>
-              <button
-                type="button"
-                onClick={() => setEmploymentTypeFilter('COMMISSION')}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  employmentTypeFilter === 'COMMISSION'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                }`}
-                style={{fontFamily: 'Poppins'}}
-              >
-                🤝 Commission
-              </button>
-            </div>
-          </div>
-
-          {/* Payroll Records */}
-          {isLoading ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-              <p className="text-gray-600 text-lg" style={{fontFamily: 'Poppins'}}>
-                Loading payroll data...
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* DAILY WORKERS */}
-              {(employmentTypeFilter === 'all' || employmentTypeFilter === 'DAILY') && dailyPayroll.length > 0 && (
-                <div className="mb-8">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <span>👷</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
-                      Daily Workers
-                    </h2>
-                    <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-semibold" style={{fontFamily: 'Poppins'}}>
-                      {dailyPayroll.length}
-                    </span>
-                  </div>
-                  <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    {dailyPayroll.map((record) => (
-                      <DailyPayrollRow
-                        key={record.id}
-                        payroll={record}
-                        onView={handleView}
-                        onDownloadPayslip={handleDownloadPayslip}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* MONTHLY STAFF */}
-              {(employmentTypeFilter === 'all' || employmentTypeFilter === 'MONTHLY') && monthlyPayroll.length > 0 && (
-                <div className="mb-8">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <span>💼</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
-                      Monthly Staff
-                    </h2>
-                    <span className="text-sm bg-purple-100 text-purple-800 px-3 py-1 rounded-full font-semibold" style={{fontFamily: 'Poppins'}}>
-                      {monthlyPayroll.length}
-                    </span>
-                  </div>
-                  <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    {monthlyPayroll.map((record) => (
-                      <MonthlyPayrollRow
-                        key={record.id}
-                        payroll={record}
-                        onView={handleView}
-                        onDownloadPayslip={handleDownloadPayslip}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* COMMISSION AGENTS */}
-              {(employmentTypeFilter === 'all' || employmentTypeFilter === 'COMMISSION') && commissionPayroll.length > 0 && (
-                <div className="mb-8">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
-                      <span>🤝</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
-                      Commission-Based Agents
-                    </h2>
-                    <span className="text-sm bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-semibold" style={{fontFamily: 'Poppins'}}>
-                      {commissionPayroll.length}
-                    </span>
-                  </div>
-                  <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                    {commissionPayroll.map((record) => (
-                      <CommissionPayrollRow
-                        key={record.id}
-                        payroll={record}
-                        onView={handleView}
-                        onDownloadPayslip={handleDownloadPayslip}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Empty State */}
-              {dailyPayroll.length === 0 && monthlyPayroll.length === 0 && commissionPayroll.length === 0 && (
-                <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2" style={{fontFamily: 'Poppins'}}>
-                    No payroll records found
-                  </h3>
-                  <p className="text-gray-600" style={{fontFamily: 'Poppins'}}>
-                    Start by creating a new payroll period for your employees.
-                  </p>
-                </div>
-              )}
-            </>
-          )}
         </div>
       </main>
 

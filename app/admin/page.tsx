@@ -131,6 +131,26 @@ const AdminPage: React.FC = React.memo(() => {
                 </svg>
                 Agent Registration
               </Link>
+              <Link
+                href="/dtr"
+                className="border border-gray-400 text-gray-700 bg-white px-4 py-2 rounded-lg hover:bg-gray-100 transition-all duration-200 flex items-center shadow-md hover:shadow-lg cursor-pointer text-sm"
+                style={{fontFamily: 'Poppins'}}
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Daily Time Record
+              </Link>
+              <Link
+                href="/payroll"
+                className="border border-gray-400 text-gray-700 bg-white px-4 py-2 rounded-lg hover:bg-gray-100 transition-all duration-200 flex items-center shadow-md hover:shadow-lg cursor-pointer text-sm"
+                style={{fontFamily: 'Poppins'}}
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Payroll
+              </Link>
 
             </div>
         </div>
