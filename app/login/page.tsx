@@ -1,57 +1,30 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-
-// Mock users for demonstration
-const MOCK_USERS = [
-  { email: 'admin@kelsey.com', password: 'admin123', name: 'Admin User' },
-  { email: 'user@kelsey.com', password: 'user123', name: 'Regular User' },
-  { email: 'demo@kelsey.com', password: 'demo123', name: 'Demo User' },
-];
+import { loginAction } from '@/lib/actions/auth';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
-  
-  const router = useRouter();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const [isPending, startTransition] = useTransition();
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
-    try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Check mock users
-      const user = MOCK_USERS.find(
-        u => u.email === email && u.password === password
-      );
-
-      if (user) {
-        // Store user info in localStorage
-        localStorage.setItem('user', JSON.stringify({
-          email: user.email,
-          name: user.name,
-        }));
-        
-        // Redirect to home or profile
-        router.push('/');
-      } else {
-        setError('Invalid email or password');
+    startTransition(async () => {
+      try {
+        await loginAction(email, password);
+        // loginAction calls redirect('/') on success — no router.push needed
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unable to connect to the server.');
       }
-    } catch (err) {
-      setError('An unexpected error occurred');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   return (
@@ -206,11 +179,11 @@ export default function LoginPage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={isPending}
                 className="w-full py-3 px-4 rounded-3xl text-white text-lg transition-all duration-300 hover:opacity-90 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer relative overflow-hidden group"
                 style={{backgroundColor: '#0B5858', fontFamily: 'Poppins', fontWeight: 600}}
               >
-                {loading ? (
+                {isPending ? (
                   <div className="flex items-center justify-center animate-pulse">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                     <span className="animate-pulse">Loading...</span>

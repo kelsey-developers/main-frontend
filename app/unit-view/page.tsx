@@ -2,15 +2,14 @@
 
 import React, { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
+import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import type { Listing } from '@/types/listing';
 import LeftColumn from './components/LeftColumn';
 import RightColumn from './components/RightColumn';
 import TabsSection from './components/TabsSection';
 import PropertiesInSameArea from './components/PropertiesInSameArea';
 import ShareModal from './components/ShareModal';
-import { getListingById, getListingsByCity } from '@/lib/mockData';
+import { getUnitById, listUnits } from '@/lib/api/units';
 
 function UnitViewContent() {
   const router = useRouter();
@@ -32,28 +31,24 @@ function UnitViewContent() {
         setError('No property ID provided');
         return;
       }
-      
+
       try {
         setIsLoading(true);
         setError(null);
-        
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Get listing from mock data
-        const listingData = getListingById(id);
-        
+
+        const listingData = await getUnitById(id);
+
         if (!listingData) {
           setError('Listing not found');
           return;
         }
-        
+
         setListing(listingData);
-        
-        // Get listings in the same area (mock)
+
         if (listingData.city) {
-          const areaListings = getListingsByCity(listingData.city, id);
-          setSameAreaListings(areaListings);
+          const areaListings = await listUnits({ city: listingData.city, limit: 10 });
+          const sameCity = areaListings.filter((u) => u.id !== id).slice(0, 4);
+          setSameAreaListings(sameCity);
         }
       } catch (err) {
         console.error('Error fetching listing data:', err);
@@ -145,9 +140,7 @@ function UnitViewContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white text-black">
-        <Navbar />
-        <div className="h-16" />
+      <div className={`min-h-screen bg-white text-black ${LAYOUT_NAVBAR_OFFSET}`}>
         <section className="bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="flex flex-col xl:flex-row gap-8">
@@ -178,9 +171,7 @@ function UnitViewContent() {
 
   if (error || !listing) {
     return (
-      <div className="min-h-screen bg-white text-black">
-        <Navbar />
-        <div className="h-16" />
+      <div className={`min-h-screen bg-white text-black ${LAYOUT_NAVBAR_OFFSET}`}>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <div className="text-red-500 mb-4">
@@ -205,10 +196,7 @@ function UnitViewContent() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-black">
-      <Navbar />
-      <div className="h-16" />
-
+    <div className={`min-h-screen bg-white text-black ${LAYOUT_NAVBAR_OFFSET}`}>
       <ShareModal
         show={showShareModal}
         onClose={() => setShowShareModal(false)}
@@ -257,17 +245,13 @@ function UnitViewContent() {
         isLoading={isLoading}
         onCardClick={handleSameAreaListingClick}
       />
-      
-      <Footer />
     </div>
   );
 }
 
 function UnitViewFallback() {
   return (
-    <div className="min-h-screen bg-white text-black">
-      <Navbar />
-      <div className="h-16" />
+    <div className={`min-h-screen bg-white text-black ${LAYOUT_NAVBAR_OFFSET}`}>
       <section className="bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col xl:flex-row gap-8 animate-pulse">

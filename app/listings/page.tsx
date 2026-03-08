@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { mockListings } from '@/lib/mockData';
+import { listUnits } from '@/lib/api/units';
 import type { ListingView } from '@/types/listing';
 import CompactPropertyCard from './components/CompactPropertyCard';
 
@@ -93,11 +93,10 @@ const AllListingsContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Fetch all listings from mock data
     const fetchListings = async () => {
       try {
         setError(null);
-        const fetchedListings = mockListings;
+        const fetchedListings = await listUnits({ limit: 200 });
         setAllListings(fetchedListings);
         
         // Extract unique locations for dropdown
