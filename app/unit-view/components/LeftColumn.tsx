@@ -194,7 +194,7 @@ const LeftColumn: React.FC<LeftColumnProps> = ({
                 </>
               )}
 
-              <div className="w-full h-full flex items-center justify-center p-8">
+              <div className="w-full h-full flex items-center justify-center p-8">  
                 <img src={allImages[currentImageIndex]} className={`max-w-full max-h-full object-contain rounded-lg transition-all duration-300 ease-in-out ${isImageTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`} alt={`Property image ${currentImageIndex + 1}`} style={{maxWidth: '90vw', maxHeight: '90vh'}} />
               </div>
 

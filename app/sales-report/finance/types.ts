@@ -113,6 +113,8 @@ export interface BookingLinkedRow {
   id: string;
   bookingId: string;
   unit: string;
+  /** Unit/property image URL. Optional, shown on booking detail. */
+  imageUrl?: string;
   /** Unit type for filtering (e.g. Condo, Apartment). Optional. */
   unitType?: string;
   /** Location for filtering (e.g. Davao City, Manila). Optional. */
@@ -133,6 +135,8 @@ export interface BookingLinkedRow {
   extraHeads: number;
   extraHours: number;
   addOns: string[];
+  /** Per-add-on name and amount. When set, used for bullet list with price per item. */
+  addOnsWithPrice?: { name: string; amount: number }[];
   /** Amount for add-ons (e.g. pool, towels). Used to compute total. */
   addOnsAmount: number;
   /** @deprecated Use computed total from rate × nights - discounts + extras + addOnsAmount instead. */
@@ -149,10 +153,18 @@ export interface ChargeType {
   exampleLabel: string;
 }
 
+/** One reported item in a damage incident: lost or broken */
+export interface DamagePenaltyItem {
+  item: string;
+  type: 'loss' | 'broken';
+}
+
 /** Damage & penalty incident */
 export interface DamagePenalty {
   bookingId: string;
   unit: string;
+  /** Full unit address (e.g. for display on detail). */
+  unitAddress?: string;
   /** Unit type for filtering. Optional. */
   unitType?: string;
   /** Location for filtering. Optional. */
@@ -165,9 +177,25 @@ export interface DamagePenalty {
   reportedBy?: string;
   /** URLs of proof images (photos of damage). */
   proofUrls?: string[];
+  /** Items reported as lost or broken. */
+  items?: DamagePenaltyItem[];
   cost: number;
   chargedToGuest: number;
   absorbed: number;
   totalLoss: number;
   status: string;
+}
+
+/** Audit trail: data kind for export logging */
+export type AuditDataKind = 'booking-linked' | 'damage-penalty';
+
+/** One audit entry (e.g. export event) */
+export interface AuditEntry {
+  id: string;
+  action: 'export';
+  dataKind: AuditDataKind;
+  format: 'csv' | 'pdf';
+  filters: SalesReportFilters;
+  recordCount: number;
+  timestamp: string;
 }
