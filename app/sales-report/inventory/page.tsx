@@ -25,7 +25,24 @@ export default function InventoryDashboardPage() {
 
   return (
     <>
-      <div className="mb-8">
+      <style>{`
+        @keyframes inventoryReveal {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 16px, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+        .inventory-reveal {
+          opacity: 0;
+          animation: inventoryReveal 560ms ease-in-out forwards;
+        }
+      `}</style>
+
+      <div className="mb-8 inventory-reveal" style={{ animationDelay: '40ms' }}>
         <h1 className="text-4xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
           Inventory dashboard
         </h1>
@@ -34,16 +51,21 @@ export default function InventoryDashboardPage() {
         </p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
-        <aside className="w-full lg:w-80 flex-shrink-0">
+      {/* Mobile Layout: Single column with specific order */}
+      <div className="lg:hidden flex flex-col gap-6">
+        {/* 1. Search Units */}
+        <div className="inventory-reveal" style={{ animationDelay: '120ms' }}>
           <SearchUnits units={mockUnits} />
-          <div className="mt-6">
-            <InventoryDashboardLinks />
-          </div>
-        </aside>
-        <div className="flex-1 min-w-0 space-y-6">
+        </div>
+
+        {/* 2. Summary Cards */}
+        <div className="inventory-reveal" style={{ animationDelay: '180ms' }}>
           <InventorySummaryCards summary={summary} />
-          <div className="mb-4">
+        </div>
+
+        {/* 3. Inventory Table */}
+        <div>
+          <div className="mb-4 inventory-reveal" style={{ animationDelay: '230ms' }}>
             <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
               Inventory items
             </h3>
@@ -51,8 +73,48 @@ export default function InventoryDashboardPage() {
               View all inventory items, stock out, and add new items
             </p>    
           </div>
-          <InventoryTable items={mockReplenishmentItems} />
+          <div className="inventory-reveal" style={{ animationDelay: '300ms' }}>
+            <InventoryTable items={mockReplenishmentItems} redirectOnClick={true} hideEditButton={true} />
+          </div>
+        </div>
+
+        {/* 4. Unit Alert */}
+        <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
           <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
+        </div>
+
+        {/* 5. Dashboard Links */}
+        <div className="inventory-reveal" style={{ animationDelay: '420ms' }}>
+          <InventoryDashboardLinks />
+        </div>
+      </div>
+
+      {/* Desktop Layout: Sidebar + Main Content */}
+      <div className="hidden lg:flex lg:flex-row gap-8 lg:items-start">
+        <aside className="w-80 flex-shrink-0 inventory-reveal" style={{ animationDelay: '120ms' }}>
+          <SearchUnits units={mockUnits} />
+          <div className="mt-6">
+            <InventoryDashboardLinks />
+          </div>
+        </aside>
+        <div className="flex-1 min-w-0 space-y-6">
+          <div className="inventory-reveal" style={{ animationDelay: '180ms' }}>
+            <InventorySummaryCards summary={summary} />
+          </div>
+          <div className="mb-4 inventory-reveal" style={{ animationDelay: '230ms' }}>
+            <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+              Inventory items
+            </h3>
+            <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
+              View all inventory items, stock out, and add new items
+            </p>    
+          </div>
+          <div className="inventory-reveal" style={{ animationDelay: '300ms' }}>
+            <InventoryTable items={mockReplenishmentItems} redirectOnClick={true} hideEditButton={true} />
+          </div>
+          <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
+            <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
+          </div>
         </div>
       </div>
     </>

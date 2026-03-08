@@ -1,5 +1,98 @@
 export type ItemType = 'consumable' | 'reusable';
 export type ItemCategory = 'Cleaning' | 'Hygiene' | 'Food & Drinks' | 'Cooking' | 'Appliances' | 'furniture' | 'Cloth & Sheets' | 'Kitchenware' | 'Other';
+export type StockMovementType = 'in' | 'out' | 'adjustment' | 'damage';
+export type DamageStatus = 'open' | 'in-review' | 'resolved' | 'rejected';
+export type StockStatus = 'out' | 'critical' | 'low' | 'ok';
+
+// Warehouse Interface
+export interface Warehouse {
+  id: string;
+  name: string;
+  location: string;
+  capacity?: number;
+  createdAt: string;
+}
+
+// Supplier Interface
+export interface Supplier {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Stock Movement (Audit Trail)
+export interface StockMovement {
+  id: string;
+  productId: string;
+  type: StockMovementType;
+  quantity: number;
+  notes?: string;
+  referenceId?: string; // Links to booking, damage, PO, etc.
+  createdAt: string;
+  createdBy?: string;
+}
+
+// Damage Adjustment
+export interface DamageAdjustment {
+  id: string;
+  productId: string;
+  warehouseId: string;
+  quantity: number;
+  severity: 'low' | 'medium' | 'high';
+  reportedAt: string;
+  reportedBy: string;
+  status: DamageStatus;
+  notes?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
+// Purchase Order
+export interface PurchaseOrder {
+  id: string;
+  supplierId: string;
+  orderDate: string;
+  expectedDelivery: string;
+  status: 'pending' | 'partially-received' | 'received' | 'cancelled';
+  totalAmount: number;
+  createdAt: string;
+}
+
+// Purchase Order Item
+export interface PurchaseOrderLine {
+  id: string;
+  poId: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  receivedQuantity: number;
+}
+
+// Goods Receipt
+export interface GoodsReceiptItem {
+  poItemId: string;
+  description: string;
+  qtyReceived: number;
+  unit: string;
+  unitCost: number;
+}
+
+export interface GoodsReceipt {
+  id: string;
+  poId: string;
+  receiptNo: string;
+  warehouseId: string;
+  warehouse: string;
+  receivedBy: string;
+  receivedAt: string;
+  notes: string;
+  items: GoodsReceiptItem[];
+  evidenceImages?: string[];
+}
 
 export interface InventoryItem {
   id: string;
@@ -12,15 +105,37 @@ export interface InventoryItem {
   assignedToUnit?: string;
 }
 
-/** Item that needs replenishment (currentStock below minStock) */
+/** Item that needs replenishment (currentStock below minStock) with full audit trail */
 export interface ReplenishmentItem {
   id: string;
+  sku: string;
   name: string;
   type: ItemType;
   category: ItemCategory;
+  unit: string;
   currentStock: number;
   minStock: number;
   shortfall: number;
+  
+  // Audit & Financial
+  unitCost: number;
+  totalValue: number;
+  warehouseId: string;
+  warehouseName: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastModifiedBy?: string;
+  
+  // Relationships (for backend integration)
+  currentsupplierId: string;
+  supplierName: string;
+  
+  // Audit History (populated from backend)
+  stockMovements?: StockMovement[];
+  damageAdjustments?: DamageAdjustment[];
+  lastPurchaseOrder?: PurchaseOrder;
+  auditNotes?: string;
 }
 
 export interface InventoryDashboardSummary {
@@ -45,5 +160,5 @@ export interface InventoryUnit {
 export interface InventoryFeatureLink {
   href: string;
   title: string;
-  icon: 'items';
+  icon: 'items' | 'suppliers' | 'warehouses' | 'purchaseOrders' | 'stockMovements';
 }

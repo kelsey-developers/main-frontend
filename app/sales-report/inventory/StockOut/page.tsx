@@ -2,38 +2,41 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import StockInModal from '../components/StockInModal';
+import StockOutModal from '../components/StockOutModal';
 
-export default function AddStockPage() {
-  const [modalMode, setModalMode] = useState<'new' | 'existing' | null>(null);
+export default function StockOutPage() {
+  const [modalMode, setModalMode] = useState<'warehouse' | 'unit' | null>(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const cards = [
     {
-      mode: 'new' as const,
+      mode: 'warehouse' as const,
       icon: (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <path d="M12 4L14.5 9.5L20 10.5L16 14.5L17 20L12 17L7 20L8 14.5L4 10.5L9.5 9.5L12 4Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M3 21h18M3 7l9-4 9 4M5 21V10M19 21V10M9 21v-6h6v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
-      label: 'New Item',
-      desc: 'Register a brand-new product and set its initial stock',
-      tag: 'CREATE',
+      label: 'Warehouse Stock Out',
+      desc: 'Deduct stock from a warehouse — general use, disposal, damage write-off, or inter-warehouse transfer',
+      tag: 'WAREHOUSE',
       tagBg: 'rgba(5, 128, 126, 0.09)',
       tagColor: '#05807e',
+      gradient: 'linear-gradient(135deg, #0b5858, #05807e)',
     },
     {
-      mode: 'existing' as const,
+      mode: 'unit' as const,
       icon: (
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-          <path d="M12 19V5M12 5L5 12M12 5L19 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       ),
-      label: 'Add to Existing',
-      desc: 'Restock a product already in the catalog',
-      tag: 'RESTOCK',
-      tagBg: 'rgba(241, 196, 15, 0.16)',
-      tagColor: '#b8900a',
+      label: 'Unit Stock Out',
+      desc: 'Allocate items to a specific room or unit — for guest bookings, room prep, or restocking',
+      tag: 'UNIT / ROOM',
+      tagBg: 'rgba(5, 128, 126, 0.14)',
+      tagColor: '#0b5858',
+      gradient: 'linear-gradient(135deg, #0f766e, #14b8a6)',
     },
   ];
 
@@ -42,8 +45,8 @@ export default function AddStockPage() {
       <style>{`
         .card-wrapper:hover {
           transform: translateY(-3px);
-          box-shadow: 0 8px 32px rgba(5, 128, 126, 0.18);
-          border-color: #05807e;
+          box-shadow: 0 8px 32px var(--hover-shadow);
+          border-color: var(--accent-color);
         }
         .card-wrapper {
           transition: all 0.2s cubic-bezier(0.34, 1.2, 0.64, 1);
@@ -59,7 +62,7 @@ export default function AddStockPage() {
           transition: all 0.2s;
         }
         .card-wrapper:hover .card-icon {
-          background: #0b5858;
+          background: var(--icon-bg);
           color: white;
         }
         .card-arrow {
@@ -67,7 +70,7 @@ export default function AddStockPage() {
           color: #e5e7eb;
         }
         .card-wrapper:hover .card-arrow {
-          color: #05807e;
+          color: var(--accent-color);
         }
         .card-wrapper:hover .card-arrow-icon {
           transform: translateX(4px);
@@ -87,18 +90,19 @@ export default function AddStockPage() {
             Items
           </Link>
           <span>/</span>
-          <span className="text-gray-900 font-medium">Add Stock</span>
+          <span className="text-gray-900 font-medium">Stock Out</span>
         </nav>
         <h1 className="text-4xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
-          Add Stock
+          Stock Out
         </h1>
         <p className="text-gray-600 mt-1" style={{ fontFamily: 'Poppins' }}>
-          Select items and add stock to inventory
+          Record stock leaving inventory — choose the type below
         </p>
       </div>
 
+
       <p className="text-gray-700 text-base mb-7 leading-relaxed" style={{ fontFamily: 'Poppins' }}>
-        Are you adding a brand-new product to the catalog, or restocking an existing item?
+        Is this stock going out from a general warehouse, or being allocated to a specific room or unit?
       </p>
 
       {/* ── Choice cards ── */}
@@ -110,13 +114,16 @@ export default function AddStockPage() {
             onMouseEnter={() => setHoveredCard(card.mode)}
             onMouseLeave={() => setHoveredCard(null)}
             className="card-wrapper bg-white border-2 border-gray-200 rounded-[20px] p-7 cursor-pointer text-left shadow-sm relative overflow-hidden"
+            style={{
+              '--hover-shadow': card.mode === 'warehouse' ? 'rgba(5, 128, 126, 0.22)' : 'rgba(15, 118, 110, 0.24)',
+              '--accent-color': card.mode === 'warehouse' ? '#05807e' : '#0f766e',
+              '--icon-bg': card.mode === 'warehouse' ? '#0b5858' : '#0f766e',
+            } as React.CSSProperties}
           >
-            {/* Teal accent strip on hover */}
+            {/* Accent strip on hover */}
             <div
               className="card-accent absolute top-0 left-0 right-0 h-[3px] rounded-t-[20px]"
-              style={{
-                background: 'linear-gradient(90deg, #0b5858, #05807e)',
-              }}
+              style={{ background: card.gradient }}
             />
 
             {/* Tag */}
@@ -133,8 +140,11 @@ export default function AddStockPage() {
 
             {/* Icon */}
             <div
-              className="card-icon w-[52px] h-[52px] rounded-[14px] bg-gray-100 flex items-center justify-center text-2xl text-[#05807e] mb-[18px]"
-              style={{ fontFamily: 'Poppins' }}
+              className="card-icon w-[52px] h-[52px] rounded-[14px] bg-gray-100 flex items-center justify-center text-2xl mb-[18px]"
+              style={{ 
+                fontFamily: 'Poppins',
+                color: card.mode === 'warehouse' ? '#05807e' : '#25b1a6',
+              }}
             >
               {card.icon}
             </div>
@@ -148,7 +158,7 @@ export default function AddStockPage() {
 
             {/* Arrow */}
             <div className="card-arrow mt-6 flex items-center gap-1.5 font-bold text-[13px]" style={{ fontFamily: 'Poppins' }}>
-              <span>Get started</span>
+              <span>Record stock out</span>
               <span className="card-arrow-icon">→</span>
             </div>
           </button>
@@ -157,18 +167,19 @@ export default function AddStockPage() {
 
       {/* Helper note */}
       <div
-        className="mt-8 p-4 rounded-xl border-l-[3px] border-[#05807e] text-[13px] text-gray-700 leading-relaxed"
+        className="mt-8 p-4 rounded-xl border-l-[3px] text-[13px] text-gray-700 leading-relaxed"
         style={{
-          background: 'rgba(5, 128, 126, 0.06)',
+          background: 'rgba(241, 14, 59, 0.06)',
+          borderColor: '#f10e3b',
           fontFamily: 'Poppins',
         }}
       >
-        <strong className="text-[#0b5858]">Tip:</strong> All stock additions are automatically
-        logged as <em>Stock In</em> movements and remain auditable in the movement history.
+        <strong className="text-[#b00]">Note:</strong> All stock out movements permanently reduce{' '}
+        <em>InventoryBalance</em>. This cannot be undone without a corrective Stock In entry.
       </div>
 
       {/* ── Modal pop-up ── */}
-      {modalMode && <StockInModal mode={modalMode} onClose={() => setModalMode(null)} />}
+      {modalMode && <StockOutModal mode={modalMode} onClose={() => setModalMode(null)} />}
     </>
   );
 }

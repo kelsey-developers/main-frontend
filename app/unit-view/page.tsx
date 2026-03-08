@@ -257,7 +257,7 @@ function UnitViewContent() {
         isLoading={isLoading}
         onCardClick={handleSameAreaListingClick}
       />
-      
+
       <Footer />
     </div>
   );

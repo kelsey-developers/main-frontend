@@ -13,6 +13,7 @@ import { ROLE_COLORS } from '@/lib/constants';
  */
 export default function Navbar() {
   const [mounted, setMounted] = useState(false);
+  const [hiddenForModal, setHiddenForModal] = useState(false);
   const { user, signOut, userRole, userProfile, isAdmin, isAgent, roleLoading } =
     useMockAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -24,6 +25,22 @@ export default function Navbar() {
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const syncHiddenState = () => {
+      setHiddenForModal(document.body.dataset.hideNavbar === 'true');
+    };
+
+    syncHiddenState();
+
+    const observer = new MutationObserver(syncHiddenState);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-hide-navbar'],
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   const getInitials = () => {
@@ -85,6 +102,10 @@ export default function Navbar() {
         </div>
       </nav>
     );
+  }
+
+  if (hiddenForModal) {
+    return null;
   }
 
   return (
