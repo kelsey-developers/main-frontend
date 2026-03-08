@@ -39,15 +39,6 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
 
   return (
     <div className="w-full space-y-3">
-      <input
-        type="search"
-        value={filters.searchName}
-        onChange={(e) => update('searchName', e.target.value)}
-        placeholder="Search..."
-        className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
-        style={{ fontFamily: 'Poppins' }}
-        aria-label="Search"
-      />
       <section className="w-full p-3 min-[921px]:p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
       <h2
         className="text-sm min-[921px]:text-base font-bold text-gray-900 mb-2 min-[921px]:mb-3"
@@ -56,17 +47,17 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
         Filters
       </h2>
       <div className="flex flex-col min-[921px]:flex-row min-[921px]:flex-wrap items-stretch min-[921px]:items-end gap-3 min-[921px]:gap-4">
-        {/* Property Type */}
+        {/* Unit Type */}
         <div className="flex flex-col gap-1 w-full min-w-0 min-[921px]:w-auto min-[921px]:min-w-[25vh]">
           <label
-            htmlFor="horizontal-filter-property-type"
+            htmlFor="horizontal-filter-unit-type"
             className="text-sm font-medium text-gray-700"
             style={{ fontFamily: 'Poppins' }}
           >
             Property Type
           </label>
           <select
-            id="horizontal-filter-property-type"
+            id="horizontal-filter-unit-type"
             value={filters.propertyType}
             onChange={(e) => update('propertyType', e.target.value)}
             className={inputClass + ' w-full'}
