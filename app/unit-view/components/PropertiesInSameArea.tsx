@@ -1,10 +1,10 @@
 'use client';
 
 import React from 'react';
-import type { Listing } from '@/types/listing';
+import type { Listing, ListingView } from '@/types/listing';
 
 interface PropertiesInSameAreaProps {
-  listings: Listing[];
+  listings: (Listing | ListingView)[];
   isLoading: boolean;
   onCardClick: (listingId: string) => void;
 }

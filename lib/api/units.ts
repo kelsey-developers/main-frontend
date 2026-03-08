@@ -1,0 +1,96 @@
+import type { Listing, ListingView } from '@/types/listing';
+
+export interface ListUnitsParams {
+  featured?: boolean;
+  city?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listUnits(params?: ListUnitsParams): Promise<ListingView[]> {
+  const searchParams = new URLSearchParams();
+  if (params?.featured) searchParams.set('featured', 'true');
+  if (params?.city) searchParams.set('city', params.city);
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.offset) searchParams.set('offset', String(params.offset));
+
+  const qs = searchParams.toString();
+  const res = await fetch(`/api/units${qs ? `?${qs}` : ''}`);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch units');
+  }
+
+  const data = await res.json();
+  return data.map((u: Record<string, unknown>) => toListingView(u));
+}
+
+export async function getUnitById(id: string): Promise<Listing | null> {
+  const res = await fetch(`/api/units/${id}`);
+
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch unit');
+  }
+
+  const data = await res.json();
+  return toListing(data);
+}
+
+function toListingView(u: Record<string, unknown>): ListingView {
+  const price = Number(u.price ?? 0);
+  return {
+    id: String(u.id),
+    title: String(u.title ?? ''),
+    description: u.description ? String(u.description) : undefined,
+    price,
+    price_unit: String(u.price_unit ?? 'night'),
+    currency: String(u.currency ?? '₱'),
+    location: String(u.location ?? ''),
+    city: u.city ? String(u.city) : undefined,
+    bedrooms: Number(u.bedrooms ?? 0),
+    bathrooms: Number(u.bathrooms ?? 0),
+    square_feet: u.square_feet != null ? Number(u.square_feet) : undefined,
+    property_type: String(u.property_type ?? ''),
+    main_image_url: u.main_image_url ? String(u.main_image_url) : undefined,
+    amenities: Array.isArray(u.amenities) ? u.amenities.map(String) : [],
+    is_available: Boolean(u.is_available),
+    is_featured: Boolean(u.is_featured),
+    created_at: String(u.created_at ?? ''),
+    updated_at: String(u.updated_at ?? ''),
+    details: String(u.description ?? ''),
+    formatted_price: `${u.currency ?? '₱'}${price.toLocaleString()} / ${u.price_unit ?? 'night'}`,
+  };
+}
+
+function toListing(u: Record<string, unknown>): Listing {
+  const price = Number(u.price ?? 0);
+  return {
+    id: String(u.id),
+    title: String(u.title ?? ''),
+    description: u.description ? String(u.description) : undefined,
+    price,
+    price_unit: String(u.price_unit ?? 'night'),
+    currency: String(u.currency ?? '₱'),
+    location: String(u.location ?? ''),
+    city: u.city ? String(u.city) : undefined,
+    country: u.country ? String(u.country) : undefined,
+    bedrooms: Number(u.bedrooms ?? 0),
+    bathrooms: Number(u.bathrooms ?? 0),
+    square_feet: u.square_feet != null ? Number(u.square_feet) : undefined,
+    property_type: String(u.property_type ?? ''),
+    main_image_url: u.main_image_url ? String(u.main_image_url) : undefined,
+    image_urls: Array.isArray(u.image_urls) ? u.image_urls.map(String) : [],
+    amenities: Array.isArray(u.amenities) ? u.amenities.map(String) : [],
+    is_available: Boolean(u.is_available),
+    is_featured: Boolean(u.is_featured),
+    latitude: u.latitude != null ? Number(u.latitude) : undefined,
+    longitude: u.longitude != null ? Number(u.longitude) : undefined,
+    check_in_time: u.check_in_time ? String(u.check_in_time) : undefined,
+    check_out_time: u.check_out_time ? String(u.check_out_time) : undefined,
+    created_at: String(u.created_at ?? ''),
+    updated_at: String(u.updated_at ?? ''),
+  };
+}

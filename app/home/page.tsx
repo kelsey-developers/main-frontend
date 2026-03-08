@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Hero from '@/app/home/components/Hero';
 import ResultsSection from '@/app/home/components/ResultsSection';
 import type { ListingView } from '@/types/listing';
-import { getFeaturedListings, getAvailableLocations } from '@/lib/mockData';
+import { listUnits } from '@/lib/api/units';
 
 export default function Home() {
   const router = useRouter();
@@ -19,27 +19,22 @@ export default function Home() {
   const [isPriceDropdownOpen, setIsPriceDropdownOpen] = useState(false);
 
   useEffect(() => {
-    // Fetch mock listings
     const fetchListings = async () => {
       try {
         setError(null);
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        const listings = getFeaturedListings();
-        setApartments(listings);
-        
-        const locations = getAvailableLocations();
-        setAvailableLocations(locations);
+        const [featured, allUnits] = await Promise.all([
+          listUnits({ featured: true, limit: 3 }),
+          listUnits({ limit: 100 }),
+        ]);
+        setApartments(featured);
+        const cities = [...new Set(allUnits.map((u) => u.city).filter(Boolean))] as string[];
+        setAvailableLocations(cities.sort());
       } catch (err) {
         console.error('Error fetching listings:', err);
         setError('Failed to load listings. Please try again later.');
         setApartments([]);
       } finally {
-        // Wait for slower hero animations to complete before showing listings
-        setTimeout(() => {
-          setIsLoading(false);
-        }, 1000);
+        setTimeout(() => setIsLoading(false), 1000);
       }
     };
 
@@ -63,8 +58,7 @@ export default function Home() {
   }, []);
 
   const handleListingClick = (listingId: string) => {
-    router.push(`/unit/${listingId}`);
-    // Smooth scroll to top
+    router.push(`/unit-view?id=${listingId}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
