@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type TouchEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
 import StatusBadge from './StatusBadge';
 
@@ -81,20 +82,10 @@ interface AuditItem {
 
 function useModalNavbarHide() {
   useEffect(() => {
-    const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
-    document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.body.style.overflow = '';
-      const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
-      if (nextModalCount === 0) {
-        delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
-      } else {
-        document.body.dataset.modalCount = String(nextModalCount);
-      }
     };
   }, []);
 }
@@ -235,11 +226,12 @@ const CloseBtn = ({ onClose }: { onClose: () => void }) => (
   </button>
 );
 
-const MetaCards = ({ item, isMobile }: { item: AuditItem; isMobile: boolean }) => {
+const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMobile: boolean; itemId: string; onClose: () => void }) => {
+  const router = useRouter();
+  
   const handleSupplierClick = () => {
-    // TODO(backend): Fetch supplier information and navigate to order creation
-    console.log('Fetching supplier info for:', item.supplier);
-    alert(`Fetching supplier information for ${item.supplier}...\n\nThis will open the purchase order creation form with supplier details pre-populated.`);
+    onClose();
+    router.push(`/sales-report/inventory/purchase-orders/create?itemId=${encodeURIComponent(itemId)}`);
   };
 
   const cards = [
@@ -711,10 +703,6 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
       if (event.key === 'Escape') onClose();
     };
 
-    const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
-    document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
-
     onResize();
     document.body.style.overflow = 'hidden';
     window.addEventListener('resize', onResize);
@@ -724,14 +712,6 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', onEscape);
       document.body.style.overflow = '';
-
-      const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
-      if (nextModalCount === 0) {
-        delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
-      } else {
-        document.body.dataset.modalCount = String(nextModalCount);
-      }
     };
   }, [item, onClose]);
 
@@ -874,7 +854,7 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
         <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 16px 32px' : '24px 28px 28px' }}>
           <SectionLabel>Overview</SectionLabel>
-          <MetaCards item={viewItem} isMobile={isMobile} />
+          <MetaCards item={viewItem} isMobile={isMobile} itemId={item!.id} onClose={onClose} />
 
           <Divider />
 

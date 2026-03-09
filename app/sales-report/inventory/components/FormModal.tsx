@@ -24,24 +24,12 @@ export default function FormModal({
       if (event.key === 'Escape') onClose();
     };
 
-    const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
-    document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
-
     window.addEventListener('keydown', fn);
     document.body.style.overflow = 'hidden';
 
     return () => {
       window.removeEventListener('keydown', fn);
       document.body.style.overflow = '';
-
-      const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
-      if (nextModalCount === 0) {
-        delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
-      } else {
-        document.body.dataset.modalCount = String(nextModalCount);
-      }
     };
   }, [onClose]);
 

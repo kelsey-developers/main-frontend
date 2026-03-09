@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -26,9 +26,15 @@ const tooltipStyle = {
 };
 
 const AdminCharts: React.FC<AdminChartsProps> = ({ userGrowth, bookingGrowth }) => {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-      <div className="bg-white rounded-xl shadow-lg p-6">
+      <div className="min-w-0 bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             Daily User Growth
@@ -38,24 +44,28 @@ const AdminCharts: React.FC<AdminChartsProps> = ({ userGrowth, bookingGrowth }) 
             <span style={{ fontFamily: 'Poppins' }}>Users</span>
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={userGrowth}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="name" stroke="#666" fontSize={12} />
-            <YAxis stroke="#666" fontSize={12} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Line
-              type="monotone"
-              dataKey="users"
-              stroke="#10B981"
-              strokeWidth={2}
-              dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        {isMounted ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={userGrowth}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" stroke="#666" fontSize={12} />
+              <YAxis stroke="#666" fontSize={12} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Line
+                type="monotone"
+                dataKey="users"
+                stroke="#10B981"
+                strokeWidth={2}
+                dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[300px] w-full" />
+        )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-lg p-6">
+      <div className="min-w-0 bg-white rounded-xl shadow-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             Daily Bookings
@@ -65,21 +75,25 @@ const AdminCharts: React.FC<AdminChartsProps> = ({ userGrowth, bookingGrowth }) 
             <span style={{ fontFamily: 'Poppins' }}>Bookings</span>
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={bookingGrowth}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="name" stroke="#666" fontSize={12} />
-            <YAxis stroke="#666" fontSize={12} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Line
-              type="monotone"
-              dataKey="bookings"
-              stroke="#FACC15"
-              strokeWidth={2}
-              dot={{ fill: '#FACC15', strokeWidth: 2, r: 4 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        {isMounted ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={bookingGrowth}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="name" stroke="#666" fontSize={12} />
+              <YAxis stroke="#666" fontSize={12} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Line
+                type="monotone"
+                dataKey="bookings"
+                stroke="#FACC15"
+                strokeWidth={2}
+                dot={{ fill: '#FACC15', strokeWidth: 2, r: 4 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[300px] w-full" />
+        )}
       </div>
     </div>
   );

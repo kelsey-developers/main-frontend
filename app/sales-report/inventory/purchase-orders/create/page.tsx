@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
 import { mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
@@ -15,7 +16,7 @@ interface POLineItem {
   unit: string;
 }
 
-export default function CreatePurchaseOrderPage() {
+function CreatePurchaseOrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prePopItemId = searchParams.get('itemId');
@@ -443,5 +444,13 @@ export default function CreatePurchaseOrderPage() {
         </button>
       </div>
     </>
+  );
+}
+
+export default function CreatePurchaseOrderPage() {
+  return (
+    <Suspense fallback={null}>
+      <CreatePurchaseOrderPageContent />
+    </Suspense>
   );
 }

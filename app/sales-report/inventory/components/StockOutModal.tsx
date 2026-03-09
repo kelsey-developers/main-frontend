@@ -709,7 +709,7 @@ export default function StockOutModal({ mode, onClose }: StockOutModalProps) {
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(11,88,88,0.38)',
+        background: 'rgba(0, 0, 0, 0.3)',
         backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',

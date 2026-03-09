@@ -3,13 +3,14 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
 import { mockReplenishmentItems, mockWarehouseDirectoryData } from '../lib/mockData';
 
-export default function InventoryItemsPage() {
+function InventoryItemsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const warehouseIdFromQuery = searchParams.get('warehouseId');
@@ -209,5 +210,13 @@ export default function InventoryItemsPage() {
         }} 
       />
     </>
+  );
+}
+
+export default function InventoryItemsPage() {
+  return (
+    <Suspense fallback={null}>
+      <InventoryItemsPageContent />
+    </Suspense>
   );
 }

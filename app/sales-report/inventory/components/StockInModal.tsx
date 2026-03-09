@@ -168,22 +168,12 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
-  // Hide navbar
+  // Trap scroll
   useEffect(() => {
-    const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
-    document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
     document.body.style.overflow = 'hidden';
 
     return () => {
       document.body.style.overflow = '';
-      const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
-      if (nextModalCount === 0) {
-        delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
-      } else {
-        document.body.dataset.modalCount = String(nextModalCount);
-      }
     };
   }, []);
 
@@ -228,7 +218,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(11,88,88,0.45)',
+        background: 'rgba(0, 0, 0, 0.3)',
         backdropFilter: 'blur(4px)',
         display: 'flex',
         alignItems: 'center',

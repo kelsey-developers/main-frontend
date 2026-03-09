@@ -2,6 +2,7 @@
 
 import React, { Fragment, useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
@@ -596,7 +597,7 @@ const PurchaseOrdersSkeleton = () => (
   </div>
 );
 
-export default function PurchaseOrdersPage() {
+function PurchaseOrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const poIdFromQuery = searchParams.get('poId');
@@ -1047,5 +1048,13 @@ export default function PurchaseOrdersPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function PurchaseOrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <PurchaseOrdersPageContent />
+    </Suspense>
   );
 }

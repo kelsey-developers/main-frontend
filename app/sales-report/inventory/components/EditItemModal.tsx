@@ -182,7 +182,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
 
     const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
     document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
     document.body.style.overflow = 'hidden';
 
     window.addEventListener('keydown', onEscape);
