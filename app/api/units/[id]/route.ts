@@ -7,9 +7,9 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
+  const { id } = await params;
 
+  try {
     // Local fallback for environments without a configured backend API.
     if (!API_URL) {
       const unit = getListingById(id);
@@ -35,7 +35,6 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error) {
     console.error('Unit API proxy error, using mock data:', error);
-    const { id } = await params;
     const unit = getListingById(id);
     if (!unit) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
