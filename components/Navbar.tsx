@@ -105,6 +105,14 @@ export default function Navbar() {
     return null;
   }
 
+  const hideNavbar = HIDE_NAVBAR_ROUTES.some((route) =>
+    pathname?.startsWith(route)
+  );
+
+  if (hideNavbar) {
+    return null;
+  }
+
   /* Nav structure matches oop-dev; links use font-sans font-medium */
   /* If you change h-14/h-16 here, update LAYOUT_NAVBAR_OFFSET in lib/constants.ts so page content stays visually clear of the nav */
   if (!mounted) {
