@@ -52,7 +52,7 @@ function getShiftStatus() {
   const now = new Date();
   const earliest = new Date(now); earliest.setHours(9, 0, 0, 0);
   const latest   = new Date(now); latest.setHours(12, 0, 0, 0);
-  if (now < earliest) return { label: 'Not Within Shift Hours',   color: 'text-blue-700',  bg: 'bg-blue-50',  border: 'border-blue-300'  };
+  if (now < earliest) return { label: 'Not Within Shift Hours',   color: 'text-yellow-700',  bg: 'bg-yellow-50',  border: 'border-yellow-300'  };
   if (now <= latest)  return { label: 'Within Shift Hours',       color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-300' };
   return                     { label: 'Shift Start Hours Passed', color: 'text-red-700',   bg: 'bg-red-50',   border: 'border-red-200'   };
 }
