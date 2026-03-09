@@ -67,7 +67,7 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
                   tick={{ fontFamily: 'Poppins' }}
                 />
                 <Tooltip
-                  formatter={(value: number | undefined) => (value != null ? formatTooltip(value) : ['', 'Sales'])}
+                  formatter={(value: any) => (value != null ? formatTooltip(value) : ['', 'Sales'])}
                   contentStyle={{
                     backgroundColor: 'white',
                     border: '1px solid #e5e7eb',
