@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mockListings } from '@/lib/mockData';
+import { getListingById } from '@/lib/mockData';
 
 const API_URL = process.env.API_URL;
 
@@ -10,9 +10,9 @@ export async function GET(
   try {
     const { id } = await params;
 
-    // If no API_URL is configured, use mock data
+    // Local fallback for environments without a configured backend API.
     if (!API_URL) {
-      const unit = mockListings.find(u => u.id === id);
+      const unit = getListingById(id);
       if (!unit) {
         return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
       }
@@ -24,7 +24,7 @@ export async function GET(
     if (!res.ok) {
       // Fall back to mock data on error
       console.warn('Backend API failed, using mock data');
-      const unit = mockListings.find(u => u.id === id);
+      const unit = getListingById(id);
       if (!unit) {
         return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
       }
@@ -35,9 +35,8 @@ export async function GET(
     return NextResponse.json(data);
   } catch (error) {
     console.error('Unit API proxy error, using mock data:', error);
-    // Fall back to mock data
     const { id } = await params;
-    const unit = mockListings.find(u => u.id === id);
+    const unit = getListingById(id);
     if (!unit) {
       return NextResponse.json({ error: 'Unit not found' }, { status: 404 });
     }

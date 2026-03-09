@@ -23,7 +23,6 @@ function UnitViewContent() {
   const [error, setError] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
-  const [showBookingForm, setShowBookingForm] = useState(false);
 
   useEffect(() => {
     const fetchListingData = async () => {
@@ -64,13 +63,8 @@ function UnitViewContent() {
   }, [id]);
 
   const handleReserve = () => {
-    // Simple booking form state toggle
-    setShowBookingForm(true);
-    alert('Booking functionality would be implemented here. In the full version, this would open a booking form.');
-  };
-
-  const handleCancelBooking = () => {
-    setShowBookingForm(false);
+    if (!id) return;
+    router.push(`/booking-temporary?listingId=${encodeURIComponent(id)}`);
   };
 
   const handleSameAreaListingClick = (listingId: string) => {
