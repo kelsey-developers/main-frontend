@@ -1,4 +1,27 @@
 import type { Listing, ListingView } from '@/types/listing';
+import { apiClient } from './client';
+
+export async function listUnitsForManage(): Promise<Listing[]> {
+  const data = await apiClient.get<unknown[]>('/api/units/manage', { credentials: 'include' });
+  return Array.isArray(data) ? data.map((u) => toManageListing(u as Record<string, unknown>)) : [];
+}
+
+export async function updateUnit(
+  id: string,
+  updates: { status?: 'available' | 'unavailable' | 'maintenance'; is_featured?: boolean }
+): Promise<{ id: string; status: string; is_available: boolean; is_featured: boolean; updated_at: string }> {
+  return apiClient.patch(`/api/units/${id}`, updates, { credentials: 'include' });
+}
+
+function toManageListing(u: Record<string, unknown>): Listing {
+  const base = toListing(u);
+  const owner = u.owner as { id: string; fullname: string; email: string } | null | undefined;
+  return {
+    ...base,
+    owner: owner ? { id: String(owner.id), fullname: owner.fullname || 'N/A', email: owner.email || '' } : null,
+    bookings_count: typeof u.bookings_count === 'number' ? u.bookings_count : 0,
+  };
+}
 
 export interface ListUnitsParams {
   featured?: boolean;
@@ -15,28 +38,18 @@ export async function listUnits(params?: ListUnitsParams): Promise<ListingView[]
   if (params?.offset) searchParams.set('offset', String(params.offset));
 
   const qs = searchParams.toString();
-  const res = await fetch(`/api/units${qs ? `?${qs}` : ''}`);
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to fetch units');
-  }
-
-  const data = await res.json();
-  return data.map((u: Record<string, unknown>) => toListingView(u));
+  const data = await apiClient.get<unknown[]>(`/api/units${qs ? `?${qs}` : ''}`);
+  return (Array.isArray(data) ? data : []).map((u) => toListingView(u as Record<string, unknown>));
 }
 
 export async function getUnitById(id: string): Promise<Listing | null> {
-  const res = await fetch(`/api/units/${id}`);
-
-  if (!res.ok) {
-    if (res.status === 404) return null;
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to fetch unit');
+  try {
+    const data = await apiClient.get<Record<string, unknown>>(`/api/units/${id}`);
+    return toListing(data);
+  } catch (err) {
+    if (err instanceof Error && (err as Error & { status?: number }).status === 404) return null;
+    throw err;
   }
-
-  const data = await res.json();
-  return toListing(data);
 }
 
 function toListingView(u: Record<string, unknown>): ListingView {

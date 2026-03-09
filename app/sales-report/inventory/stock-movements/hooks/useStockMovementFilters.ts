@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react';
 import type { StockMovementType } from '../../types';
 import type { EnhancedMovement } from '../../helpers/types';
 
+const parseRecordedDate = (movement: EnhancedMovement) => {
+  const normalized = `${movement.recordedDate || movement.createdAt.split(' ')[0]} ${movement.recordedTime || '00:00'}`;
+  return new Date(normalized.replace(' ', 'T'));
+};
+
 export function useStockMovementFilters(movements: EnhancedMovement[]) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<StockMovementType | 'all'>('all');
@@ -24,7 +29,7 @@ export function useStockMovementFilters(movements: EnhancedMovement[]) {
 
       let matchesDate = true;
       if (dateFrom || dateTo) {
-        const movementDate = new Date(movement.createdAt);
+        const movementDate = parseRecordedDate(movement);
         if (dateFrom) {
           const fromDate = new Date(dateFrom);
           matchesDate = matchesDate && movementDate >= fromDate;

@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
+import SingleDatePicker from '@/components/SingleDatePicker';
 import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
 import { mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
 
@@ -29,6 +31,26 @@ function CreatePurchaseOrderPageContent() {
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAddItemDropdown, setShowAddItemDropdown] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const addItemButtonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const supplierButtonRef = useRef<HTMLButtonElement>(null);
+  const [supplierDropdownPosition, setSupplierDropdownPosition] = useState({ top: 0, left: 0 });
+
+  // Client-side mount flag
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (showAddItemDropdown) {
+      const handleClick = () => setShowAddItemDropdown(false);
+      document.addEventListener('click', handleClick);
+      return () => document.removeEventListener('click', handleClick);
+    }
+  }, [showAddItemDropdown]);
 
   // Pre-populate if itemId is in query params
   useEffect(() => {
@@ -55,10 +77,13 @@ function CreatePurchaseOrderPageContent() {
     }
   }, [prePopItemId]);
 
-  const supplierOptions: InventoryDropdownOption<string>[] = mockSuppliers.map((s) => ({
-    value: s.id,
-    label: s.name,
-  }));
+  const supplierOptions: InventoryDropdownOption<string>[] = [
+    { value: '', label: 'Select supplier', disabled: true },
+    ...mockSuppliers.map((s) => ({
+      value: s.id,
+      label: s.name,
+    })),
+  ];
 
   const availableProducts = mockReplenishmentItems.filter(
     (item) => !lineItems.some((line) => line.productId === item.id)
@@ -193,16 +218,79 @@ function CreatePurchaseOrderPageContent() {
             <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2" style={{ fontFamily: 'Poppins' }}>
               Supplier {errors.supplierId && <span className="text-red-600">*</span>}
             </label>
-            <InventoryDropdown
-              value={form.supplierId}
-              onChange={(value) => {
-                setForm({ ...form, supplierId: value });
-                setErrors({ ...errors, supplierId: '' });
+            <button
+              ref={supplierButtonRef}
+              type="button"
+              onClick={() => {
+                if (!showSupplierDropdown && supplierButtonRef.current) {
+                  const rect = supplierButtonRef.current.getBoundingClientRect();
+                  setSupplierDropdownPosition({
+                    top: rect.bottom + window.scrollY,
+                    left: rect.left + window.scrollX,
+                  });
+                }
+                setShowSupplierDropdown(!showSupplierDropdown);
               }}
-              options={supplierOptions}
-              placeholder="Select supplier"
-              fullWidth
-            />
+              className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] bg-white text-[13px] outline-none transition-all text-left flex items-center justify-between"
+              style={{
+                borderColor: showSupplierDropdown ? '#0B5858' : '#e5e7eb',
+                boxShadow: showSupplierDropdown ? '0 0 0 2px rgba(0, 0, 0, 0.06), 0 0 0 3px #cce8e8' : 'none',
+                fontFamily: 'Poppins',
+              }}
+            >
+              <span style={{ color: form.supplierId ? '#111827' : '#9ca3af', fontWeight: form.supplierId ? 500 : 400 }}>
+                {form.supplierId ? supplierOptions.find(o => o.value === form.supplierId)?.label : 'Select supplier'}
+              </span>
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none" style={{ transform: showSupplierDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }} aria-hidden="true">
+                <path d="M1.5 3.5l4 4 4-4" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            {mounted && showSupplierDropdown && createPortal(
+              <div
+                className="fixed bg-white border-[1.5px] border-gray-200 rounded-xl shadow-xl z-[10000] max-h-[260px] overflow-y-auto"
+                style={{
+                  top: supplierDropdownPosition.top + 8,
+                  left: supplierDropdownPosition.left,
+                  width: supplierButtonRef.current?.offsetWidth || 'auto',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {supplierOptions.map((option, index) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={option.disabled}
+                    onClick={() => {
+                      if (option.disabled) return;
+                      setForm({ ...form, supplierId: option.value });
+                      setErrors({ ...errors, supplierId: '' });
+                      setShowSupplierDropdown(false);
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 text-[13px] transition-colors"
+                    style={{
+                      borderBottom: index < supplierOptions.length - 1 ? '1px solid #f3f4f6' : 'none',
+                      backgroundColor: option.value === form.supplierId ? '#e8f4f4' : '#ffffff',
+                      color: option.value === form.supplierId ? '#0b5858' : '#374151',
+                      fontWeight: option.value === form.supplierId ? 600 : 400,
+                      opacity: option.disabled ? 0.5 : 1,
+                      cursor: option.disabled ? 'not-allowed' : 'pointer',
+                      fontFamily: 'Poppins',
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {option.value === form.supplierId && (
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                      <span>{option.label}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            , document.body)}
+
             {errors.supplierId && (
               <p className="text-xs text-red-600 mt-1" style={{ fontFamily: 'Poppins' }}>
                 {errors.supplierId}
@@ -215,15 +303,14 @@ function CreatePurchaseOrderPageContent() {
             <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2" style={{ fontFamily: 'Poppins' }}>
               Order Date {errors.orderDate && <span className="text-red-600">*</span>}
             </label>
-            <input
-              type="date"
+            <SingleDatePicker
               value={form.orderDate}
-              onChange={(e) => {
-                setForm({ ...form, orderDate: e.target.value });
+              onChange={(value) => {
+                setForm({ ...form, orderDate: value });
                 setErrors({ ...errors, orderDate: '' });
               }}
-              className="w-full px-3.5 py-2.5 border-[1.5px] border-gray-300 rounded-lg text-[13px]"
-              style={{ fontFamily: 'Poppins' }}
+              placeholder="Order date"
+              className="w-full"
             />
             {errors.orderDate && (
               <p className="text-xs text-red-600 mt-1" style={{ fontFamily: 'Poppins' }}>
@@ -237,15 +324,14 @@ function CreatePurchaseOrderPageContent() {
             <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2" style={{ fontFamily: 'Poppins' }}>
               Expected Delivery {errors.expectedDelivery && <span className="text-red-600">*</span>}
             </label>
-            <input
-              type="date"
+            <SingleDatePicker
               value={form.expectedDelivery}
-              onChange={(e) => {
-                setForm({ ...form, expectedDelivery: e.target.value });
+              onChange={(value) => {
+                setForm({ ...form, expectedDelivery: value });
                 setErrors({ ...errors, expectedDelivery: '' });
               }}
-              className="w-full px-3.5 py-2.5 border-[1.5px] border-gray-300 rounded-lg text-[13px]"
-              style={{ fontFamily: 'Poppins' }}
+              placeholder="Expected delivery"
+              className="w-full"
             />
             {errors.expectedDelivery && (
               <p className="text-xs text-red-600 mt-1" style={{ fontFamily: 'Poppins' }}>
@@ -262,11 +348,20 @@ function CreatePurchaseOrderPageContent() {
           <h2 className="text-lg font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             Order Items {errors.lineItems && <span className="text-red-600 text-sm">*</span>}
           </h2>
-          
-          <div className="relative">
+          <div className="relative z-[100]">
             <button
+              ref={addItemButtonRef}
               type="button"
-              onClick={() => setShowAddItemDropdown(!showAddItemDropdown)}
+              onClick={() => {
+                if (!showAddItemDropdown && addItemButtonRef.current) {
+                  const rect = addItemButtonRef.current.getBoundingClientRect();
+                  setDropdownPosition({
+                    top: rect.bottom + window.scrollY,
+                    left: rect.right - 320 + window.scrollX, // 320 is width of dropdown
+                  });
+                }
+                setShowAddItemDropdown(!showAddItemDropdown);
+              }}
               disabled={availableProducts.length === 0}
               className="px-4 py-2 bg-white border-[1.5px] border-[#0B5858] text-[#0B5858] rounded-lg text-[13px] font-semibold hover:bg-[#e8f4f4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ fontFamily: 'Poppins' }}
@@ -274,15 +369,15 @@ function CreatePurchaseOrderPageContent() {
               + Add Item
             </button>
 
-            {showAddItemDropdown && (
-              <>
-                <div
-                  className="fixed inset-0 z-10"
-                  onClick={() => setShowAddItemDropdown(false)}
-                />
-                <div
-                  className="absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-20 max-h-64 overflow-y-auto"
-                >
+            {mounted && showAddItemDropdown && createPortal(
+              <div
+                className="fixed bg-white border-[1.5px] border-gray-200 rounded-lg shadow-lg z-[10000] max-h-64 overflow-y-auto w-80"
+                style={{
+                  top: dropdownPosition.top + 8,
+                  left: dropdownPosition.left,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
                   {availableProducts.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>
                       All items added
@@ -312,8 +407,7 @@ function CreatePurchaseOrderPageContent() {
                     ))
                   )}
                 </div>
-              </>
-            )}
+            , document.body)}
           </div>
         </div>
 
@@ -379,7 +473,7 @@ function CreatePurchaseOrderPageContent() {
                         value={line.unitPrice}
                         onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', Number(e.target.value))}
                         min="0"
-                        step="0.01"
+                        step="1"
                         className="w-32 px-[12px] py-[10px] border-[1.5px] border-gray-200 rounded-[10px] text-[14px] text-gray-700 text-right outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
                         style={{ fontFamily: 'Poppins' }}
                       />

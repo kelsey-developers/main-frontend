@@ -69,7 +69,7 @@ export default function BookingTemporaryPage() {
 
   const handleCancel = () => {
     if (listingId) {
-      router.push(`/unit-view?id=${encodeURIComponent(listingId)}`);
+      router.push(`/unit/${listingId}`);
       return;
     }
 

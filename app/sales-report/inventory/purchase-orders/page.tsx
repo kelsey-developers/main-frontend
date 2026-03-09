@@ -92,7 +92,7 @@ function EditPOModal({
   );
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[1001] p-4">
+    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl">
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center">
           <div>
@@ -222,10 +222,9 @@ function DetailDrawer({
   return (
     <div
       onClick={handleClose}
-      className="fixed inset-0 z-[1000] flex justify-end overflow-hidden"
+      className="fixed inset-0 z-[10000] flex justify-end overflow-hidden"
       style={{
-        background: "rgba(11,88,88,0.35)",
-        backdropFilter: "blur(3px)",
+        background: "rgba(17, 24, 39, 0.38)",
         opacity: visible ? 1 : 0,
         transition: "opacity 0.25s ease",
       }}
@@ -524,7 +523,7 @@ function DetailDrawer({
             event.stopPropagation();
             setEvidencePreview(null);
           }}
-          className="fixed inset-0 z-[1020] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[10000] bg-[rgba(17,24,39,0.55)] flex items-center justify-center p-4"
         >
           <div
             onClick={(event) => event.stopPropagation()}

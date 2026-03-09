@@ -1,17 +1,32 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { InventoryUnit, ReplenishmentItem } from '../types';
 import SearchUnits from './SearchUnits';
 import InventoryTable from './InventoryTable';
 import { mockUnits, mockUnitItems } from '../lib/mockData';
+import { useMockAuth } from '@/contexts/MockAuthContext';
 
 interface UnitPageProps {
   unit: InventoryUnit;
 }
 
 const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
+  const router = useRouter();
+  const { user, userProfile, userRole } = useMockAuth();
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  // Listen for inventory movement updates to refresh unit items
+  useEffect(() => {
+    const handleInventoryUpdate = () => setRefreshTick((tick) => tick + 1);
+    window.addEventListener('inventory:movement-updated', handleInventoryUpdate);
+    return () => {
+      window.removeEventListener('inventory:movement-updated', handleInventoryUpdate);
+    };
+  }, []);
+
   // Filter items for this unit and transform to ReplenishmentItem format
   const unitInventoryItems = useMemo<ReplenishmentItem[]>(() => {
     return mockUnitItems
@@ -24,8 +39,8 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
         category: item.category,
         unit: item.unit,
         currentStock: item.currentStock,
-        minStock: item.minStock,
-        shortfall: Math.max(0, item.minStock - item.currentStock),
+        minStock: 0,
+        shortfall: 0,
         unitCost: 150, // Default cost for unit items
         totalValue: item.currentStock * 150,
         warehouseId: 'unit-storage',
@@ -37,7 +52,21 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
         currentsupplierId: 's1',
         supplierName: 'Clean & Co',
       }));
-  }, [unit.id, unit.name]);
+  }, [unit.id, unit.name, refreshTick]);
+
+  const handleUnitItemRestockClick = (item: ReplenishmentItem) => {
+    const confirmedBy = userProfile?.fullname || userRole?.fullname || 'Admin User';
+    const idNumber = user?.id || 'mock-1';
+    const params = new URLSearchParams({
+      mode: 'unit',
+      unitId: unit.id,
+      confirmedBy,
+      idNumber,
+      itemId: item.id,
+      returnTo: `/sales-report/inventory/units/${unit.id}`,
+    });
+    router.push(`/sales-report/inventory/StockOut?${params.toString()}`);
+  };
 
   return (
     <div className="mx-auto">
@@ -145,14 +174,19 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
                   Unit-Specific Stock Tracking
                 </p>
                 <p className="text-xs text-blue-700 mt-1" style={{ fontFamily: 'Poppins' }}>
-                  These stock numbers show only items currently in <strong>{unit.name}</strong>. Shortfalls are calculated based on this unit's minimum requirements. This differs from warehouse inventory which tracks storage facility levels.
+                  These stock numbers show only items currently in <strong>{unit.name}</strong>. Unit inventory does not enforce minimum thresholds; threshold alerts are managed at the warehouse level.
                 </p>
               </div>
             </div>
           </div>
           
           <div className="inventory-reveal" style={{ animationDelay: '240ms' }}>
-            <InventoryTable items={unitInventoryItems} hideEditButton={true} isUnitView={true} />
+            <InventoryTable
+              items={unitInventoryItems}
+              hideEditButton={true}
+              isUnitView={true}
+              onItemClick={handleUnitItemRestockClick}
+            />
           </div>
         </div>
         

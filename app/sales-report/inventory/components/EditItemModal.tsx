@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import { 
@@ -142,6 +143,7 @@ interface EditItemModalProps {
 }
 
 export default function EditItemModal({ item, onClose, onSave }: EditItemModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState({
     sku: '',
     name: '',
@@ -157,6 +159,8 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
 
   // Initialize form with item data when item changes
   useEffect(() => {
+    setMounted(true);
+
     if (item) {
       setForm({
         sku: item.sku || '',
@@ -248,9 +252,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
     onClose();
   };
 
-  if (!item) return null;
+  if (!item || !mounted) return null;
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -258,9 +262,8 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.4)',
-          backdropFilter: 'blur(3px)',
-          zIndex: 999,
+          background: 'rgba(17, 24, 39, 0.38)',
+          zIndex: 10000,
           animation: 'fadeIn 0.2s ease',
         }}
       />
@@ -279,7 +282,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
           maxHeight: '85vh',
           overflowY: 'auto',
           boxShadow: '0 10px 40px rgba(0,0,0,0.25)',
-          zIndex: 1000,
+          zIndex: 10001,
           animation: 'slideUp 0.25s ease',
         }}
       >
@@ -487,7 +490,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 value={form.unitCost}
                 onChange={(e) => setForm({ ...form, unitCost: parseFloat(e.target.value) || 0 })}
                 min="0"
-                step="0.01"
+                step="1"
                 style={inputStyle}
                 onFocus={(e) => {
                   e.currentTarget.style.borderColor = C.teal;
@@ -623,6 +626,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
           }
         }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 }

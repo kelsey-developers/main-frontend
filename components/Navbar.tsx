@@ -24,10 +24,29 @@ export default function Navbar() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profileImageError, setProfileImageError] = useState(false);
+  const [hideNavbarByDataset, setHideNavbarByDataset] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const syncHideNavbar = () => {
+      setHideNavbarByDataset(document.body.dataset.hideNavbar === 'true');
+    };
+
+    syncHideNavbar();
+
+    const observer = new MutationObserver(syncHideNavbar);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['data-hide-navbar'],
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   const getInitials = () => {
@@ -78,6 +97,13 @@ export default function Navbar() {
     'text-black font-sans font-medium uppercase text-sm hover:text-teal-900 transition-colors px-4 py-2 mx-1';
   const mobileNavLinkClass =
     'block px-3 py-2 text-black font-sans font-medium uppercase text-sm hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors text-left cursor-pointer';
+  const hideNavbarByRoute = HIDE_NAVBAR_ROUTES.some((route) =>
+    pathname?.startsWith(route)
+  );
+
+  if (hideNavbarByRoute || hideNavbarByDataset) {
+    return null;
+  }
 
   const hideNavbar = HIDE_NAVBAR_ROUTES.some((route) =>
     pathname?.startsWith(route)

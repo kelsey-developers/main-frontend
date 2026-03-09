@@ -179,7 +179,7 @@ const AllListingsContent: React.FC = () => {
   }, []);
 
   const handleListingClick = (listingId: string) => {
-    router.push(`/unit-view?id=${listingId}`);
+    router.push(`/unit/${listingId}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

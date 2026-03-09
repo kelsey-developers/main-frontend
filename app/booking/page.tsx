@@ -1,160 +1,34 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { getMyBookings, type MyBookingItem } from '@/lib/api/bookings';
 
-type BookingStatus = 'completed' | 'cancelled' | 'ongoing' | 'pending' | 'pending-payment' | 'declined';
-
-interface Booking {
-  id: string;
-  check_in_date: string;
-  check_out_date: string;
-  status: BookingStatus;
-  total_amount: number;
-  transaction_number: string;
-  listing: {
-    title: string;
-    location: string;
-    main_image_url: string;
-  };
-  client: {
-    first_name: string;
-    last_name: string;
-  };
-  payment?: {
-    reference_number: string;
-    status: string;
-  };
-}
-
-// Mock booking data
-const generateMockBookings = (): Booking[] => {
-  return [
-    {
-      id: '1',
-      check_in_date: '2026-02-15T14:00:00',
-      check_out_date: '2026-02-18T11:00:00',
-      status: 'ongoing',
-      total_amount: 12500,
-      transaction_number: 'TXN-2026-001',
-      listing: {
-        title: 'Seaside Villa Resort',
-        location: 'Boracay, Philippines',
-        main_image_url: '/heroimage.png'
-      },
-      client: {
-        first_name: 'Maria',
-        last_name: 'Santos'
-      },
-      payment: {
-        reference_number: 'PAY-2026-001',
-        status: 'completed'
-      }
-    },
-    {
-      id: '2',
-      check_in_date: '2026-02-20T14:00:00',
-      check_out_date: '2026-02-25T11:00:00',
-      status: 'pending-payment',
-      total_amount: 18000,
-      transaction_number: 'TXN-2026-002',
-      listing: {
-        title: 'Mountain View Cottage',
-        location: 'Tagaytay, Philippines',
-        main_image_url: '/heroimage.png'
-      },
-      client: {
-        first_name: 'John',
-        last_name: 'Dela Cruz'
-      }
-    },
-    {
-      id: '3',
-      check_in_date: '2026-03-01T14:00:00',
-      check_out_date: '2026-03-05T11:00:00',
-      status: 'pending',
-      total_amount: 15000,
-      transaction_number: 'TXN-2026-003',
-      listing: {
-        title: 'Beach House Paradise',
-        location: 'Palawan, Philippines',
-        main_image_url: '/heroimage.png'
-      },
-      client: {
-        first_name: 'Anna',
-        last_name: 'Reyes'
-      }
-    },
-    {
-      id: '4',
-      check_in_date: '2026-01-10T14:00:00',
-      check_out_date: '2026-01-15T11:00:00',
-      status: 'completed',
-      total_amount: 22000,
-      transaction_number: 'TXN-2026-004',
-      listing: {
-        title: 'City Center Apartment',
-        location: 'Manila, Philippines',
-        main_image_url: '/heroimage.png'
-      },
-      client: {
-        first_name: 'Carlos',
-        last_name: 'Garcia'
-      },
-      payment: {
-        reference_number: 'PAY-2026-004',
-        status: 'completed'
-      }
-    },
-    {
-      id: '5',
-      check_in_date: '2026-01-20T14:00:00',
-      check_out_date: '2026-01-22T11:00:00',
-      status: 'cancelled',
-      total_amount: 8000,
-      transaction_number: 'TXN-2026-005',
-      listing: {
-        title: 'Lakeside Retreat',
-        location: 'Laguna, Philippines',
-        main_image_url: '/heroimage.png'
-      },
-      client: {
-        first_name: 'Sofia',
-        last_name: 'Torres'
-      }
-    },
-    {
-      id: '6',
-      check_in_date: '2026-03-10T14:00:00',
-      check_out_date: '2026-03-12T11:00:00',
-      status: 'declined',
-      total_amount: 9500,
-      transaction_number: 'TXN-2026-006',
-      listing: {
-        title: 'Garden Villa',
-        location: 'Baguio, Philippines',
-        main_image_url: '/heroimage.png'
-      },
-      client: {
-        first_name: 'Miguel',
-        last_name: 'Fernandez'
-      }
-    }
-  ];
-};
+type BookingStatus = 'completed' | 'cancelled' | 'ongoing' | 'pending' | 'pending-payment' | 'declined' | 'booked';
 
 const BookingPage: React.FC = () => {
-  const [bookings] = useState<Booking[]>(generateMockBookings());
-  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<MyBookingItem[]>([]);
+  const [filteredBookings, setFilteredBookings] = useState<MyBookingItem[]>([]);
   const [activeTab, setActiveTab] = useState<BookingStatus | 'all'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState<boolean>(false);
 
-  // Simulate loading
   useEffect(() => {
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 500);
+    let mounted = true;
+    async function fetchBookings() {
+      try {
+        setIsLoading(true);
+        const data = await getMyBookings();
+        if (mounted) setBookings(data);
+      } catch {
+        if (mounted) setBookings([]);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+    fetchBookings();
+    return () => { mounted = false; };
   }, []);
 
   // Track mobile breakpoint
@@ -173,6 +47,7 @@ const BookingPage: React.FC = () => {
       setFilteredBookings(bookings.filter(booking => booking.status === activeTab));
     }
   }, [bookings, activeTab]);
+  const viewRef = (b: MyBookingItem) => b.reference_code || b.id;
 
   const formatDateRange = (checkIn: string, checkOut: string) => {
     const startDate = new Date(checkIn);
@@ -189,9 +64,10 @@ const BookingPage: React.FC = () => {
     return `${formatDate(startDate)} - ${formatDate(endDate)}`;
   };
 
-  const getStatusColor = (status: BookingStatus) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
+      case 'booked':
         return 'text-green-600';
       case 'cancelled':
         return 'text-red-600';
@@ -208,33 +84,36 @@ const BookingPage: React.FC = () => {
     }
   };
 
-  const getStatusText = (status: BookingStatus, booking: Booking) => {
+  const getStatusText = (status: string, booking: MyBookingItem) => {
     if (status === 'pending-payment') {
       if (booking.payment) {
         return 'Payment Under Review';
       }
       return 'Awaiting payment';
     }
-    
     switch (status) {
       case 'ongoing':
         return 'On-going';
+      case 'booked':
+        return 'Booked';
       default:
         return status.charAt(0).toUpperCase() + status.slice(1);
     }
   };
 
-  const handleViewBooking = (bookingId: string) => {
-    // Navigate to booking details - for now just console log
-    console.log('View booking:', bookingId);
-    // In a real app: router.push(`/booking-details/${bookingId}`)
+  const router = useRouter();
+
+  const handleViewBooking = (bookingIdOrRef: string) => {
+    router.push(`/booking-details/${encodeURIComponent(bookingIdOrRef)}`);
   };
 
   const tabs: Array<{ key: BookingStatus | 'all'; label: string }> = [
     { key: 'all', label: 'All' },
     { key: 'pending', label: 'Pending' },
     { key: 'pending-payment', label: 'Awaiting Payment' },
+    { key: 'booked', label: 'Booked' },
     { key: 'ongoing', label: 'On-going' },
+    { key: 'completed', label: 'Completed' },
     { key: 'cancelled', label: 'Cancelled' },
     { key: 'declined', label: 'Declined' }
   ];
@@ -295,7 +174,7 @@ const BookingPage: React.FC = () => {
               <div className="flex justify-center items-center py-12 min-h-[400px]">
                 <div className="text-center">
                   <p className="text-gray-500 text-lg" style={{fontFamily: 'Poppins'}}>
-                    No bookings found for the selected filter.
+                    {bookings.length === 0 ? 'You have no bookings yet.' : 'No bookings found for the selected filter.'}
                   </p>
                 </div>
               </div>
@@ -400,7 +279,7 @@ const BookingPage: React.FC = () => {
 
                           <div className="pl-3">
                             <button
-                              onClick={() => handleViewBooking(booking.id)}
+                              onClick={() => handleViewBooking(viewRef(booking))}
                               className="bg-[#0B5858] text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-[#0a4a4a] transition-colors cursor-pointer"
                               style={{fontFamily: 'Poppins'}}
                             >
@@ -428,7 +307,7 @@ const BookingPage: React.FC = () => {
                         </div>
 
                         <button 
-                          onClick={() => handleViewBooking(booking.id)}
+                          onClick={() => handleViewBooking(viewRef(booking))}
                           className="bg-[#0B5858] text-white px-6 py-2 rounded-lg font-medium hover:bg-[#0a4a4a] transition-colors cursor-pointer w-full sm:w-auto" 
                           style={{fontFamily: 'Poppins'}}
                         >

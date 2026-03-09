@@ -1,14 +1,25 @@
 import type { InventoryDropdownOption } from '../components/InventoryDropdown';
+import { mockWarehouseDirectoryData } from '../lib/mockData';
 
 type WarehouseLike = { id: string; name: string; isActive: boolean };
-type ItemLike = { warehouseId: string };
+type ItemLike = { id: string; warehouseId: string };
 
 export const filterItemsByWarehouse = <T extends ItemLike>(
   items: T[],
   activeWarehouseId: string | null
 ): T[] => {
   if (!activeWarehouseId) return items;
-  return items.filter((item) => item.warehouseId === activeWarehouseId);
+
+  const targetWarehouse = mockWarehouseDirectoryData.find(
+    (warehouse) => warehouse.id === activeWarehouseId
+  );
+  if (!targetWarehouse) return [];
+
+  const productIds = new Set(
+    targetWarehouse.inventoryBalances.map((balance) => balance.productId)
+  );
+
+  return items.filter((item) => productIds.has(item.id));
 };
 
 export const buildWarehouseOptions = (

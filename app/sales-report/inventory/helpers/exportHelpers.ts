@@ -28,7 +28,8 @@ export const exportStockMovementsToCsv = (rows: EnhancedMovement[]) => {
     type: row.type,
     quantity: row.quantity,
     createdBy: row.createdBy ?? '',
-    createdAt: row.createdAt,
+    recordedDate: row.recordedDate,
+    recordedTime: row.recordedTime,
     referenceId: row.referenceId ?? '',
     notes: row.notes ?? '',
   }));
@@ -42,7 +43,8 @@ export const exportStockMovementsToCsv = (rows: EnhancedMovement[]) => {
     type: '',
     quantity: '',
     createdBy: '',
-    createdAt: '',
+    recordedDate: '',
+    recordedTime: '',
     referenceId: '',
     notes: '',
   });
@@ -80,7 +82,7 @@ export const exportStockMovementsToPdf = async (rows: EnhancedMovement[]) => {
     .filter((movement) => movement.type === 'in')
     .reduce((sum, movement) => sum + movement.quantity, 0);
   const totalStockOut = rows
-    .filter((movement) => movement.type === 'out' || movement.type === 'damage')
+    .filter((movement) => movement.type === 'out')
     .reduce((sum, movement) => sum + movement.quantity, 0);
 
   const logoDataUrl = await getImageDataUrl('/logo.png');
@@ -104,7 +106,8 @@ export const exportStockMovementsToPdf = async (rows: EnhancedMovement[]) => {
           <td>${movement.type}</td>
           <td>${movement.quantity}</td>
           <td>${movement.createdBy ?? ''}</td>
-          <td>${movement.createdAt}</td>
+          <td>${movement.recordedDate}</td>
+          <td>${movement.recordedTime}</td>
         </tr>`
     )
     .join('');
@@ -186,6 +189,7 @@ export const exportStockMovementsToPdf = async (rows: EnhancedMovement[]) => {
               <th>Qty</th>
               <th>By</th>
               <th>Date</th>
+              <th>Time</th>
             </tr>
           </thead>
           <tbody>${rowsHtml}</tbody>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function FormModal({
   title,
@@ -19,7 +20,11 @@ export default function FormModal({
   children: ReactNode;
   maxWidthClass?: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
+
     const fn = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
@@ -33,8 +38,12 @@ export default function FormModal({
     };
   }, [onClose]);
 
-  return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[1000] p-4">
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className={`bg-white rounded-2xl w-full ${maxWidthClass} max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl`}>
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center">
           <div>
@@ -65,6 +74,7 @@ export default function FormModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

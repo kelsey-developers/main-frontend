@@ -79,7 +79,7 @@ export const getAvailableLocations = (): string[] => {
   return mockLocations;
 };
 
-// Detailed unit listings for unit-view pages
+// Detailed unit listings for unit pages
 export const unitListings: Record<string, Listing> = {
   '1': {
     id: '1',

@@ -399,7 +399,7 @@ export default function DamagePenaltyDetailPage() {
         </div>
       </div>
 
-      {/* Proof image lightbox (same as unit-view) */}
+      {/* Proof image lightbox (same as unit page) */}
       {showImageModal && proofUrls.length > 0 && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000]">
           <div className="relative w-full h-full flex items-center justify-center">
