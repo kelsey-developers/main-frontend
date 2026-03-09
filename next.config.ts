@@ -3,7 +3,9 @@ import type { NextConfig } from "next";
 const apiUrl = process.env.API_URL || '';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Add this line to satisfy the Turbopack build requirement
+  turbopack: {}, 
+  
   webpack: (config, { dev }) => {
     if (dev) {
       // Ignore heavy directories to prevent watcher memory leaks
@@ -13,7 +15,7 @@ const nextConfig: NextConfig = {
       };
     }
     return config;
-  }, // <--- FIXED: Added the closing brace and the comma
+  },
   async rewrites() {
     if (!apiUrl) return [];
     return [{ source: '/api/:path*', destination: `${apiUrl}/api/:path*` }];
