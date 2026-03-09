@@ -2,12 +2,53 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CalendarView } from '../calendar/page';
-import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
-import { getAgentAnalytics } from '@/services/agentDashboardService';
-import type { AgentAnalytics } from '@/services/agentDashboardService';
+import AdminSummaryCards from './components/AdminSummaryCards';
+import AdminCharts from './components/AdminCharts';
+import CalendarWidget from '../../components/CalendarWidget';
+import type { AdminStats, ChartData } from './types';
 import { getLendingSummary } from '@/services/lendingService';
 import type { LendingSummary } from '@/types/lending';
+
+// Generate mock data for admin stats
+const generateMockStats = (): AdminStats => {
+  return {
+    totalUsers: 347,
+    totalBookings: 156,
+    totalListings: 89,
+    monthlyBookings: 94,
+    revenue: 25800,
+  };
+};
+
+// Generate mock data for weekly user growth
+const generateWeeklyUserData = (): ChartData[] => {
+  const data: ChartData[] = [];
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  
+  for (let i = 0; i < 7; i++) {
+    data.push({
+      name: daysOfWeek[i],
+      users: Math.floor(Math.random() * 20) + 5,
+    });
+  }
+  
+  return data;
+};
+
+// Generate mock data for weekly booking growth
+const generateWeeklyBookingData = (): ChartData[] => {
+  const data: ChartData[] = [];
+  const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  
+  for (let i = 0; i < 7; i++) {
+    data.push({
+      name: daysOfWeek[i],
+      bookings: Math.floor(Math.random() * 15) + 3,
+    });
+  }
+  
+  return data;
+};
 
 const TODAY = new Date().toISOString().split('T')[0];
 const AdminPage: React.FC = React.memo(() => {
@@ -28,6 +69,8 @@ const AdminPage: React.FC = React.memo(() => {
       mounted = false;
     };
   }, []);
+
+    getLendingSummary().then(setLendingSummary);
 
     getLendingSummary().then(setLendingSummary);
 
@@ -96,80 +139,6 @@ const AdminPage: React.FC = React.memo(() => {
           <AdminCharts userGrowth={userGrowth} bookingGrowth={bookingGrowth} />
         )}
 
-<<<<<<< HEAD
-        {/* Agent Analytics Section */}
-        {agentAnalytics && (
-          <div className="mb-8 bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200/80">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Agent Analytics</h3>
-                <p className="text-gray-600 mt-1 text-sm">Top performing agents and commission overview</p>
-              </div>
-              <div className="flex gap-2">
-                <Link href="/admin/agents" className="px-4 py-2 text-sm font-semibold text-[#0B5858] border border-[#0B5858]/30 rounded-xl hover:bg-[#0B5858]/5 transition-colors">
-                  All Agents
-                </Link>
-                <Link href="/admin/commissions" className="px-4 py-2 text-sm font-semibold text-white bg-[#0B5858] rounded-xl hover:bg-[#0d7a7a] transition-colors">
-                  Commission Ledger
-                </Link>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                {[
-                  { label: 'Total Agents', value: agentAnalytics.totalAgents, icon: '👥' },
-                  { label: 'Active Agents', value: agentAnalytics.activeAgents, icon: '✅' },
-                  { label: 'Total Paid (₱)', value: `₱${agentAnalytics.totalCommissionsPaid.toLocaleString()}`, icon: '💰' },
-                  { label: 'Pending (₱)', value: `₱${agentAnalytics.totalCommissionsPending.toLocaleString()}`, icon: '⏳' },
-                ].map((s) => (
-                  <div key={s.label} className="bg-gray-50 rounded-xl p-4 text-center border border-gray-100">
-                    <p className="text-lg mb-1">{s.icon}</p>
-                    <p className="text-xs text-gray-500 mb-1">{s.label}</p>
-                    <p className="text-xl font-bold text-gray-900">{s.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">Top Agents by Commission</h4>
-              {agentAnalytics.topAgents.length > 0 ? (
-                <div className="space-y-2">
-                  {agentAnalytics.topAgents.map((agent, idx) => (
-                    <div key={agent.agentId} className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-gray-300 text-gray-700' : idx === 2 ? 'bg-orange-400 text-orange-900' : 'bg-gray-200 text-gray-600'
-                      }`}>
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{agent.agentName}</p>
-                        <p className="text-xs text-gray-500">
-                          {agent.totalBookings} bookings · {agent.activeSubAgents} sub-agents · <code className="bg-gray-200 px-1 rounded text-xs">{agent.referralCode}</code>
-                        </p>
-                      </div>
-                      <p className="text-sm font-bold text-[#0B5858] flex-shrink-0">₱{agent.totalCommissions.toLocaleString()}</p>
-                      <Link
-                        href={`/admin/agents/${agent.agentId}`}
-                        className="px-3 py-1 text-xs font-semibold text-[#0B5858] bg-[#0B5858]/8 hover:bg-[#0B5858]/15 rounded-lg transition-colors whitespace-nowrap"
-                      >
-                        View
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 py-4">No agent data yet. Connect your backend (API_URL) to see agents and commissions.</p>
-              )}
-
-              <div className="mt-4 flex gap-3 flex-wrap">
-                <Link href="/admin/payouts" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0B5858] rounded-xl hover:bg-[#0d7a7a] transition-colors">
-                  Manage Payouts
-                </Link>
-                <Link href="/admin/agent-registration" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#0B5858] border border-[#0B5858]/30 rounded-xl hover:bg-[#0B5858]/5 transition-colors">
-                  Registration Config
-                </Link>
-              </div>
-            </div>
-=======
         {/* Mini-System Cards */}
         {lendingSummary && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -221,7 +190,14 @@ const AdminPage: React.FC = React.memo(() => {
                 </div>
               )}
             </Link>
->>>>>>> 130ff15 (feat(admin): add lending summary to admin dashboard and navbar)
+          </div>
+        )}
+
+        {/* Calendar View Section */}
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>Upcoming Bookings Calendar</h3>
+            <p className="text-gray-600 mt-1" style={{fontFamily: 'Poppins'}}>View and manage all upcoming bookings</p>
           </div>
         )}
 
