@@ -3,7 +3,7 @@ import { apiClient } from './client';
 
 export async function listUnitsForManage(): Promise<Listing[]> {
   const data = await apiClient.get<unknown[]>('/api/units/manage', { credentials: 'include' });
-  return Array.isArray(data) ? data.map((u: Record<string, unknown>) => toManageListing(u)) : [];
+  return Array.isArray(data) ? data.map((u) => toManageListing(u as Record<string, unknown>)) : [];
 }
 
 export async function updateUnit(
@@ -39,7 +39,7 @@ export async function listUnits(params?: ListUnitsParams): Promise<ListingView[]
 
   const qs = searchParams.toString();
   const data = await apiClient.get<unknown[]>(`/api/units${qs ? `?${qs}` : ''}`);
-  return (Array.isArray(data) ? data : []).map((u: Record<string, unknown>) => toListingView(u));
+  return (Array.isArray(data) ? data : []).map((u) => toListingView(u as Record<string, unknown>));
 }
 
 export async function getUnitById(id: string): Promise<Listing | null> {

@@ -165,7 +165,7 @@ export interface CreateBookingInput {
   payment_method?: PaymentMethod;
   require_payment?: boolean;
   total_amount: number;
-  guest_user_id?: string;
+  guest_user_id?: number;
   assigned_agent_id?: string;
   assigned_agent_email?: string;
   assigned_agent_name?: string;
