@@ -8,6 +8,7 @@ import CalendarWidget from '../../components/CalendarWidget';
 import type { AdminStats, ChartData } from './types';
 import { getAgentAnalytics } from '@/services/agentDashboardService';
 import type { AgentAnalytics } from '@/services/agentDashboardService';
+import { getCleaningJobs } from '@/services/cleaningService';
 
 // Generate mock data for admin stats
 const generateMockStats = (): AdminStats => {
@@ -50,12 +51,16 @@ const generateWeeklyBookingData = (): ChartData[] => {
   return data;
 };
 
+const TODAY = new Date().toISOString().split('T')[0];
+
 const AdminPage: React.FC = React.memo(() => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [userGrowth, setUserGrowth] = useState<ChartData[]>([]);
   const [bookingGrowth, setBookingGrowth] = useState<ChartData[]>([]);
   const [agentAnalytics, setAgentAnalytics] = useState<AgentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cleaningTodayCount, setCleaningTodayCount] = useState(0);
+  const [cleaningPendingVerify, setCleaningPendingVerify] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -66,6 +71,13 @@ const AdminPage: React.FC = React.memo(() => {
       setAgentAnalytics(analytics);
       setLoading(false);
     }, 500);
+
+    // Load cleaning stats in parallel
+    getCleaningJobs().then((jobs) => {
+      const todayJobs = jobs.filter((j) => j.scheduledDate === TODAY);
+      setCleaningTodayCount(todayJobs.filter((j) => j.status === 'scheduled' || j.status === 'in_progress').length);
+      setCleaningPendingVerify(jobs.filter((j) => j.status === 'completed').length);
+    });
 
     return () => clearTimeout(timer);
   }, []);
@@ -145,6 +157,7 @@ const AdminPage: React.FC = React.memo(() => {
           <AdminCharts userGrowth={userGrowth} bookingGrowth={bookingGrowth} />
         )}
 
+<<<<<<< HEAD
         {/* Agent Analytics Section */}
         {agentAnalytics && (
           <div className="mt-8 bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -220,6 +233,52 @@ const AdminPage: React.FC = React.memo(() => {
             </div>
           </div>
         )}
+=======
+        {/* Cleaning mini-card */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          <Link
+            href="/admin/cleaning"
+            className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-[#0B5858]/10 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-[#0B5858]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cleaning Today</p>
+                <p className="text-2xl font-bold text-gray-900">{cleaningTodayCount}</p>
+                <p className="text-xs text-gray-400">jobs active · {cleaningPendingVerify} pending verification</p>
+              </div>
+            </div>
+            <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+
+          <Link
+            href="/admin/cleaning/schedule"
+            className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 rounded-xl bg-[#FACC15]/10 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-[#FACC15]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cleaning Calendar</p>
+                <p className="text-sm font-semibold text-gray-700">View schedule &amp; assign jobs</p>
+                <p className="text-xs text-gray-400">monthly view with job status</p>
+              </div>
+            </div>
+            <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        </div>
+>>>>>>> 1e5ba1c (feat(admin): add cleaning to admin dashboard and navbar)
 
         {/* Calendar View Section */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">

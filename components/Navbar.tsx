@@ -363,6 +363,26 @@ export default function Navbar() {
                           Become an Agent
                         </Link>
                       )}
+                      {isAdmin && (
+                        <Link
+                          href="/admin/cleaning"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          Cleaning
+                        </Link>
+                      )}
+                      {userRole?.role === 'cleaner' && (
+                        <Link
+                          href="/cleaning"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          My Jobs
+                        </Link>
+                      )}
                       {(isAdmin || isAgent) && (
                         <>
                           <Link
@@ -538,6 +558,26 @@ export default function Navbar() {
                     </div>
                   </div>
                 </Link>
+                {isAdmin && (
+                  <Link
+                    href="/admin/cleaning"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    Cleaning
+                  </Link>
+                )}
+                {userRole?.role === 'cleaner' && (
+                  <Link
+                    href="/cleaning"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    My Jobs
+                  </Link>
+                )}
                 {(isAdmin || isAgent) && (
                   <>
                     <Link
