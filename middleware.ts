@@ -5,6 +5,8 @@ import type { NextRequest } from 'next/server';
 const PROTECTED_ROUTES = [
   '/admin',
   '/booking',
+  '/booking-details',
+  '/reserve',
   '/rewards',
   '/profile',
   '/settings',

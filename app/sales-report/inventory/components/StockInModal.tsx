@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import { 
@@ -11,6 +12,7 @@ import {
   ITEM_TYPES,
   ITEM_UNITS,
 } from '../lib/mockData';
+import { createItemAndProcessStockIn, processStockIn } from '../lib/inventoryLedger';
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -144,6 +146,7 @@ interface StockInModalProps {
 
 export default function StockInModal({ mode, onClose }: StockInModalProps) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState({
     sku: '',
     name: '',
@@ -166,6 +169,10 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   // Trap scroll
@@ -194,32 +201,96 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
   };
 
   const handleSubmit = () => {
-    // TODO: Backend integration - save the data
-    console.log('Stock In submitted:', form);
-    
-    // Redirect to items page after successful submission
-    router.push('/sales-report/inventory/items');
-  };
+    try {
+      const quantity = Number(form.quantity || 0);
+      if (quantity <= 0) {
+        alert('Quantity must be greater than zero.');
+        return;
+      }
 
-  // Trap scroll
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, []);
+      if (mode === 'existing') {
+        if (!form.existingItem) {
+          alert('Select an existing item.');
+          return;
+        }
+        if (!form.warehouse[0]) {
+          alert('Select a destination warehouse.');
+          return;
+        }
+
+        processStockIn({
+          productId: form.existingItem,
+          warehouseId: form.warehouse[0],
+          quantity,
+          reason: form.reason || 'Stock in',
+          date: new Date().toISOString(),
+          reference: form.reference || undefined,
+          notes: form.notes || undefined,
+        });
+      } else {
+        if (!form.sku || !form.name || !form.category || !form.itemType || !form.unit) {
+          alert('Please complete required item details (SKU, name, category, type, unit).');
+          return;
+        }
+        if (!form.warehouse.length) {
+          alert('Select at least one warehouse.');
+          return;
+        }
+
+        createItemAndProcessStockIn({
+          sku: form.sku,
+          name: form.name,
+          category: form.category as ItemCategory,
+          itemType: form.itemType as ItemType,
+          unit: form.unit,
+          minStock: Number(form.minStock || form.reorderLevel || 0),
+          isActive: form.isActive,
+          initialStocks: form.warehouse.map((warehouseId) => ({
+            warehouseId,
+            quantity,
+            reason: form.reason || 'Initial stock',
+            date: new Date().toISOString(),
+            reference: form.reference || undefined,
+            notes: form.notes || undefined,
+          })),
+        });
+      }
+
+      router.push('/sales-report/inventory/items');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to process stock-in movement.';
+      alert(message);
+    }
+  };
 
   const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
 
-  return (
+  const stockInDropdownProps = {
+    align: 'left' as const,
+    fullWidth: true,
+    minWidthClass: 'min-w-0',
+    backdropZIndexClass: 'z-[10010]',
+    menuZIndexClass: 'z-[10020]',
+  };
+
+  const stockInLeadingIcon = (
+    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+      <path d="M2 4h9M2 6.5h9M2 9h9" stroke="#94a3b8" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
     <div
       onClick={handleClose}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1000,
-        background: 'rgba(0, 0, 0, 0.3)',
-        backdropFilter: 'blur(4px)',
+        zIndex: 10000,
+        background: 'rgba(17, 24, 39, 0.38)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -349,10 +420,8 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     ]}
                     placeholder="Search or select item..."
                     placeholderWhen=""
-                    hideIcon={true}
-                    fullWidth={true}
-                    minWidthClass="min-w-0"
-                    align="left"
+                    leadingIcon={stockInLeadingIcon}
+                    {...stockInDropdownProps}
                   />
                 </Field>
                 <Field label="Category">
@@ -367,9 +436,8 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     ]}
                     placeholder="Select category"
                     placeholderWhen=""
-                    hideIcon={true}
-                    fullWidth={true}
-                    minWidthClass="min-w-0"
+                    leadingIcon={stockInLeadingIcon}
+                    {...stockInDropdownProps}
                     disabled={!selectedItem}
                   />
                 </Field>
@@ -435,9 +503,8 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     ]}
                     placeholder="Select warehouse"
                     placeholderWhen=""
-                    hideIcon={true}
-                    fullWidth={true}
-                    minWidthClass="min-w-0"
+                    leadingIcon={stockInLeadingIcon}
+                    {...stockInDropdownProps}
                   />
                 </Field>
                 <Field label="Reference No.">
@@ -473,9 +540,8 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     ]}
                     placeholder="Select category"
                     placeholderWhen=""
-                    hideIcon={true}
-                    fullWidth={true}
-                    minWidthClass="min-w-0"
+                    leadingIcon={stockInLeadingIcon}
+                    {...stockInDropdownProps}
                   />
                 </Field>
                 <Field label="Item Type" required>
@@ -491,9 +557,8 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     ]}
                     placeholder="Select type"
                     placeholderWhen=""
-                    hideIcon={true}
-                    fullWidth={true}
-                    minWidthClass="min-w-0"
+                    leadingIcon={stockInLeadingIcon}
+                    {...stockInDropdownProps}
                   />
                 </Field>
                 <Field label="Unit of Measure" required>
@@ -506,9 +571,8 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     ]}
                     placeholder="Select unit"
                     placeholderWhen=""
-                    hideIcon={true}
-                    fullWidth={true}
-                    minWidthClass="min-w-0"
+                    leadingIcon={stockInLeadingIcon}
+                    {...stockInDropdownProps}
                   />
                 </Field>
               </div>
@@ -669,6 +733,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

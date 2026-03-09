@@ -20,6 +20,9 @@ interface InventoryDropdownProps<T extends string> {
   minWidthClass?: string;
   fullWidth?: boolean;
   disabled?: boolean;
+  backdropZIndexClass?: string;
+  menuZIndexClass?: string;
+  useFixedPosition?: boolean;
 }
 
 const DefaultSortIcon = () => (
@@ -40,8 +43,13 @@ export default function InventoryDropdown<T extends string>({
   minWidthClass,
   fullWidth = false,
   disabled = false,
+  backdropZIndexClass = 'z-40',
+  menuZIndexClass = 'z-50',
+  useFixedPosition = false,
 }: InventoryDropdownProps<T>) {
   const [open, setOpen] = useState(false);
+  const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
 
   const selected = useMemo(
     () => options.find((option) => option.value === value) ?? options[0],
@@ -53,12 +61,20 @@ export default function InventoryDropdown<T extends string>({
       ? placeholder
       : (selected?.label ?? placeholder ?? 'Select');
 
+  const handleButtonClick = () => {
+    if (useFixedPosition && buttonRef.current) {
+      setButtonRect(buttonRef.current.getBoundingClientRect());
+    }
+    setOpen((current) => !current);
+  };
+
   return (
     <div className={`relative ${fullWidth ? 'w-full' : ''}`}>
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((current) => !current)}
+        onClick={handleButtonClick}
         className={`flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg border-[1.5px] bg-white text-[13px] outline-none transition-all ${
           fullWidth ? 'w-full' : ''
         } ${minWidthClass ?? 'min-w-[180px]'} ${
@@ -98,11 +114,23 @@ export default function InventoryDropdown<T extends string>({
 
       {open && !disabled && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          {!useFixedPosition && <div className={`fixed inset-0 ${backdropZIndexClass}`} onClick={() => setOpen(false)} />}
           <div
-            className={`absolute top-full mt-1.5 bg-white border-[1.5px] border-gray-200 rounded-xl shadow-xl overflow-y-auto max-h-[260px] z-50 ${
+            className={`bg-white border-[1.5px] border-gray-200 rounded-xl shadow-xl overflow-y-auto max-h-[260px] ${menuZIndexClass} ${
               fullWidth ? 'w-full' : (minWidthClass ?? 'min-w-[180px]')
-            } ${align === 'left' ? 'left-0' : 'right-0'}`}
+            } ${useFixedPosition ? 'fixed' : 'absolute top-full mt-1.5'} ${align === 'left' ? 'left-0' : 'right-0'}`}
+            style={useFixedPosition && buttonRect ? {
+              top: `${buttonRect.bottom + 6}px`,
+              [align === 'left' ? 'left' : 'right']: align === 'left' ? `${buttonRect.left}px` : `${window.innerWidth - buttonRect.right}px`,
+              width: align === 'left' && fullWidth ? `${buttonRect.width}px` : undefined,
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+            } : {
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+            }}
+            onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
           >
             {options.map((option, index) => (
               <button

@@ -1,6 +1,6 @@
 export type ItemType = 'consumable' | 'reusable';
 export type ItemCategory = 'Cleaning' | 'Hygiene' | 'Food & Drinks' | 'Cooking' | 'Appliances' | 'furniture' | 'Cloth & Sheets' | 'Kitchenware' | 'Other';
-export type StockMovementType = 'in' | 'out' | 'adjustment' | 'damage';
+export type StockMovementType = 'in' | 'out';
 export type DamageStatus = 'open' | 'in-review' | 'resolved' | 'rejected';
 export type StockStatus = 'out' | 'critical' | 'low' | 'ok';
 
@@ -30,6 +30,14 @@ export interface StockMovement {
   productId: string;
   type: StockMovementType;
   quantity: number;
+  warehouseId?: string;
+  unitId?: string;
+  unitName?: string;
+  reason?: string;
+  referenceType?: 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL';
+  beforeQuantity?: number;
+  afterQuantity?: number;
+  movementDateTime?: string;
   notes?: string;
   referenceId?: string; // Links to booking, damage, PO, etc.
   createdAt: string;
@@ -116,6 +124,7 @@ export interface ReplenishmentItem {
   currentStock: number;
   minStock: number;
   shortfall: number;
+  isLowStock?: boolean;
   
   // Audit & Financial
   unitCost: number;

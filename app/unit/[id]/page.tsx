@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Suspense, useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import type { Listing } from '@/types/listing';
 import LeftColumn from './components/LeftColumn';
@@ -14,16 +14,15 @@ import { getUnitById, listUnits } from '@/lib/api/units';
 
 function UnitViewContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const id = searchParams.get('id') || '1'; // Default to property 1
-  
+  const params = useParams();
+  const id = (params?.id as string) || '1';
+
   const [listing, setListing] = useState<Listing | null>(null);
   const [sameAreaListings, setSameAreaListings] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [isLinkCopied, setIsLinkCopied] = useState(false);
-  const [showBookingForm, setShowBookingForm] = useState(false);
 
   useEffect(() => {
     const fetchListingData = async () => {
@@ -64,31 +63,27 @@ function UnitViewContent() {
   }, [id]);
 
   const handleReserve = () => {
-    // Simple booking form state toggle
-    setShowBookingForm(true);
-    alert('Booking functionality would be implemented here. In the full version, this would open a booking form.');
-  };
-
-  const handleCancelBooking = () => {
-    setShowBookingForm(false);
+    if (!id) return;
+    router.push(`/reserve?listingId=${encodeURIComponent(id)}`);
   };
 
   const handleSameAreaListingClick = (listingId: string) => {
-    router.push(`/unit-view?id=${listingId}`);
+    router.push(`/unit/${listingId}`);
     window.scrollTo(0, 0);
   };
 
+  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/unit/${id}` : '';
+
   const handleCopyLink = async () => {
-    const shareUrl = `${window.location.origin}/unit-view?id=${id}`;
     const shareText = `Check out this property: ${listing?.title || 'Amazing Property'}`;
-    
+
     try {
       await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
       setIsLinkCopied(true);
       setTimeout(() => {
         setIsLinkCopied(false);
       }, 2000);
-    } catch (error) {
+    } catch {
       const textArea = document.createElement('textarea');
       textArea.value = `${shareText}\n${shareUrl}`;
       document.body.appendChild(textArea);
@@ -103,14 +98,12 @@ function UnitViewContent() {
   };
 
   const handleFacebookShare = () => {
-    const shareUrl = `${window.location.origin}/unit-view?id=${id}`;
     const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
     window.open(facebookUrl, '_blank', 'width=600,height=400');
     setShowShareModal(false);
   };
 
   const handleTwitterShare = () => {
-    const shareUrl = `${window.location.origin}/unit-view?id=${id}`;
     const shareText = `Check out this property: ${listing?.title || 'Amazing Property'}`;
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
     window.open(twitterUrl, '_blank', 'width=600,height=400');
@@ -118,7 +111,6 @@ function UnitViewContent() {
   };
 
   const handleWhatsAppShare = () => {
-    const shareUrl = `${window.location.origin}/unit-view?id=${id}`;
     const shareText = `Check out this property: ${listing?.title || 'Amazing Property'}`;
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`;
     window.open(whatsappUrl, '_blank');
@@ -126,7 +118,6 @@ function UnitViewContent() {
   };
 
   const handleEmailShare = () => {
-    const shareUrl = `${window.location.origin}/unit-view?id=${id}`;
     const shareText = `Check out this property: ${listing?.title || 'Amazing Property'}`;
     const subject = `Property Listing: ${listing?.title || 'Amazing Property'}`;
     const body = `${shareText}\n\nView the property here: ${shareUrl}`;
@@ -145,18 +136,18 @@ function UnitViewContent() {
         <section className="bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="flex flex-col xl:flex-row gap-8">
-              <LeftColumn 
-                listing={listing} 
-                error={error} 
+              <LeftColumn
+                listing={listing}
+                error={error}
                 onImageClick={handleImageClick}
                 onShareClick={() => setShowShareModal(true)}
                 isLoading={isLoading}
               />
-              <RightColumn 
-                listing={listing} 
-                isLoading={isLoading} 
-                error={error} 
-                onReserve={handleReserve} 
+              <RightColumn
+                listing={listing}
+                isLoading={isLoading}
+                error={error}
+                onReserve={handleReserve}
               />
             </div>
           </div>
@@ -183,7 +174,7 @@ function UnitViewContent() {
             <p className="text-lg font-semibold mb-2" style={{fontFamily: 'Poppins'}}>
               {error || 'Listing not found'}
             </p>
-            <button 
+            <button
               onClick={() => router.push('/')}
               className="text-teal-700 hover:underline"
               style={{fontFamily: 'Poppins'}}
@@ -203,7 +194,7 @@ function UnitViewContent() {
         onClose={() => setShowShareModal(false)}
         onCopyLink={handleCopyLink}
         isLinkCopied={isLinkCopied}
-        shareUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/unit-view?id=${id}`}
+        shareUrl={shareUrl}
         onFacebookShare={handleFacebookShare}
         onTwitterShare={handleTwitterShare}
         onWhatsAppShare={handleWhatsAppShare}
@@ -214,25 +205,25 @@ function UnitViewContent() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col xl:flex-row gap-8">
             <div className="flex-1">
-              <LeftColumn 
-                listing={listing} 
-                error={error} 
+              <LeftColumn
+                listing={listing}
+                error={error}
                 onImageClick={handleImageClick}
-                onShareClick={() => setShowShareModal(true)} 
+                onShareClick={() => setShowShareModal(true)}
                 isLoading={isLoading}
               />
             </div>
             <div className="w-full xl:w-96">
-              <RightColumn 
-                listing={listing} 
-                isLoading={isLoading} 
-                error={error} 
-                onReserve={handleReserve} 
+              <RightColumn
+                listing={listing}
+                isLoading={isLoading}
+                error={error}
+                onReserve={handleReserve}
               />
               <div className="block xl:hidden mt-6">
-                <TabsSection 
-                  listing={listing} 
-                  isLoading={isLoading} 
+                <TabsSection
+                  listing={listing}
+                  isLoading={isLoading}
                   className="block xl:hidden"
                 />
               </div>
@@ -267,7 +258,7 @@ function UnitViewFallback() {
   );
 }
 
-export default function UnitViewPage() {
+export default function UnitPage() {
   return (
     <Suspense fallback={<UnitViewFallback />}>
       <UnitViewContent />

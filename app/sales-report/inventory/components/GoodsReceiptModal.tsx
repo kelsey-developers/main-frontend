@@ -1,9 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { PurchaseOrder, PurchaseOrderLine } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import { useMockAuth } from '@/contexts/MockAuthContext';
 import { mockPurchaseOrderLines, mockWarehouseDirectoryData, mockReplenishmentItems } from '../lib/mockData';
+
+const getTodayISO = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const C = {
   darkTeal: '#0b5858',
@@ -74,12 +84,16 @@ export default function GoodsReceiptModal({
   onClose: () => void;
   onSubmit: (data: any) => void;
 }) {
+  const mockAuth = useMockAuth();
+  const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
-  const [receivedBy, setReceivedBy] = useState('');
+  const [receivedBy, setReceivedBy] = useState(mockAuth.userProfile?.fullname || '');
+  const [receiptDate, setReceiptDate] = useState(getTodayISO());
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
+    setMounted(true);
     document.body.style.overflow = 'hidden';
 
     return () => {
@@ -136,7 +150,7 @@ export default function GoodsReceiptModal({
   };
 
   const handleSubmit = () => {
-    if (!warehouseId || !receivedBy) {
+    if (!warehouseId || !receivedBy || !receiptDate) {
       alert('Please fill in all required fields');
       return;
     }
@@ -144,24 +158,28 @@ export default function GoodsReceiptModal({
     onSubmit({
       warehouseId,
       receivedBy,
+      receiptDate,
       notes,
       receiptImages,
     });
     handleClose();
   };
 
-  return (
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
     <div
       onClick={handleClose}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1000,
+        zIndex: 10000,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(11,88,88,0.35)',
-        backdropFilter: 'blur(3px)',
+        background: 'rgba(17, 24, 39, 0.38)',
         opacity: visible ? 1 : 0,
         transition: 'opacity 0.25s ease',
       }}
@@ -246,14 +264,29 @@ export default function GoodsReceiptModal({
             </Field>
           </div>
 
-          {/* Received By */}
-          <div style={{ marginBottom: 20 }}>
+          {/* Receiver Details */}
+          <div
+            style={{
+              marginBottom: 20,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
             <Field label="Received By" required>
               <input
                 type="text"
                 value={receivedBy}
-                onChange={e => setReceivedBy(e.target.value)}
-                placeholder="Enter receiver name"
+                readOnly
+                placeholder="Receiver name"
+                style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+              />
+            </Field>
+            <Field label="Receipt Date" required>
+              <input
+                type="date"
+                value={receiptDate}
+                onChange={e => setReceiptDate(e.target.value)}
                 style={inputStyle}
               />
             </Field>
@@ -480,6 +513,7 @@ export default function GoodsReceiptModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

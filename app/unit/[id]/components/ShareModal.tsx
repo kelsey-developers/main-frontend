@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 interface ShareModalProps {
   show: boolean;
@@ -25,14 +26,19 @@ const ShareModal: React.FC<ShareModalProps> = ({
   onWhatsAppShare,
   onEmailShare,
 }) => {
-  if (!show) return null;
+  const [mounted, setMounted] = React.useState(false);
 
-  return (
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!show || !mounted) return null;
+
+  return createPortal(
     <div 
-      className="fixed inset-0 flex items-center justify-center z-[9999]"
+      className="fixed inset-0 flex items-center justify-center z-[10000]"
       style={{
-        backdropFilter: 'blur(4px)',
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        backgroundColor: 'rgba(17, 24, 39, 0.38)',
         transition: 'background-color 0.25s ease'
       }}
       onClick={onClose}
@@ -139,7 +145,8 @@ const ShareModal: React.FC<ShareModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

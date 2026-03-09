@@ -113,7 +113,29 @@ export interface WarehouseMovementRow {
   productName: string;
   quantity: number;
   date: string;
+  time: string;
+  recordedAt: string;
   note: string;
+}
+
+export interface UnitStockMovementRow {
+  id: string;
+  productId: string;
+  productName: string;
+  unitId: string;
+  unitName: string;
+  sourceWarehouseId: string;
+  sourceWarehouseName: string;
+  quantity: number;
+  reason: string;
+  referenceType: 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL';
+  referenceId?: string;
+  beforeQuantity: number;
+  afterQuantity: number;
+  recordedAt: string;
+  recordedDate: string;
+  recordedTime: string;
+  createdBy: string;
 }
 
 export interface WarehouseDirectoryRecord {
@@ -150,9 +172,9 @@ export const mockWarehouseDirectoryData: WarehouseDirectoryRecord[] = [
       { productId: '15', productName: 'Iron', quantity: 1, reorderLevel: 3 },
     ],
     stockMovements: [
-      { id: 'wm-1', type: 'in', productName: 'Towels', quantity: 40, date: '2025-03-03', note: 'PO delivery received' },
-      { id: 'wm-2', type: 'out', productName: 'Soap (bars)', quantity: 15, date: '2025-03-04', note: 'Issued to cleaning team' },
-      { id: 'wm-3', type: 'transfer', productName: 'Laundry detergent', quantity: 8, date: '2025-03-06', note: 'Moved to Utility Room' },
+      { id: 'WM-001', type: 'in', productName: 'Towels', quantity: 40, date: '2025-03-03', time: '08:15', recordedAt: '2025-03-03 08:15', note: 'PO delivery received' },
+      { id: 'WM-002', type: 'out', productName: 'Soap (bars)', quantity: 15, date: '2025-03-04', time: '11:20', recordedAt: '2025-03-04 11:20', note: 'Issued to cleaning team' },
+      { id: 'WM-003', type: 'transfer', productName: 'Laundry detergent', quantity: 8, date: '2025-03-06', time: '14:05', recordedAt: '2025-03-06 14:05', note: 'Moved to Utility Room' },
     ],
   },
   {
@@ -167,8 +189,8 @@ export const mockWarehouseDirectoryData: WarehouseDirectoryRecord[] = [
       { productId: '13', productName: 'Air freshener', quantity: 0, reorderLevel: 5 },
     ],
     stockMovements: [
-      { id: 'wm-4', type: 'in', productName: 'Trash bags', quantity: 20, date: '2025-03-01', note: 'Weekly replenishment' },
-      { id: 'wm-5', type: 'out', productName: 'Paper towels', quantity: 6, date: '2025-03-05', note: 'Assigned to units' },
+      { id: 'WM-004', type: 'in', productName: 'Trash bags', quantity: 20, date: '2025-03-01', time: '09:40', recordedAt: '2025-03-01 09:40', note: 'Weekly replenishment' },
+      { id: 'WM-005', type: 'out', productName: 'Paper towels', quantity: 6, date: '2025-03-05', time: '16:35', recordedAt: '2025-03-05 16:35', note: 'Assigned to units' },
     ],
   },
   {
@@ -179,8 +201,8 @@ export const mockWarehouseDirectoryData: WarehouseDirectoryRecord[] = [
     isActive: false,
     inventoryBalances: [],
     stockMovements: [
-      { id: 'wm-6', type: 'out', productName: 'Coffee pods', quantity: 10, date: '2025-02-26', note: 'Event allocation' },
-      { id: 'wm-7', type: 'transfer', productName: 'Dish soap', quantity: 3, date: '2025-02-28', note: 'Transferred to Main Storage' },
+      { id: 'WM-006', type: 'out', productName: 'Coffee pods', quantity: 10, date: '2025-02-26', time: '10:10', recordedAt: '2025-02-26 10:10', note: 'Event allocation' },
+      { id: 'WM-007', type: 'transfer', productName: 'Dish soap', quantity: 3, date: '2025-02-28', time: '15:25', recordedAt: '2025-02-28 15:25', note: 'Transferred to Main Storage' },
     ],
   },
   {
@@ -197,51 +219,69 @@ export const mockWarehouseDirectoryData: WarehouseDirectoryRecord[] = [
 // Mock Stock Movements
 export const mockStockMovements: StockMovement[] = [
   // Product 1 - Towels
-  { id: 'SM-001', productId: '1', type: 'in', quantity: 50, notes: 'Goods Receipt - All items in good condition.', referenceId: 'GR-001', createdAt: '2025-03-08 09:14', createdBy: 'Maria Santos' },
-  { id: 'SM-002', productId: '1', type: 'out', quantity: 30, notes: 'Distributed to Unit 711', referenceId: 'u1', createdAt: '2025-02-20', createdBy: 'Warehouse Staff' },
-  { id: 'SM-003', productId: '1', type: 'adjustment', quantity: -12, notes: 'Damage adjustment after inspection', referenceId: 'da1', createdAt: '2025-02-25', createdBy: 'Inventory Manager' },
+  { id: 'SM-001', productId: '1', warehouseId: 'wh1', type: 'in', quantity: 50, reason: 'Goods receipt', referenceType: 'PO', referenceId: 'GR-001', beforeQuantity: 8, afterQuantity: 58, movementDateTime: '2025-03-08 09:14', notes: 'Goods Receipt - All items in good condition.', createdAt: '2025-03-08 09:14', createdBy: 'Maria Santos' },
+  { id: 'SM-002', productId: '1', warehouseId: 'wh1', unitId: 'u1', unitName: 'Unit 711', type: 'out', quantity: 30, reason: 'Distributed to unit', referenceType: 'MANUAL', referenceId: 'u1', beforeQuantity: 58, afterQuantity: 28, movementDateTime: '2025-02-20', notes: 'Distributed to Unit 711', createdAt: '2025-02-20', createdBy: 'Warehouse Staff' },
+  { id: 'SM-003', productId: '1', warehouseId: 'wh1', type: 'out', quantity: 12, reason: 'Damage adjustment', referenceType: 'DAMAGE', referenceId: 'da1', beforeQuantity: 28, afterQuantity: 16, movementDateTime: '2025-02-25', notes: 'Damage adjustment after inspection', createdAt: '2025-02-25', createdBy: 'Inventory Manager' },
   
   // Product 2 - Soap (bars)
-  { id: 'SM-004', productId: '2', type: 'out', quantity: 12, notes: 'Room prep for 3-night stay.', referenceId: 'BK-2025-003', createdAt: '2025-03-08 10:02', createdBy: 'Juan Reyes' },
-  { id: 'SM-005', productId: '2', type: 'in', quantity: 40, notes: 'PO-2025-002 received', referenceId: 'po2', createdAt: '2025-02-18', createdBy: 'Admin User' },
-  { id: 'SM-006', productId: '2', type: 'out', quantity: 25, notes: 'Weekly distribution', referenceId: 'booking1', createdAt: '2025-02-22', createdBy: 'Warehouse Staff' },
+  { id: 'SM-004', productId: '2', warehouseId: 'wh1', type: 'out', quantity: 12, reason: 'Room preparation', referenceType: 'BOOKING', referenceId: 'BK-2025-003', beforeQuantity: 45, afterQuantity: 33, movementDateTime: '2025-03-08 10:02', notes: 'Room prep for 3-night stay.', createdAt: '2025-03-08 10:02', createdBy: 'Juan Reyes' },
+  { id: 'SM-005', productId: '2', warehouseId: 'wh1', type: 'in', quantity: 40, reason: 'PO received', referenceType: 'PO', referenceId: 'po2', beforeQuantity: 5, afterQuantity: 45, movementDateTime: '2025-02-18', notes: 'PO-2025-002 received', createdAt: '2025-02-18', createdBy: 'Admin User' },
+  { id: 'SM-006', productId: '2', warehouseId: 'wh1', type: 'out', quantity: 25, reason: 'Weekly distribution', referenceType: 'BOOKING', referenceId: 'booking1', beforeQuantity: 33, afterQuantity: 8, movementDateTime: '2025-02-22', notes: 'Weekly distribution', createdAt: '2025-02-22', createdBy: 'Warehouse Staff' },
   
   // Product 3 - Shampoo (bottles)
-  { id: 'SM-007', productId: '3', type: 'out', quantity: 6, notes: '', referenceId: 'BK-2025-004', createdAt: '2025-03-08 10:45', createdBy: 'Ana Cruz' },
-  { id: 'SM-008', productId: '3', type: 'in', quantity: 30, notes: 'Emergency reorder', referenceId: 'po3', createdAt: '2025-02-17', createdBy: 'Purchase Officer' },
-  { id: 'SM-009', productId: '3', type: 'damage', quantity: 5, notes: 'Bottles leaked during transit', referenceId: 'da2', createdAt: '2025-02-21', createdBy: 'QA Inspector' },
+  { id: 'SM-007', productId: '3', warehouseId: 'wh1', type: 'out', quantity: 6, reason: 'Booking allocation', referenceType: 'BOOKING', referenceId: 'BK-2025-004', beforeQuantity: 33, afterQuantity: 27, movementDateTime: '2025-03-08 10:45', notes: '', createdAt: '2025-03-08 10:45', createdBy: 'Ana Cruz' },
+  { id: 'SM-008', productId: '3', warehouseId: 'wh1', type: 'in', quantity: 30, reason: 'Emergency reorder', referenceType: 'PO', referenceId: 'po3', beforeQuantity: 3, afterQuantity: 33, movementDateTime: '2025-02-17', notes: 'Emergency reorder', createdAt: '2025-02-17', createdBy: 'Purchase Officer' },
+  { id: 'SM-009', productId: '3', warehouseId: 'wh1', type: 'out', quantity: 5, reason: 'Transit damage', referenceType: 'DAMAGE', referenceId: 'da2', beforeQuantity: 27, afterQuantity: 22, movementDateTime: '2025-02-21', notes: 'Bottles leaked during transit', createdAt: '2025-02-21', createdBy: 'QA Inspector' },
   
   // Product 4 - Trash bags
-  { id: 'SM-010', productId: '4', type: 'adjustment', quantity: -4, notes: 'Water damage — disposed of 4 rolls.', referenceId: 'DI-2025-002', createdAt: '2025-03-07 16:30', createdBy: 'Maria Santos' },
-  { id: 'SM-011', productId: '4', type: 'in', quantity: 50, notes: 'Bulk purchase for Q1', referenceId: 'po4', createdAt: '2025-01-25', createdBy: 'Purchase Officer' },
-  { id: 'SM-012', productId: '4', type: 'out', quantity: 20, notes: 'Distributed across multiple units', referenceId: '', createdAt: '2025-02-10', createdBy: 'Warehouse Staff' },
+  { id: 'SM-010', productId: '4', warehouseId: 'wh2', type: 'out', quantity: 4, reason: 'Damage disposal', referenceType: 'DAMAGE', referenceId: 'DI-2025-002', beforeQuantity: 22, afterQuantity: 18, movementDateTime: '2025-03-07 16:30', notes: 'Water damage — disposed of 4 rolls.', createdAt: '2025-03-07 16:30', createdBy: 'Maria Santos' },
+  { id: 'SM-011', productId: '4', warehouseId: 'wh2', type: 'in', quantity: 50, reason: 'Bulk purchase', referenceType: 'PO', referenceId: 'po4', beforeQuantity: 2, afterQuantity: 52, movementDateTime: '2025-01-25', notes: 'Bulk purchase for Q1', createdAt: '2025-01-25', createdBy: 'Purchase Officer' },
+  { id: 'SM-012', productId: '4', warehouseId: 'wh2', type: 'out', quantity: 20, reason: 'Unit distribution', referenceType: 'MANUAL', referenceId: '', beforeQuantity: 52, afterQuantity: 32, movementDateTime: '2025-02-10', notes: 'Distributed across multiple units', createdAt: '2025-02-10', createdBy: 'Warehouse Staff' },
   
   // Product 5 - Conditioner
-  { id: 'SM-013', productId: '5', type: 'in', quantity: 80, notes: 'PO-2025-001 received', referenceId: 'GR-001', createdAt: '2025-02-15', createdBy: 'Maria Santos' },
-  { id: 'SM-014', productId: '5', type: 'out', quantity: 45, notes: 'Room preparation - bulk checkout', referenceId: 'BK-2025-001', createdAt: '2025-02-28', createdBy: 'Juan Reyes' },
+  { id: 'SM-013', productId: '5', warehouseId: 'wh1', type: 'in', quantity: 80, reason: 'PO received', referenceType: 'PO', referenceId: 'GR-001', beforeQuantity: 4, afterQuantity: 84, movementDateTime: '2025-02-15', notes: 'PO-2025-001 received', createdAt: '2025-02-15', createdBy: 'Maria Santos' },
+  { id: 'SM-014', productId: '5', warehouseId: 'wh1', type: 'out', quantity: 45, reason: 'Room preparation', referenceType: 'BOOKING', referenceId: 'BK-2025-001', beforeQuantity: 84, afterQuantity: 39, movementDateTime: '2025-02-28', notes: 'Room preparation - bulk checkout', createdAt: '2025-02-28', createdBy: 'Juan Reyes' },
   
   // Product 8 - Toilet paper
-  { id: 'SM-015', productId: '8', type: 'in', quantity: 200, notes: 'PO-2025-002 received', referenceId: 'GR-002', createdAt: '2025-02-17', createdBy: 'Juan Reyes' },
-  { id: 'SM-016', productId: '8', type: 'out', quantity: 60, notes: 'Regular unit distribution', referenceId: '', createdAt: '2025-03-01', createdBy: 'Ana Cruz' },
+  { id: 'SM-015', productId: '8', warehouseId: 'wh1', type: 'in', quantity: 200, reason: 'PO received', referenceType: 'PO', referenceId: 'GR-002', beforeQuantity: 10, afterQuantity: 210, movementDateTime: '2025-02-17', notes: 'PO-2025-002 received', createdAt: '2025-02-17', createdBy: 'Juan Reyes' },
+  { id: 'SM-016', productId: '8', warehouseId: 'wh1', type: 'out', quantity: 60, reason: 'Unit distribution', referenceType: 'MANUAL', referenceId: '', beforeQuantity: 210, afterQuantity: 150, movementDateTime: '2025-03-01', notes: 'Regular unit distribution', createdAt: '2025-03-01', createdBy: 'Ana Cruz' },
   
   // Product 9 - Floor cleaner
-  { id: 'SM-017', productId: '9', type: 'in', quantity: 50, notes: 'Partial — floor cleaner short by 10 bottles.', referenceId: 'GR-002', createdAt: '2025-02-17', createdBy: 'Juan Reyes' },
-  { id: 'SM-018', productId: '9', type: 'in', quantity: 10, notes: 'Remaining 10 bottles received.', referenceId: 'GR-003', createdAt: '2025-02-18', createdBy: 'Maria Santos' },
-  { id: 'SM-019', productId: '9', type: 'out', quantity: 15, notes: 'Deep cleaning operations', referenceId: '', createdAt: '2025-02-25', createdBy: 'Warehouse Staff' },
+  { id: 'SM-017', productId: '9', warehouseId: 'wh2', type: 'in', quantity: 50, reason: 'Partial delivery', referenceType: 'PO', referenceId: 'GR-002', beforeQuantity: 3, afterQuantity: 53, movementDateTime: '2025-02-17', notes: 'Partial — floor cleaner short by 10 bottles.', createdAt: '2025-02-17', createdBy: 'Juan Reyes' },
+  { id: 'SM-018', productId: '9', warehouseId: 'wh2', type: 'in', quantity: 10, reason: 'Remaining delivery', referenceType: 'PO', referenceId: 'GR-003', beforeQuantity: 53, afterQuantity: 63, movementDateTime: '2025-02-18', notes: 'Remaining 10 bottles received.', createdAt: '2025-02-18', createdBy: 'Maria Santos' },
+  { id: 'SM-019', productId: '9', warehouseId: 'wh2', type: 'out', quantity: 15, reason: 'Deep cleaning operations', referenceType: 'MANUAL', referenceId: '', beforeQuantity: 63, afterQuantity: 48, movementDateTime: '2025-02-25', notes: 'Deep cleaning operations', createdAt: '2025-02-25', createdBy: 'Warehouse Staff' },
   
   // Product 10 - Coffee (pods)
-  { id: 'SM-020', productId: '10', type: 'in', quantity: 30, notes: 'PO-2025-003 received', referenceId: 'po3', createdAt: '2025-02-17', createdBy: 'Purchase Officer' },
-  { id: 'SM-021', productId: '10', type: 'out', quantity: 18, notes: 'Guest amenity distribution', referenceId: 'BK-2025-002', createdAt: '2025-03-05', createdBy: 'Ana Cruz' },
+  { id: 'SM-020', productId: '10', warehouseId: 'wh1', type: 'in', quantity: 30, reason: 'PO received', referenceType: 'PO', referenceId: 'po3', beforeQuantity: 1, afterQuantity: 31, movementDateTime: '2025-02-17', notes: 'PO-2025-003 received', createdAt: '2025-02-17', createdBy: 'Purchase Officer' },
+  { id: 'SM-021', productId: '10', warehouseId: 'wh1', type: 'out', quantity: 18, reason: 'Guest amenity distribution', referenceType: 'BOOKING', referenceId: 'BK-2025-002', beforeQuantity: 31, afterQuantity: 13, movementDateTime: '2025-03-05', notes: 'Guest amenity distribution', createdAt: '2025-03-05', createdBy: 'Ana Cruz' },
   
   // Product 11 - Fabric softener
-  { id: 'SM-022', productId: '11', type: 'in', quantity: 25, notes: 'Regular stock replenishment', referenceId: 'po5', createdAt: '2025-02-05', createdBy: 'Admin User' },
-  { id: 'SM-023', productId: '11', type: 'out', quantity: 21, notes: 'Laundry operations', referenceId: '', createdAt: '2025-02-19', createdBy: 'Warehouse Staff' },
+  { id: 'SM-022', productId: '11', warehouseId: 'wh1', type: 'in', quantity: 25, reason: 'Regular replenishment', referenceType: 'PO', referenceId: 'po5', beforeQuantity: 4, afterQuantity: 29, movementDateTime: '2025-02-05', notes: 'Regular stock replenishment', createdAt: '2025-02-05', createdBy: 'Admin User' },
+  { id: 'SM-023', productId: '11', warehouseId: 'wh1', type: 'out', quantity: 21, reason: 'Laundry operations', referenceType: 'MANUAL', referenceId: '', beforeQuantity: 29, afterQuantity: 8, movementDateTime: '2025-02-19', notes: 'Laundry operations', createdAt: '2025-02-19', createdBy: 'Warehouse Staff' },
   
   // Product 13 - Air freshener
-  { id: 'SM-024', productId: '13', type: 'in', quantity: 15, notes: 'Restocking utility room', referenceId: 'po6', createdAt: '2025-02-09', createdBy: 'Mike Storage' },
-  { id: 'SM-025', productId: '13', type: 'adjustment', quantity: -3, notes: 'Minor cosmetic dents', referenceId: 'DI-2025-001', createdAt: '2025-03-01', createdBy: 'Mike Storage' },
-  { id: 'SM-026', productId: '13', type: 'out', quantity: 12, notes: 'Distributed to active units', referenceId: '', createdAt: '2025-02-15', createdBy: 'Warehouse Staff' },
+  { id: 'SM-024', productId: '13', warehouseId: 'wh2', type: 'in', quantity: 15, reason: 'Restocking utility room', referenceType: 'PO', referenceId: 'po6', beforeQuantity: 0, afterQuantity: 15, movementDateTime: '2025-02-09', notes: 'Restocking utility room', createdAt: '2025-02-09', createdBy: 'Mike Storage' },
+  { id: 'SM-025', productId: '13', warehouseId: 'wh2', type: 'out', quantity: 3, reason: 'Damage adjustment', referenceType: 'DAMAGE', referenceId: 'DI-2025-001', beforeQuantity: 15, afterQuantity: 12, movementDateTime: '2025-03-01', notes: 'Minor cosmetic dents', createdAt: '2025-03-01', createdBy: 'Mike Storage' },
+  { id: 'SM-026', productId: '13', warehouseId: 'wh2', type: 'out', quantity: 12, reason: 'Unit distribution', referenceType: 'MANUAL', referenceId: '', beforeQuantity: 12, afterQuantity: 0, movementDateTime: '2025-02-15', notes: 'Distributed to active units', createdAt: '2025-02-15', createdBy: 'Warehouse Staff' },
 ];
+
+// Ensure seeded movement datetimes follow a single `YYYY-MM-DD HH:mm` format.
+mockStockMovements.forEach((movement) => {
+  const rawValue = movement.movementDateTime || movement.createdAt;
+  if (!rawValue) return;
+
+  if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(rawValue)) {
+    movement.movementDateTime = rawValue;
+    movement.createdAt = rawValue;
+    return;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+    const normalized = `${rawValue} 00:00`;
+    movement.movementDateTime = normalized;
+    movement.createdAt = normalized;
+  }
+});
 
 // Mock Damage Adjustments
 export const mockDamageAdjustments: DamageAdjustment[] = [
@@ -798,6 +838,47 @@ export const mockUnits: InventoryUnit[] = [
   { id: 'u8', name: 'Villa C', type: 'house', location: 'Talomo', itemCount: 11, imageUrl: '/heroimage.png' },
   { id: 'u9', name: 'Unit 101', type: 'condominium', location: 'Ecoland', itemCount: 8, imageUrl: '/heroimage.png' },
   { id: 'u10', name: 'Loft D', type: 'apartment', location: 'Bajada', itemCount: 5, imageUrl: '/heroimage.png' },
+];
+
+export const mockUnitStockMovements: UnitStockMovementRow[] = [
+  {
+    id: 'UM-001',
+    productId: '1',
+    productName: 'Towels',
+    unitId: 'u1',
+    unitName: 'Unit 711',
+    sourceWarehouseId: 'wh1',
+    sourceWarehouseName: 'Main Storage',
+    quantity: 12,
+    reason: 'Room turnover preparation',
+    referenceType: 'BOOKING',
+    referenceId: 'BK-2025-001',
+    beforeQuantity: 28,
+    afterQuantity: 16,
+    recordedAt: '2025-03-07 13:05',
+    recordedDate: '2025-03-07',
+    recordedTime: '13:05',
+    createdBy: 'Ana Cruz',
+  },
+  {
+    id: 'UM-002',
+    productId: '3',
+    productName: 'Shampoo (bottles)',
+    unitId: 'u2',
+    unitName: 'Unit 712',
+    sourceWarehouseId: 'wh1',
+    sourceWarehouseName: 'Main Storage',
+    quantity: 6,
+    reason: 'Guest stay preparation',
+    referenceType: 'BOOKING',
+    referenceId: 'BK-2025-004',
+    beforeQuantity: 33,
+    afterQuantity: 27,
+    recordedAt: '2025-03-08 10:45',
+    recordedDate: '2025-03-08',
+    recordedTime: '10:45',
+    createdBy: 'Ana Cruz',
+  },
 ];
 
 export interface WarehouseUnitAllocationItem {

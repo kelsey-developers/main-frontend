@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -9,6 +9,7 @@ import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
 import { mockReplenishmentItems, mockWarehouseDirectoryData } from '../lib/mockData';
+import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 function InventoryItemsPageContent() {
   const router = useRouter();
@@ -16,11 +17,28 @@ function InventoryItemsPageContent() {
   const warehouseIdFromQuery = searchParams.get('warehouseId');
   const warehouseNameFromQuery = searchParams.get('warehouseName');
   const itemIdFromQuery = searchParams.get('itemId');
+  const [, setRefreshTick] = useState(0);
   
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(warehouseIdFromQuery);
   const [selectedItem, setSelectedItem] = useState<typeof mockReplenishmentItems[number] | null>(
     itemIdFromQuery ? mockReplenishmentItems.find((item) => item.id === itemIdFromQuery) || null : null
   );
+
+  useEffect(() => {
+    const refresh = () => {
+      recomputeAllInventoryDerivedValues();
+      setRefreshTick((tick) => tick + 1);
+    };
+
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
 
   // Combine query param with local state (query param takes precedence)
   const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId;

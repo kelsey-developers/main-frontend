@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const apiUrl = process.env.API_URL || '';
+
 const nextConfig: NextConfig = {
   /* config options here */
   webpack: (config, { dev }) => {
@@ -11,6 +13,9 @@ const nextConfig: NextConfig = {
       };
     }
     return config;
+  async rewrites() {
+    if (!apiUrl) return [];
+    return [{ source: '/api/:path*', destination: `${apiUrl}/api/:path*` }];
   },
 };
 

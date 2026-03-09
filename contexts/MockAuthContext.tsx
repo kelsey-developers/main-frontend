@@ -7,7 +7,7 @@ import React, { createContext, useContext, useMemo } from 'react';
  * Replace with real AuthContext/API when backend is connected.
  */
 export interface MockUserRole {
-  role: 'admin' | 'agent' | 'user';
+  role: 'admin' | 'agent' | 'finance' | 'user';
   fullname?: string;
 }
 
