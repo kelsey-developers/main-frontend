@@ -10,13 +10,44 @@ import { getWarehouseStats } from '../helpers/warehouseHelpers';
 import {
   getWarehouseUnitAllocations,
   mockWarehouseDirectoryData,
+  mockReplenishmentItems,
   type WarehouseDirectoryRecord,
   type WarehouseInventoryBalanceRow,
   type WarehouseMovementRow,
 } from '../lib/mockData';
+import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 type Warehouse = WarehouseDirectoryRecord;
 type SortKey = 'name' | 'mostStock' | 'mostLowStock';
+
+const formatRecordedDateTime = (value?: string) => {
+  const base = value ? new Date(value) : new Date();
+  const parsed = Number.isNaN(base.getTime()) ? new Date() : base;
+  const yyyy = parsed.getFullYear();
+  const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+  const dd = String(parsed.getDate()).padStart(2, '0');
+  const hh = String(parsed.getHours()).padStart(2, '0');
+  const min = String(parsed.getMinutes()).padStart(2, '0');
+
+  return {
+    date: `${yyyy}-${mm}-${dd}`,
+    time: `${hh}:${min}`,
+    recordedAt: `${yyyy}-${mm}-${dd} ${hh}:${min}`,
+  };
+};
+
+const nextWarehouseMovementId = (warehouses: Warehouse[]) => {
+  const maxId = warehouses.reduce((max, warehouse) => {
+    const warehouseMax = warehouse.stockMovements.reduce((innerMax, movement) => {
+      const matched = movement.id.match(/^WM-(\d+)$/i);
+      if (!matched) return innerMax;
+      return Math.max(innerMax, Number(matched[1]));
+    }, 0);
+    return Math.max(max, warehouseMax);
+  }, 0);
+
+  return `WM-${String(maxId + 1).padStart(3, '0')}`;
+};
 
 const WarehouseFormModal = ({
   warehouse,
@@ -100,7 +131,7 @@ const WarehouseFormModal = ({
   );
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[1000] p-4">
+    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl">
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center rounded-t-2xl">
           <div>
@@ -253,7 +284,7 @@ const WarehouseTransferStockModal = ({
   };
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[1001] p-4">
+    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[520px] overflow-visible shadow-2xl">
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center rounded-t-2xl">
           <h3 className="text-[17px] font-bold text-white" style={{ fontFamily: 'Poppins' }}>Transfer Stock</h3>
@@ -340,14 +371,32 @@ const WarehouseDetailModal = ({
   warehouse,
   onClose,
   onTransfer,
+  onThresholdChange,
 }: {
   warehouse: Warehouse;
   onClose: () => void;
   onTransfer: () => void;
+  onThresholdChange: (warehouseId: string, productId: string, reorderLevel: number) => void;
 }) => {
   const router = useRouter();
   const stats = getWarehouseStats(warehouse);
   const unitAllocations = getWarehouseUnitAllocations(warehouse.id);
+  
+  // Track pending threshold changes before saving
+  const [pendingThresholds, setPendingThresholds] = useState<Record<string, number>>({});
+  
+  const hasUnsavedChanges = Object.keys(pendingThresholds).length > 0;
+  
+  const handleSaveThresholds = () => {
+    Object.entries(pendingThresholds).forEach(([productId, reorderLevel]) => {
+      onThresholdChange(warehouse.id, productId, reorderLevel);
+    });
+    setPendingThresholds({});
+  };
+  
+  const getThresholdValue = (productId: string, originalValue: number) => {
+    return pendingThresholds[productId] ?? originalValue;
+  };
 
   useEffect(() => {
     const fn = (event: KeyboardEvent) => {
@@ -376,7 +425,7 @@ const WarehouseDetailModal = ({
   }, [onClose]);
 
   return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[1000] p-4">
+    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[900px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl">
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-start">
           <div className="flex-1">
@@ -417,8 +466,20 @@ const WarehouseDetailModal = ({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="border border-gray-200 rounded-lg overflow-hidden self-start">
-              <div className="px-4 py-3 bg-[#f8fbfb] border-b border-gray-200">
+              <div className="px-4 py-3 bg-[#f8fbfb] border-b border-gray-200 flex items-center justify-between">
                 <h3 className="text-[14px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>Inventory Balance</h3>
+                {hasUnsavedChanges && (
+                  <button
+                    onClick={handleSaveThresholds}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white text-[11px] font-semibold hover:opacity-90 transition-opacity"
+                    style={{ fontFamily: 'Poppins' }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M13 2L6 13L2 9" />
+                    </svg>
+                    Save Changes
+                  </button>
+                )}
               </div>
               {warehouse.inventoryBalances.length === 0 ? (
                 <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
@@ -437,12 +498,38 @@ const WarehouseDetailModal = ({
                     </thead>
                     <tbody>
                       {warehouse.inventoryBalances.map((row) => {
-                        const shortfall = Math.max(0, row.reorderLevel - row.quantity);
+                        const currentThreshold = getThresholdValue(row.productId, row.reorderLevel);
+                        const shortfall = Math.max(0, currentThreshold - row.quantity);
                         return (
                           <tr key={row.productId} className="border-b border-gray-100 last:border-b-0">
                             <td className="px-4 py-2.5 text-[13px] text-gray-800" style={{ fontFamily: 'Poppins' }}>{row.productName}</td>
                             <td className="px-4 py-2.5 text-[13px] text-center text-gray-700" style={{ fontFamily: 'Poppins' }}>{row.quantity}</td>
-                            <td className="px-4 py-2.5 text-[13px] text-center text-gray-700" style={{ fontFamily: 'Poppins' }}>{row.reorderLevel}</td>
+                            <td className="px-4 py-2.5 text-[13px] text-center text-gray-700" style={{ fontFamily: 'Poppins' }}>
+                              <input
+                                type="number"
+                                min={0}
+                                value={currentThreshold}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={(e) => {
+                                  // If current value is 0 and user types a digit, select all first
+                                  // so the digit replaces the 0 instead of appending
+                                  if (currentThreshold === 0 && /^\d$/.test(e.key)) {
+                                    e.currentTarget.select();
+                                  }
+                                }}
+                                onChange={(event) => {
+                                  const rawValue = event.target.value;
+                                  // Strip leading zeros: "06" -> "6", "00" -> "0"
+                                  const cleanValue = rawValue === '' ? 0 : parseInt(rawValue, 10) || 0;
+                                  setPendingThresholds((prev) => ({
+                                    ...prev,
+                                    [row.productId]: cleanValue,
+                                  }));
+                                }}
+                                className="w-20 px-2 py-1 text-center border border-gray-200 rounded-md text-[12px]"
+                                style={{ fontFamily: 'Poppins' }}
+                              />
+                            </td>
                             <td className="px-4 py-2.5 text-[13px] text-center font-semibold text-amber-700" style={{ fontFamily: 'Poppins' }}>{shortfall}</td>
                           </tr>
                         );
@@ -468,7 +555,7 @@ const WarehouseDetailModal = ({
                       <li key={movement.id} className="px-4 py-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-[12.5px] font-medium text-gray-800" style={{ fontFamily: 'Poppins' }}>{movement.productName}</p>
-                          <span className="text-[11px] text-gray-500" style={{ fontFamily: 'Poppins' }}>{movement.date}</span>
+                          <span className="text-[11px] text-gray-500" style={{ fontFamily: 'Poppins' }}>{movement.date} {movement.time}</span>
                         </div>
                         <p className="text-[11.5px] text-gray-600" style={{ fontFamily: 'Poppins' }}>
                           {movement.type.toUpperCase()} - {movement.quantity} units - {movement.note}
@@ -680,6 +767,21 @@ export default function WarehousesPage() {
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    const refresh = () => {
+      // Create a new top-level array reference so React re-renders updated warehouse movement history.
+      setWarehouses([...mockWarehouseDirectoryData]);
+    };
+
+    window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+
   const handleTransferStock = ({
     fromWarehouseId,
     toWarehouseId,
@@ -699,9 +801,11 @@ export default function WarehousesPage() {
       const sourceProduct = source.inventoryBalances.find((row) => row.productId === productId);
       if (!sourceProduct || sourceProduct.quantity < quantity) return prev;
 
-      const movementDate = new Date().toISOString().slice(0, 10);
+      const movementTime = formatRecordedDateTime();
       const transferNote = `Transfer from ${source.name} to ${destination.name}`;
       const receiveNote = `Transfer from ${source.name}`;
+      const outboundMovementId = nextWarehouseMovementId(prev);
+      const inboundMovementId = `WM-${String(Number(outboundMovementId.slice(3)) + 1).padStart(3, '0')}`;
 
       return prev.map((warehouse) => {
         if (warehouse.id === fromWarehouseId) {
@@ -714,11 +818,13 @@ export default function WarehousesPage() {
             .filter((row) => row.quantity > 0 || row.reorderLevel > 0);
 
           const movement: WarehouseMovementRow = {
-            id: `wm-${Date.now()}-out`,
+            id: outboundMovementId,
             type: 'transfer',
             productName: sourceProduct.productName,
             quantity,
-            date: movementDate,
+            date: movementTime.date,
+            time: movementTime.time,
+            recordedAt: movementTime.recordedAt,
             note: transferNote,
           };
 
@@ -747,11 +853,13 @@ export default function WarehousesPage() {
           }
 
           const movement: WarehouseMovementRow = {
-            id: `wm-${Date.now()}-in`,
+            id: inboundMovementId,
             type: 'transfer',
             productName: sourceProduct.productName,
             quantity,
-            date: movementDate,
+            date: movementTime.date,
+            time: movementTime.time,
+            recordedAt: movementTime.recordedAt,
             note: receiveNote,
           };
 
@@ -761,6 +869,32 @@ export default function WarehousesPage() {
         return warehouse;
       });
     });
+  };
+
+  const handleWarehouseThresholdChange = (
+    warehouseId: string,
+    productId: string,
+    reorderLevel: number
+  ) => {
+    const safeValue = Math.max(0, reorderLevel);
+
+    // Update warehouse threshold
+    const sourceWarehouse = mockWarehouseDirectoryData.find((warehouse) => warehouse.id === warehouseId);
+    const sourceBalance = sourceWarehouse?.inventoryBalances.find((row) => row.productId === productId);
+    if (sourceBalance) {
+      sourceBalance.reorderLevel = safeValue;
+    }
+
+    // Update corresponding item's minStock in inventory
+    const item = mockReplenishmentItems.find((i) => i.id === productId);
+    if (item) {
+      item.minStock = safeValue;
+    }
+
+    // Recompute derived values (shortfall, low stock status, etc.)
+    recomputeAllInventoryDerivedValues();
+
+    setWarehouses([...mockWarehouseDirectoryData]);
   };
 
   return (
@@ -1053,6 +1187,7 @@ export default function WarehousesPage() {
             setTransferTarget(selectedWarehouse);
             setDetailModalOpen(false);
           }}
+          onThresholdChange={handleWarehouseThresholdChange}
         />
       )}
     </>

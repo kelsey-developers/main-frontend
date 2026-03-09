@@ -12,6 +12,8 @@ export interface StockMovementRow {
   quantity: number;
   createdBy?: string;
   createdAt: string;
+  recordedDate: string;
+  recordedTime: string;
 }
 
 const MOVEMENT_STATUS_CONFIG: Record<
@@ -30,32 +32,16 @@ const MOVEMENT_STATUS_CONFIG: Record<
     textClass: 'text-red-700',
     dotColor: '#f10e3b',
   },
-  adjustment: {
-    label: 'Adjustment',
-    bgClass: 'bg-amber-50 border border-amber-200',
-    textClass: 'text-amber-700',
-    dotColor: '#ce7100',
-  },
-  damage: {
-    label: 'Damage',
-    bgClass: 'bg-rose-50 border border-rose-200',
-    textClass: 'text-rose-700',
-    dotColor: '#e11d48',
-  },
 };
 
 const TYPE_COLOR: Record<StockMovementType, string> = {
   in: '#28950e',
   out: '#f10e3b',
-  adjustment: '#ce7100',
-  damage: '#f10e3b',
 };
 
 const TYPE_SIGN: Record<StockMovementType, string> = {
   in: '+',
   out: '-',
-  adjustment: '±',
-  damage: '-',
 };
 
 function Qty({ type, quantity }: { type: StockMovementType; quantity: number }) {
@@ -79,7 +65,7 @@ const StockMovementsTableSkeleton = () => (
     <table className="w-full border-collapse">
       <thead className="bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white">
         <tr>
-          {['ID', 'PRODUCT', 'WAREHOUSE', 'TYPE', 'QTY', 'BY', 'DATE'].map((header) => (
+          {['ID', 'PRODUCT', 'WAREHOUSE', 'TYPE', 'QTY', 'BY', 'DATE', 'TIME'].map((header) => (
             <th key={header} className="px-4 py-3 text-left text-xs font-bold tracking-wide text-white/75">
               {header}
             </th>
@@ -111,6 +97,9 @@ const StockMovementsTableSkeleton = () => (
             <td className="px-4 py-3">
               <div className="h-3 w-24 rounded bg-slate-200" />
             </td>
+            <td className="px-4 py-3">
+              <div className="h-3 w-14 rounded bg-slate-200" />
+            </td>
           </tr>
         ))}
       </tbody>
@@ -128,7 +117,7 @@ export default function StockMovementsTable({ movements, isLoading }: { movement
       <table className="w-full border-collapse">
         <thead className="bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white">
           <tr>
-            {['ID', 'PRODUCT', 'WAREHOUSE', 'TYPE', 'QTY', 'BY', 'DATE'].map((header) => (
+            {['ID', 'PRODUCT', 'WAREHOUSE', 'TYPE', 'QTY', 'BY', 'DATE', 'TIME'].map((header) => (
               <th key={header} className="px-4 py-3 text-left text-xs font-bold tracking-wide text-white/75">
                 {header}
               </th>
@@ -139,7 +128,7 @@ export default function StockMovementsTable({ movements, isLoading }: { movement
         <tbody>
           {movements.length === 0 ? (
             <tr>
-              <td colSpan={7} className="p-10 text-center text-sm text-gray-400">
+              <td colSpan={8} className="p-10 text-center text-sm text-gray-400">
                 No movements found matching your criteria
               </td>
             </tr>
@@ -159,7 +148,8 @@ export default function StockMovementsTable({ movements, isLoading }: { movement
                   <Qty type={movement.type} quantity={movement.quantity} />
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-600">{movement.createdBy || 'N/A'}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{movement.createdAt}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{movement.recordedDate}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{movement.recordedTime}</td>
               </tr>
             ))
           )}

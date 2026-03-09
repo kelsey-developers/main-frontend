@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export type ConfirmVariant = {
   title: string;
@@ -23,7 +24,11 @@ export default function ConfirmModal({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
+
     const fn = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
@@ -48,8 +53,12 @@ export default function ConfirmModal({
     };
   }, [onClose]);
 
-  return (
-    <div onClick={onClose} className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[1001] p-4">
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[460px] overflow-hidden shadow-2xl">
         <div className={`px-5 py-4 border-b-[1.5px] ${variant.headerClass}`}>
           <div className="text-[15px] font-bold" style={{ fontFamily: 'Poppins' }}>{variant.title}</div>
@@ -78,6 +87,7 @@ export default function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

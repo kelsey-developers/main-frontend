@@ -1053,10 +1053,9 @@ const ManageUnits: React.FC = () => {
 
       {showDeleteModal && (
         <div 
-          className="fixed inset-0 flex items-center justify-center z-50 modal-backdrop"
+          className="fixed inset-0 flex items-center justify-center z-[10000] modal-backdrop"
           style={{
-            backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(0, 0, 0, 0.25)',
+            backgroundColor: 'rgba(17, 24, 39, 0.38)',
             transition: 'background-color 0.25s ease'
           }}
           onClick={closeDeleteModal}

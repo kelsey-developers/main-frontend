@@ -1,14 +1,28 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import ToastContainer from './ToastContainer';
+import { useToast } from '../hooks/useToast';
+import { useMockAuth } from '@/contexts/MockAuthContext';
+import { processStockOut } from '../lib/inventoryLedger';
 import { 
   mockReplenishmentItems, 
   mockWarehouseDirectoryData,
   mockUnits,
 } from '../lib/mockData';
+
+// ─── Date utility ─────────────────────────────────────────────────
+const getTodayISO = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -297,18 +311,54 @@ function AddItemBtn({ onAdd, accent }: { onAdd: () => void; accent: string }) {
 // ═══════════════════════════════════════════════════════════════════
 // WAREHOUSE FORM COMPONENT
 // ═══════════════════════════════════════════════════════════════════
-function WarehouseForm() {
-  const [confirmedBy, setConfirmedBy] = useState('');
-  const [idNumber, setIdNumber] = useState('');
+interface WarehouseFormProps {
+  onDraftChange: (draft: WarehouseDraft) => void;
+}
+
+interface WarehouseDraft {
+  confirmedBy: string;
+  idNumber: string;
+  warehouse: string;
+  reason: string;
+  toWarehouse: string;
+  date: string;
+  reference: string;
+  notes: string;
+  items: LineItem[];
+}
+
+function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
+  const mockAuth = useMockAuth();
+  const [confirmedBy, setConfirmedBy] = useState(mockAuth.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(mockAuth.user?.id || '');
   const [warehouse, setWarehouse] = useState('');
   const [reason, setReason] = useState('');
+  const [toWarehouse, setToWarehouse] = useState('');
+  const [date, setDate] = useState(getTodayISO());
+  const [reference, setReference] = useState('');
+  const [notes, setNotes] = useState('');
   const [isDamage, setIsDamage] = useState(false);
   const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
 
+  useEffect(() => {
+    onDraftChange({
+      confirmedBy,
+      idNumber,
+      warehouse,
+      reason,
+      toWarehouse,
+      date,
+      reference,
+      notes,
+      items,
+    });
+  }, [confirmedBy, idNumber, warehouse, reason, toWarehouse, date, reference, notes, items, onDraftChange]);
+
   const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const isTransfer = reason === 'Inter-warehouse Transfer';
 
   return (
     <>
@@ -324,18 +374,18 @@ function WarehouseForm() {
           <input
             type="text"
             value={confirmedBy}
-            onChange={(e) => setConfirmedBy(e.target.value)}
+            readOnly
             placeholder="e.g. Juan Dela Cruz"
-            style={inputStyle}
+            style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
           />
         </Field>
         <Field label="ID Number" required hint="Employee/Staff ID">
           <input
             type="text"
             value={idNumber}
-            onChange={(e) => setIdNumber(e.target.value)}
+            readOnly
             placeholder="e.g. EMP-2025-001"
-            style={inputStyle}
+            style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
           />
         </Field>
       </div>
@@ -383,12 +433,42 @@ function WarehouseForm() {
           />
         </Field>
         <Field label="Date" required>
-          <input type="date" style={inputStyle} defaultValue="2025-03-08" />
+          <input 
+            type="date" 
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={inputStyle} 
+          />
         </Field>
         <Field label="Reference No." hint="Optional">
-          <input placeholder="e.g. EVENT-001" style={inputStyle} />
+          <input 
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="e.g. EVENT-001" 
+            style={inputStyle} 
+          />
         </Field>
       </div>
+
+      {isTransfer && (
+        <div style={{ marginBottom: 14 }}>
+          <Field label="Destination Warehouse" required>
+            <InventoryDropdown
+              value={toWarehouse}
+              onChange={(value) => setToWarehouse(value)}
+              options={[
+                { value: '', label: 'Select destination warehouse…' },
+                ...warehouses.filter(w => w.id !== warehouse).map((w) => ({ value: w.id, label: w.name })),
+              ]}
+              placeholder="Select destination warehouse…"
+              placeholderWhen=""
+              hideIcon={true}
+              fullWidth={true}
+              minWidthClass="min-w-0"
+            />
+          </Field>
+        </div>
+      )}
 
       {isDamage && (
         <div
@@ -438,6 +518,8 @@ function WarehouseForm() {
       <Field label="Notes" style={{ marginTop: 16 }}>
         <textarea
           rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           placeholder="Additional context or remarks…"
           style={{ ...inputStyle, resize: 'vertical' }}
         />
@@ -449,18 +531,60 @@ function WarehouseForm() {
 // ═══════════════════════════════════════════════════════════════════
 // UNIT FORM COMPONENT
 // ═══════════════════════════════════════════════════════════════════
-function UnitForm() {
-  const [confirmedBy, setConfirmedBy] = useState('');
-  const [idNumber, setIdNumber] = useState('');
-  const [unit, setUnit] = useState('');
+interface UnitFormProps {
+  prefill?: {
+    unitId: string;
+    confirmedBy: string;
+    idNumber: string;
+    itemId: string;
+  };
+  onDraftChange: (draft: UnitDraft) => void;
+}
+
+interface UnitDraft {
+  confirmedBy: string;
+  idNumber: string;
+  unit: string;
+  booking: string;
+  reason: string;
+  srcWarehouse: string;
+  date: string;
+  reference: string;
+  notes: string;
+  items: LineItem[];
+}
+
+function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
+  const mockAuth = useMockAuth();
+  const [confirmedBy, setConfirmedBy] = useState(mockAuth.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(mockAuth.user?.id || '');
+  const [unit, setUnit] = useState(prefill?.unitId || '');
   const [booking, setBooking] = useState('');
   const [reason, setReason] = useState('');
   const [srcWarehouse, setSrcWarehouse] = useState('');
+  const [date, setDate] = useState(getTodayISO());
+  const [reference, setReference] = useState('');
+  const [notes, setNotes] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
   const bk = BOOKINGS.find((b) => b.id === booking);
+
+  useEffect(() => {
+    onDraftChange({
+      confirmedBy,
+      idNumber,
+      unit,
+      booking,
+      reason,
+      srcWarehouse,
+      date,
+      reference,
+      notes,
+      items,
+    });
+  }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, notes, items, onDraftChange]);
 
   const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
 
@@ -478,18 +602,18 @@ function UnitForm() {
           <input
             type="text"
             value={confirmedBy}
-            onChange={(e) => setConfirmedBy(e.target.value)}
+            readOnly
             placeholder="e.g. Maria Santos"
-            style={inputStyle}
+            style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
           />
         </Field>
         <Field label="ID Number" required hint="Employee/Staff ID">
           <input
             type="text"
             value={idNumber}
-            onChange={(e) => setIdNumber(e.target.value)}
+            readOnly
             placeholder="e.g. EMP-2025-002"
-            style={inputStyle}
+            style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
           />
         </Field>
       </div>
@@ -614,10 +738,20 @@ function UnitForm() {
           />
         </Field>
         <Field label="Date" required>
-          <input type="date" style={inputStyle} defaultValue="2025-03-08" />
+          <input 
+            type="date" 
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={inputStyle} 
+          />
         </Field>
         <Field label="Reference No." hint="Optional">
-          <input placeholder="e.g. BK-2025-001" style={inputStyle} />
+          <input 
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="e.g. BK-2025-001" 
+            style={inputStyle} 
+          />
         </Field>
       </div>
 
@@ -643,6 +777,8 @@ function UnitForm() {
       <Field label="Notes" style={{ marginTop: 16 }}>
         <textarea
           rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           placeholder="Additional remarks for this unit allocation…"
           style={{ ...inputStyle, resize: 'vertical' }}
         />
@@ -657,15 +793,28 @@ function UnitForm() {
 interface StockOutModalProps {
   mode: 'warehouse' | 'unit';
   onClose: () => void;
+  returnTo?: string;
+  unitPrefill?: {
+    unitId: string;
+    confirmedBy: string;
+    idNumber: string;
+    itemId: string;
+  };
 }
 
-export default function StockOutModal({ mode, onClose }: StockOutModalProps) {
+export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: StockOutModalProps) {
   const router = useRouter();
   const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { toasts, removeToast, success, error } = useToast();
+  const mockAuth = useMockAuth();
+  const [warehouseDraft, setWarehouseDraft] = useState<WarehouseDraft | null>(null);
+  const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
 
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
+    setMounted(true);
   }, []);
 
   // Trap scroll
@@ -682,10 +831,87 @@ export default function StockOutModal({ mode, onClose }: StockOutModalProps) {
   };
 
   const handleSubmit = () => {
-    console.log('Stock Out logged!');
-    // TODO: Backend integration
-    alert('Stock Out logged successfully!');
-    handleClose();
+    try {
+      const isWH = mode === 'warehouse';
+      
+      if (isWH) {
+        if (!warehouseDraft) {
+          error('Form is still loading. Please try again.');
+          return;
+        }
+        if (!warehouseDraft.warehouse || !warehouseDraft.reason || !warehouseDraft.date) {
+          error('Please fill warehouse, reason, and date.');
+          return;
+        }
+        if (warehouseDraft.reason === 'Inter-warehouse Transfer' && !warehouseDraft.toWarehouse) {
+          error('Please select destination warehouse for transfer.');
+          return;
+        }
+
+        const validItems = warehouseDraft.items.filter(
+          (entry) => entry.productId && Number(entry.quantity) > 0
+        );
+        if (!validItems.length) {
+          error('Add at least one item with quantity.');
+          return;
+        }
+
+        validItems.forEach((entry) => {
+          processStockOut({
+            productId: entry.productId,
+            warehouseId: warehouseDraft.warehouse,
+            quantity: Number(entry.quantity),
+            reason: warehouseDraft.reason,
+            date: warehouseDraft.date,
+            reference: warehouseDraft.reference || undefined,
+            notes: warehouseDraft.notes || undefined,
+            createdBy: warehouseDraft.confirmedBy || undefined,
+            transferToWarehouseId:
+              warehouseDraft.reason === 'Inter-warehouse Transfer'
+                ? warehouseDraft.toWarehouse
+                : undefined,
+          });
+        });
+      } else {
+        if (!unitDraft) {
+          error('Form is still loading. Please try again.');
+          return;
+        }
+        if (!unitDraft.unit || !unitDraft.srcWarehouse || !unitDraft.reason || !unitDraft.date) {
+          error('Please fill unit, source warehouse, reason, and date.');
+          return;
+        }
+
+        const validItems = unitDraft.items.filter(
+          (entry) => entry.productId && Number(entry.quantity) > 0
+        );
+        if (!validItems.length) {
+          error('Add at least one item with quantity.');
+          return;
+        }
+
+        validItems.forEach((entry) => {
+          processStockOut({
+            productId: entry.productId,
+            warehouseId: unitDraft.srcWarehouse,
+            quantity: Number(entry.quantity),
+            reason: unitDraft.reason,
+            date: unitDraft.date,
+            reference: unitDraft.reference || unitDraft.booking || undefined,
+            notes: unitDraft.notes || undefined,
+            createdBy: unitDraft.confirmedBy || undefined,
+            unitId: unitDraft.unit,
+          });
+        });
+      }
+
+      success('Stock Out logged successfully!');
+      router.push(returnTo || '/sales-report/inventory/stock-movements');
+      handleClose();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to process stock-out movement.';
+      error(message);
+    }
   };
 
   const isWH = mode === 'warehouse';
@@ -702,16 +928,22 @@ export default function StockOutModal({ mode, onClose }: StockOutModalProps) {
     ? 'Deduct items from warehouse inventory'
     : 'Allocate items to a room or unit';
 
-  return (
-    <div
-      onClick={handleClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        background: 'rgba(0, 0, 0, 0.3)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <div
+        onClick={handleClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 10000,
+          background: 'rgba(17, 24, 39, 0.38)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
@@ -825,7 +1057,11 @@ export default function StockOutModal({ mode, onClose }: StockOutModalProps) {
 
         {/* ── Scrollable form body ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '26px 28px' }}>
-          {isWH ? <WarehouseForm /> : <UnitForm />}
+          {isWH ? (
+            <WarehouseForm onDraftChange={setWarehouseDraft} />
+          ) : (
+            <UnitForm prefill={unitPrefill} onDraftChange={setUnitDraft} />
+          )}
         </div>
 
         {/* ── Sticky footer ── */}
@@ -884,5 +1120,7 @@ export default function StockOutModal({ mode, onClose }: StockOutModalProps) {
         </div>
       </div>
     </div>
+    </>,
+    document.body
   );
 }

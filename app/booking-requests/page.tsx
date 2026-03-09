@@ -619,8 +619,7 @@ const BookingRequests: React.FC = () => {
         <div 
           className="fixed inset-0 flex items-center justify-center z-[10000]"
           style={{
-            backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(0, 0, 0, 0.25)'
+            backgroundColor: 'rgba(17, 24, 39, 0.38)'
           }}
           onClick={closeApproveModal}
         >
@@ -853,8 +852,7 @@ const BookingRequests: React.FC = () => {
         <div 
           className="fixed inset-0 flex items-center justify-center z-[10000]"
           style={{
-            backdropFilter: 'blur(4px)',
-            backgroundColor: 'rgba(0, 0, 0, 0.25)'
+            backgroundColor: 'rgba(17, 24, 39, 0.38)'
           }}
           onClick={closeConfirmModal}
         >

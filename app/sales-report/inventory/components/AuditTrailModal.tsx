@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type TouchEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import type { ReplenishmentItem } from '../types';
 import StatusBadge from './StatusBadge';
 
@@ -687,10 +688,15 @@ const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
 };
 
 const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
+  const [mounted, setMounted] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeStartY, setSwipeStartY] = useState<number | null>(null);
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!item) {
@@ -720,7 +726,7 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
     return normalizeAuditItem(item);
   }, [item]);
 
-  if (!viewItem) return null;
+  if (!viewItem || !mounted) return null;
   const pendingDamage = viewItem.damageAdjustments.filter((d) => d.status !== 'Resolved').length;
 
   const onSwipeStart = (event: TouchEvent<HTMLDivElement>) => {
@@ -746,7 +752,7 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
     setSwipeOffsetY(0);
   };
 
-  return (
+  return createPortal(
     <>
       <style>{`
         @keyframes auditMobileSheetIn {
@@ -762,12 +768,11 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(11,40,40,0.55)',
-          backdropFilter: 'blur(5px)',
+          background: 'rgba(17, 24, 39, 0.38)',
           display: 'flex',
           alignItems: isMobile ? 'flex-end' : 'center',
           justifyContent: 'center',
-          zIndex: 1000,
+          zIndex: 10000,
           padding: isMobile ? 0 : '20px',
           transition: 'opacity 0.24s ease-in-out',
         }}
@@ -908,7 +913,8 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
         </div>
       </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 };
 

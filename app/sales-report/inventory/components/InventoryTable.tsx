@@ -37,10 +37,16 @@ const SORT_OPTIONS: InventoryDropdownOption<SortKey>[] = [
 // ── Helpers ────────────────────────────────────────────────────────────────
 const getStockStatus = (current: number, min: number): StockStatus => {
   if (current === 0) return 'out';
+  if (min <= 0) return 'ok';
   const ratio = current / min;
   if (ratio < 0.4) return 'critical';
   if (ratio < 1) return 'low';
   return 'ok';
+};
+
+const getShortfall = (current: number, min: number) => {
+  if (min <= 0) return 0;
+  return Math.max(0, min - current);
 };
 
 const STATUS_CONFIG: Record<StockStatus, StatusConfig> = {
@@ -117,11 +123,15 @@ const InventoryTableSkeleton = () => {
   );
 };
 
-const StockCell = ({ item }: { item: ReplenishmentItem }) => {
+const StockCell = ({ item, isUnitView = false }: { item: ReplenishmentItem; isUnitView?: boolean }) => {
   const [hovered, setHovered] = useState(false);
-  const status = getStockStatus(item.currentStock, item.minStock);
+  const status = getStockStatus(item.currentStock, isUnitView ? 0 : item.minStock);
   const cfg = STATUS_CONFIG[status];
-  const ratio = Math.min(item.currentStock / item.minStock, 1);
+  const ratio = isUnitView
+    ? item.currentStock > 0
+      ? 1
+      : 0
+    : Math.min(item.currentStock / Math.max(item.minStock, 1), 1);
   const pct = Math.round(ratio * 100);
 
   return (
@@ -163,16 +173,18 @@ const StockCell = ({ item }: { item: ReplenishmentItem }) => {
             }}
           />
         </div>
-        <span
-          className="text-[9px] sm:text-[10px] whitespace-nowrap"
-          style={{ fontFamily: "'DM Mono', monospace", color: '#b0bcc8' }}
-        >
-          of {item.minStock}
-        </span>
+        {!isUnitView && (
+          <span
+            className="text-[9px] sm:text-[10px] whitespace-nowrap"
+            style={{ fontFamily: "'DM Mono', monospace", color: '#b0bcc8' }}
+          >
+            of {item.minStock}
+          </span>
+        )}
       </div>
 
       {/* Hover tooltip */}
-      {hovered && (
+      {hovered && !isUnitView && (
         <div
           className="absolute bottom-full left-2 sm:left-3 mb-2 bg-gray-800 text-white text-[10px] sm:text-[11px] px-2 py-1.5 rounded-md whitespace-nowrap z-30 pointer-events-none shadow-lg"
           style={{ fontFamily: 'Poppins' }}
@@ -195,9 +207,22 @@ const ShortfallCell = ({
   onStartOrder: (item: ReplenishmentItem) => void;
   isUnitView?: boolean;
 }) => {
+  if (isUnitView) {
+    return (
+      <div className="px-2 py-3 sm:px-3 sm:py-4 flex justify-center">
+        <span
+          className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11.5px] font-semibold rounded-full px-2.5 sm:px-3 py-1"
+          style={{ color: '#64748b', background: '#f1f5f9' }}
+        >
+          N/A
+        </span>
+      </div>
+    );
+  }
+
   const status = getStockStatus(item.currentStock, item.minStock);
   const cfg = STATUS_CONFIG[status];
-  const shortfall = item.shortfall;
+  const shortfall = getShortfall(item.currentStock, item.minStock);
 
   if (shortfall === 0) {
     return (
@@ -317,16 +342,20 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         if (sortBy === 'category') return a.category.localeCompare(b.category);
         if (sortBy === 'stock') return a.currentStock - b.currentStock;
-        if (sortBy === 'shortfall') return b.shortfall - a.shortfall;
+        if (sortBy === 'shortfall') {
+          return getShortfall(b.currentStock, isUnitView ? 0 : b.minStock) - getShortfall(a.currentStock, isUnitView ? 0 : a.minStock);
+        }
         return 0;
       });
     return result;
-  }, [items, searchQuery, sortBy]);
+  }, [items, searchQuery, sortBy, isUnitView]);
 
-  const needsRestockCount: number = useMemo(
-    () => items.filter((i) => getStockStatus(i.currentStock, i.minStock) !== 'ok').length,
-    [items]
-  );
+  const needsRestockCount: number = useMemo(() => {
+    if (isUnitView) {
+      return items.filter((i) => i.currentStock === 0).length;
+    }
+    return items.filter((i) => getStockStatus(i.currentStock, i.minStock) !== 'ok').length;
+  }, [items, isUnitView]);
 
   const handleStartOrder = (item: ReplenishmentItem) => {
     router.push(`/sales-report/inventory/purchase-orders/create?itemId=${item.id}`);
@@ -335,7 +364,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
   return (
     <div>
       {/* ── Restock Alert ────────────────────────────────────────────── */}
-      <RestockAlert count={needsRestockCount} />
+      {!isUnitView && <RestockAlert count={needsRestockCount} />}
 
       {/* ── Search + Sort ────────────────────────────────────────────── */}
       <div className="flex gap-2.5 mb-3.5 items-center">
@@ -413,13 +442,13 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                   }
                 `}</style>
                 {filtered.map((item, idx) => {
-                  const status = getStockStatus(item.currentStock, item.minStock);
+                  const status = getStockStatus(item.currentStock, isUnitView ? 0 : item.minStock);
 
                   const handleRowClick = () => {
-                    if (isUnitView || redirectOnClick) {
-                      router.push(`/sales-report/inventory/items?itemId=${item.id}`);
-                    } else if (onItemClick) {
+                    if (onItemClick) {
                       onItemClick(item);
+                    } else if (isUnitView || redirectOnClick) {
+                      router.push(`/sales-report/inventory/items?itemId=${item.id}`);
                     } else {
                       setSelectedAuditItem(item);
                     }
@@ -478,7 +507,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                       </div>
 
                       {/* Stock — bar + count + unit, threshold in hover tooltip */}
-                      <StockCell item={item} />
+                      <StockCell item={item} isUnitView={isUnitView} />
 
                       {/* Shortfall */}
                       <ShortfallCell item={item} onStartOrder={handleStartOrder} isUnitView={isUnitView} />
