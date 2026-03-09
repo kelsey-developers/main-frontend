@@ -4,6 +4,7 @@ import type {
   BookingStatus,
   CreateBookingInput,
 } from '@/types/booking';
+import { getBookings, createBooking as createBookingApi } from '@/lib/api/bookings';
 
 const LOCAL_BOOKINGS_KEY = 'booking_temporary_records_v1';
 
@@ -30,7 +31,9 @@ function normalizeStatus(value: unknown, fallback: BookingStatus = 'pending'): B
     case 'completed':
     case 'declined':
     case 'cancelled':
-      return status;
+    case 'penciled':
+    case 'confirmed':
+      return status as BookingStatus;
     default:
       return fallback;
   }
@@ -44,6 +47,7 @@ function normalizeRecord(raw: any): BookingRecord {
 
   return {
     id: String(raw?.id ?? raw?.booking_id ?? `BK-${Date.now()}`),
+    reference_code: raw?.reference_code ? String(raw.reference_code) : undefined,
     listing_id: String(raw?.listing_id ?? raw?.listingId ?? ''),
     check_in_date: checkIn,
     check_out_date: checkOut,
@@ -97,43 +101,13 @@ function writeLocalBookings(records: BookingRecord[]) {
   window.localStorage.setItem(LOCAL_BOOKINGS_KEY, JSON.stringify(records));
 }
 
-function toAvailability(record: BookingRecord): BookingAvailability {
+function toAvailability(item: { id: string; check_in_date: string; check_out_date: string; status?: string }): BookingAvailability {
   return {
-    id: record.id,
-    check_in_date: record.check_in_date,
-    check_out_date: record.check_out_date,
-    status: record.status,
+    id: item.id,
+    check_in_date: item.check_in_date,
+    check_out_date: item.check_out_date,
+    status: item.status,
   };
-}
-
-function extractArrayPayload<T>(payload: any): T[] {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.bookings)) return payload.bookings;
-  return [];
-}
-
-function extractSinglePayload<T>(payload: any): T {
-  if (payload?.data) return payload.data as T;
-  if (payload?.booking) return payload.booking as T;
-  return payload as T;
-}
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error || 'Request failed');
-  }
-
-  return data as T;
 }
 
 export const BookingService = {
@@ -141,27 +115,25 @@ export const BookingService = {
     if (!listingId) return [];
 
     try {
-      const payload = await fetchJson<any>(
-        `/api/bookings?listingId=${encodeURIComponent(listingId)}`
-      );
-      return extractArrayPayload<any>(payload)
-        .map(normalizeRecord)
-        .map(toAvailability);
+      const items = await getBookings(listingId);
+      return items.map(toAvailability);
     } catch {
       return readLocalBookings()
         .filter((record) => record.listing_id === listingId)
-        .map(toAvailability);
+        .map((r) => toAvailability(r));
     }
   },
 
   async createBooking(input: CreateBookingInput): Promise<BookingRecord> {
     try {
-      const payload = await fetchJson<any>('/api/bookings', {
-        method: 'POST',
-        body: JSON.stringify(input),
-      });
-      return normalizeRecord(extractSinglePayload<any>(payload));
-    } catch {
+      const payload = await createBookingApi(input);
+      return normalizeRecord(payload);
+    } catch (err) {
+      // Re-throw API errors (409 overlap, 401, etc.) so the UI can show them
+      if (err instanceof Error && (err as Error & { status?: number }).status != null) {
+        throw err;
+      }
+      // Fall back to localStorage only when API is unavailable (network error, etc.)
       const now = toIsoNow();
       const records = readLocalBookings();
       const created: BookingRecord = {

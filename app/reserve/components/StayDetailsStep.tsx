@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import type { BookingFormData, BookingAvailability } from '@/types/booking';
 import type { Listing } from '@/types/listing';
 import { BookingService } from '@/services/bookingService';
@@ -81,15 +81,18 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
   const defaultCheckInTime = listing?.check_in_time || '14:00';
   const defaultCheckOutTime = listing?.check_out_time || '12:00';
 
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+
   // Automatically set times from listing when dates are selected
   useEffect(() => {
     if (formData.checkInDate && !formData.checkInTime) {
-      onUpdate({ checkInTime: defaultCheckInTime });
+      onUpdateRef.current({ checkInTime: defaultCheckInTime });
     }
     if (formData.checkOutDate && !formData.checkOutTime) {
-      onUpdate({ checkOutTime: defaultCheckOutTime });
+      onUpdateRef.current({ checkOutTime: defaultCheckOutTime });
     }
-  }, [formData.checkInDate, formData.checkOutDate, defaultCheckInTime, defaultCheckOutTime, onUpdate]);
+  }, [formData.checkInDate, formData.checkOutDate, defaultCheckInTime, defaultCheckOutTime]);
 
   // Fetch existing bookings and poll periodically so the calendar stays in sync
   useEffect(() => {
@@ -154,27 +157,36 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
     checkBlockedDates();
   }, [listingId, formData.checkInDate, formData.checkOutDate]);
 
+  // Sync selectedDates from formData; validate and clear invalid dates (use ref to avoid onUpdate in deps → infinite loop)
   useEffect(() => {
     const start = toDateOnly(parseYMD(formData.checkInDate));
     const end = toDateOnly(parseYMD(formData.checkOutDate));
 
     if (start && minAllowedDate && start.getTime() < minAllowedDate.getTime()) {
-      onUpdate({ checkInDate: '' });
+      onUpdateRef.current({ checkInDate: '' });
       setSelectedDates(prev => ({ ...prev, start: null }));
+      return;
     }
 
     if (end && minAllowedDate && end.getTime() < minAllowedDate.getTime()) {
-      onUpdate({ checkOutDate: '' });
+      onUpdateRef.current({ checkOutDate: '' });
       setSelectedDates(prev => ({ ...prev, end: null }));
+      return;
     }
 
     if (start && end && end.getTime() <= start.getTime()) {
-      onUpdate({ checkOutDate: '' });
+      onUpdateRef.current({ checkOutDate: '' });
       setSelectedDates(prev => ({ ...prev, end: null }));
+      return;
     }
 
-    setSelectedDates({ start, end });
-  }, [formData.checkInDate, formData.checkOutDate, minAllowedDate, onUpdate]);
+    setSelectedDates(prev => {
+      const sameStart = (prev.start?.getTime() ?? null) === (start?.getTime() ?? null);
+      const sameEnd = (prev.end?.getTime() ?? null) === (end?.getTime() ?? null);
+      if (sameStart && sameEnd) return prev;
+      return { start, end };
+    });
+  }, [formData.checkInDate, formData.checkOutDate, minAllowedDate]);
 
 
   const baseGuests: number = (formData as any).baseGuests ?? 2;
@@ -845,15 +857,21 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
                         style={{ fontFamily: 'Poppins' }}
                       >
                         {cell.day}
-                        {cell.isBooked && (
-                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden />
+                        {(cell.isBooked || cell.isBlocked) && (
+                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden title="Unavailable" />
                         )}
                       </div>
                     );
                   })}
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-center gap-4 text-[11px] text-gray-600" style={{ fontFamily: 'Poppins' }}>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-500" aria-hidden />
+                      Unavailable (booked or blocked)
+                    </span>
+                  </div>
                   <div className="mx-auto w-full bg-[#EAF9F8] rounded-xl py-3 px-4 text-center text-xs sm:text-sm">
                     <div className="text-xs text-gray-600" style={{ fontFamily: 'Poppins' }}>Selected Range</div>
                     <div className="text-sm font-semibold text-[#0B5858]" style={{ fontFamily: 'Poppins' }}>
@@ -1054,8 +1072,8 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
                         style={{ fontFamily: 'Poppins' }}
                       >
                         {cell.day}
-                        {cell.isBooked && (
-                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden />
+                        {(cell.isBooked || cell.isBlocked) && (
+                          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" aria-hidden title="Unavailable" />
                         )}
                       </div>
                     );
