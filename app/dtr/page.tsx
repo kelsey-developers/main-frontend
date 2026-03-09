@@ -3,11 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 // Type definitions
+type EmployeeRole = 'HOUSEKEEPING' | 'ADMIN';
+
 interface Cleaner {
   employee_id: number;
   full_name: string;
   position: string;
   employee_code: string;
+  role: EmployeeRole; // ADDED
 }
 
 interface DTRRecord {
@@ -20,6 +23,8 @@ interface DTRRecord {
   status: 'OPEN' | 'CLOSED';
   proof_photo?: string;
   tasks_completed?: string;
+  shift_start?: string; // ADDED e.g. "09:00"
+  shift_end?: string;   // ADDED e.g. "15:00"
 }
 
 interface TaskLog {
@@ -29,6 +34,27 @@ interface TaskLog {
   completed_at: string;
   proof_photo: string;
   status: 'COMPLETED' | 'VERIFIED';
+}
+
+// ADDED: Shift options (6-hour blocks, offsettable)
+const SHIFT_OPTIONS = [
+  { label: '9:00 AM – 3:00 PM',  start: '09:00', end: '15:00' },
+  { label: '10:00 AM – 4:00 PM', start: '10:00', end: '16:00' },
+  { label: '11:00 AM – 5:00 PM', start: '11:00', end: '17:00' },
+  { label: '12:00 PM – 6:00 PM', start: '12:00', end: '18:00' },
+];
+
+// ADDED: Shift status helper
+function getShiftStatus(shift: { start: string; end: string } | null) {
+  if (!shift) return null;
+  const now = new Date();
+  const [sh, sm] = shift.start.split(':').map(Number);
+  const [eh, em] = shift.end.split(':').map(Number);
+  const shiftStart = new Date(now); shiftStart.setHours(sh, sm, 0, 0);
+  const shiftEnd   = new Date(now); shiftEnd.setHours(eh, em, 0, 0);
+  if (now < shiftStart) return { label: 'Shift Not Started',  color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200' };
+  if (now <= shiftEnd)  return { label: 'Within Shift Hours', color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-300'  };
+  return                       { label: 'Shift Ended',        color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200'    };
 }
 
 // Simple Navbar
@@ -75,6 +101,119 @@ const Footer: React.FC = () => {
         </div>
       </div>
     </footer>
+  );
+};
+
+// ADDED: Back Button
+const BackButton: React.FC = () => (
+  <button
+    type="button"
+    onClick={() => window.history.back()}
+    className="flex items-center gap-2 text-gray-600 hover:text-[#0B5858] font-medium transition-colors group mb-6"
+    style={{fontFamily: 'Poppins'}}
+  >
+    <span className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 group-hover:border-[#0B5858] group-hover:bg-[#0B5858]/5 transition-all">
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+      </svg>
+    </span>
+    <span className="text-sm font-semibold">Admin Dashboard</span>
+  </button>
+);
+
+// ADDED: Shift Selector component
+const ShiftSelector: React.FC<{
+  selectedShift: { start: string; end: string } | null;
+  onSelect: (shift: { start: string; end: string }) => void;
+  disabled?: boolean;
+}> = ({ selectedShift, onSelect, disabled }) => {
+  const status = getShiftStatus(selectedShift);
+  return (
+    <div className="bg-white rounded-lg shadow-lg border-t-4 border-gray-300 p-6">
+      <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{fontFamily: 'Poppins'}}>
+        Shift Schedule
+      </h2>
+      <p className="text-gray-600 mb-4" style={{fontFamily: 'Poppins'}}>
+        Standard shift is 6 hours. Select your offset if applicable.
+      </p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {SHIFT_OPTIONS.map((opt) => {
+          const isSelected = selectedShift?.start === opt.start;
+          return (
+            <button
+              key={opt.start}
+              type="button"
+              disabled={disabled}
+              onClick={() => onSelect({ start: opt.start, end: opt.end })}
+              className={`py-3 px-3 rounded-lg border text-sm font-semibold transition-all text-center ${
+                isSelected
+                  ? 'bg-[#0B5858] text-white border-[#0B5858] shadow'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-[#0B5858] hover:text-[#0B5858]'
+              } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              style={{fontFamily: 'Poppins'}}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      {status && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${status.bg} ${status.border}`}>
+          <span className={`w-2 h-2 rounded-full ${status.color.replace('text-', 'bg-')}`} />
+          <span className={`text-sm font-semibold ${status.color}`} style={{fontFamily: 'Poppins'}}>
+            {status.label}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ADDED: Admin Online Duty Panel
+const AdminDutyPanel: React.FC<{
+  isTimedIn: boolean;
+  currentDTR: DTRRecord | null;
+}> = ({ isTimedIn, currentDTR }) => {
+  const hoursWorked = currentDTR?.time_in && isTimedIn
+    ? ((Date.now() - new Date(currentDTR.time_in).getTime()) / 1000 / 3600).toFixed(1)
+    : currentDTR?.hours_worked?.toFixed(1) ?? '0.0';
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg border-t-4 border-purple-500 p-6">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{fontFamily: 'Poppins'}}>
+          Online Duty Summary
+        </h2>
+        <p className="text-gray-600" style={{fontFamily: 'Poppins'}}>
+          Admins work online — queries, gatepasses, and booking confirmations.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-[#0B5858]/5 rounded-lg p-4 border border-[#0B5858]/20">
+          <p className="text-sm text-gray-600 mb-1" style={{fontFamily: 'Poppins'}}>Duty Status</p>
+          <p className={`text-xl font-bold ${isTimedIn ? 'text-green-700' : 'text-gray-400'}`} style={{fontFamily: 'Poppins'}}>
+            {isTimedIn ? '● Online' : '○ Offline'}
+          </p>
+        </div>
+        <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+          <p className="text-sm text-gray-600 mb-1" style={{fontFamily: 'Poppins'}}>Hours on Duty</p>
+          <p className="text-xl font-bold text-blue-700" style={{fontFamily: 'Poppins'}}>{hoursWorked}h</p>
+        </div>
+        <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+          <p className="text-sm text-gray-600 mb-1" style={{fontFamily: 'Poppins'}}>Role</p>
+          <p className="text-xl font-bold text-purple-700" style={{fontFamily: 'Poppins'}}>Admin</p>
+        </div>
+      </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-sm font-semibold text-blue-800 mb-2" style={{fontFamily: 'Poppins'}}>Admin Responsibilities</p>
+        <ul className="text-sm text-blue-700 space-y-1" style={{fontFamily: 'Poppins'}}>
+          <li>• Answer queries from agents and guests</li>
+          <li>• Issue gatepasses for check-ins</li>
+          <li>• Accept down-payments for bookings</li>
+          <li>• Coordinate with housekeeping as needed</li>
+        </ul>
+      </div>
+    </div>
   );
 };
 
@@ -448,13 +587,15 @@ export default function CleanerDTRPage() {
     employee_id: 1,
     full_name: 'Maria Santos',
     position: 'Cleaner',
-    employee_code: 'EMP-001'
+    employee_code: 'EMP-001',
+    role: 'HOUSEKEEPING', // ADDED — change to 'ADMIN' to see Admin view; in production derive from auth
   });
 
   const [currentDTR, setCurrentDTR] = useState<DTRRecord | null>(null);
   const [todaysTasks, setTodaysTasks] = useState<TaskLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedShift, setSelectedShift] = useState<{ start: string; end: string } | null>(null); // ADDED
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean } | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -557,7 +698,9 @@ export default function CleanerDTRPage() {
         employee_id: cleaner.employee_id,
         work_date: new Date().toISOString().split('T')[0],
         time_in: new Date().toISOString(),
-        status: 'OPEN'
+        status: 'OPEN',
+        shift_start: selectedShift?.start, // ADDED
+        shift_end: selectedShift?.end,     // ADDED
       };
       setCurrentDTR(newDTR);
 
@@ -645,6 +788,8 @@ export default function CleanerDTRPage() {
     }
   };
 
+  const isTimedIn = currentDTR?.status === 'OPEN';
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-gray-50 via-white to-gray-50">
       {/* Toast Notification */}
@@ -678,6 +823,10 @@ export default function CleanerDTRPage() {
 
       <main className="flex-grow w-full">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+          {/* ADDED: Back Button */}
+          <BackButton />
+
           {/* Welcome Section */}
           <div className="mb-8">
             <h1 className="text-4xl sm:text-5xl font-semibold text-gray-900 mb-2" style={{fontFamily: 'Poppins'}}>
@@ -710,8 +859,8 @@ export default function CleanerDTRPage() {
               </div>
             </div>
 
-            {/* Photos Today — blue border all around */}
-            <div className="bg-white rounded-lg p-4 shadow-sm border-3 border-blue-500">
+            {/* Photos Today — FIXED: border-3 → border-2 */}
+            <div className="bg-white rounded-lg p-4 shadow-sm border-2 border-blue-500">
               <p className="text-sm text-gray-600 mb-1" style={{fontFamily: 'Poppins'}}>Photos Today</p>
               <p className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
                 {todaysTasks.length}
@@ -727,6 +876,15 @@ export default function CleanerDTRPage() {
             </div>
           </div>
 
+          {/* ADDED: Shift Selector — shown for both roles, locks once signed in */}
+          <div className="mb-8">
+            <ShiftSelector
+              selectedShift={selectedShift}
+              onSelect={setSelectedShift}
+              disabled={!!isTimedIn}
+            />
+          </div>
+
           {/* Time Tracking Card */}
           <div className="mb-8 text-gray-900">
             <TimeTrackingCard
@@ -737,19 +895,30 @@ export default function CleanerDTRPage() {
             />
           </div>
 
-          {/* Work Photo Upload */}
-          <div className="mb-8">
-            <WorkPhotoUpload
-              isTimedIn={currentDTR?.status === 'OPEN'}
-              onPhotoUpload={handlePhotoUpload}
-              isUploading={isUploading}
-            />
-          </div>
+          {/* ADDED: Admin Duty Panel — only for ADMIN role */}
+          {cleaner.role === 'ADMIN' && (
+            <div className="mb-8">
+              <AdminDutyPanel isTimedIn={!!isTimedIn} currentDTR={currentDTR} />
+            </div>
+          )}
 
-          {/* Daily Log */}
-          <div className="mb-8">
-            <DailyLog tasks={todaysTasks} />
-          </div>
+          {/* Work Photo Upload — only for HOUSEKEEPING role */}
+          {cleaner.role === 'HOUSEKEEPING' && (
+            <div className="mb-8">
+              <WorkPhotoUpload
+                isTimedIn={!!isTimedIn}
+                onPhotoUpload={handlePhotoUpload}
+                isUploading={isUploading}
+              />
+            </div>
+          )}
+
+          {/* Daily Log — only for HOUSEKEEPING role */}
+          {cleaner.role === 'HOUSEKEEPING' && (
+            <div className="mb-8">
+              <DailyLog tasks={todaysTasks} />
+            </div>
+          )}
 
           {/* Information Section */}
           <div className="bg-blue-50 rounded-lg border border-blue-200 p-6 mb-8">
@@ -757,11 +926,23 @@ export default function CleanerDTRPage() {
               Important Reminders
             </h3>
             <ul className="space-y-2 text-blue-800" style={{fontFamily: 'Poppins'}}>
-              <li>Always sign in when you arrive at work</li>
-              <li>Upload clear photos of completed work as evidence</li>
-              <li>Include the room number or location in the photo description</li>
-              <li>Sign out before leaving work</li>
-              <li>Make sure photos are properly lit and show the completed task</li>
+              {cleaner.role === 'HOUSEKEEPING' ? (
+                <>
+                  <li>Always sign in when you arrive at work</li>
+                  <li>Upload clear photos of completed work as evidence</li>
+                  <li>Include the room number or location in the photo description</li>
+                  <li>Sign out before leaving work</li>
+                  <li>Make sure photos are properly lit and show the completed task</li>
+                </>
+              ) : (
+                <>
+                  <li>Sign in when you begin your online duty</li>
+                  <li>Respond promptly to agent and guest queries</li>
+                  <li>Issue gatepasses and confirm bookings in a timely manner</li>
+                  <li>Sign out at the end of your shift</li>
+                  <li>Attend meetings as scheduled</li>
+                </>
+              )}
             </ul>
           </div>
         </div>
