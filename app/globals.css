@@ -207,3 +207,7 @@ body:has([data-sales-report-root]) footer {
   display: none;
 }
 
+/* Hide scrollbar for proof gallery (navigation via arrows) */
+.proof-gallery-scroll::-webkit-scrollbar {
+  display: none;
+}
