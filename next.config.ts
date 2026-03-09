@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
       };
     }
     return config;
+  }, // <--- FIXED: Added the closing brace and the comma
   async rewrites() {
     if (!apiUrl) return [];
     return [{ source: '/api/:path*', destination: `${apiUrl}/api/:path*` }];
