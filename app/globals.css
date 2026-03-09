@@ -190,6 +190,23 @@ textarea:focus {
 .scrollbar-no-arrows::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 .scrollbar-no-arrows::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+/* Hide all scrollbars globally while keeping scrolling enabled. */
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Hide root footer for sales-report module pages only. */
+body:has([data-sales-report-root]) footer {
+  display: none;
+}
+
 /* Hide scrollbar for proof gallery (navigation via arrows) */
 .proof-gallery-scroll::-webkit-scrollbar {
   display: none;
