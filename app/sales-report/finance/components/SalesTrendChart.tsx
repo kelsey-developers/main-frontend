@@ -12,13 +12,14 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import type { SalesTrendPoint } from '../types';
+import { formatPHPForChart } from '../lib/format';
 
 interface SalesTrendChartProps {
   data: SalesTrendPoint[];
 }
 
-const formatYAxis = (value: number) => `$${value}K`;
-const formatTooltip = (value: number) => [`$${value}K`, 'Sales'];
+const formatYAxis = (value: number) => formatPHPForChart(value);
+const formatTooltip = (value: number) => [formatPHPForChart(value), 'Sales'];
 
 const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
   const [isMounted, setIsMounted] = useState(false);

@@ -1,6 +1,6 @@
 import React from 'react';
-import type { ChargeType } from '../types';
-import { formatPHP } from '../lib/format';
+import type { ChargeType } from '../../types';
+import { formatPHP } from '../../lib/format';
 
 interface ChargesAndAddonsSectionProps {
   charges: ChargeType[];
