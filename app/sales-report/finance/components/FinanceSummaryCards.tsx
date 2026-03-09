@@ -1,6 +1,6 @@
 import React from 'react';
 import type { FinanceDashboardSummary } from '../types';
-import { formatPHP } from '../lib/format';
+import { formatNumber, formatPHP } from '../lib/format';
 
 interface FinanceSummaryCardsProps {
   summary: FinanceDashboardSummary;
@@ -48,7 +48,7 @@ const FinanceSummaryCards: React.FC<FinanceSummaryCardsProps> = ({ summary }) =>
             </div>
           </div>
           <p className="text-white/90 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Rent</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatPHP(summary.totalRent)}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatNumber(summary.totalRent)}</p>
         </div>
       </div>
     </div>

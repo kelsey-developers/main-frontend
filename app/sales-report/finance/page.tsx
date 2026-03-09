@@ -33,25 +33,42 @@ const defaultFilters: SalesReportFilters = {
 
 export default function SalesReportPage() {
   const [filters, setFilters] = useState<SalesReportFilters>(defaultFilters);
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="  mx-auto px-4 sm:px-6 lg:px-8 pb-18 bg-gray-50">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
               Finance dashboard
             </h1>
-            <p className="text-gray-600" style={{ fontFamily: 'Poppins' }}>
+            <p className="text-sm sm:text-base text-gray-600" style={{ fontFamily: 'Poppins' }}>
               Revenue overview, booking-linked data, charges & add-ons, damage impact, and export for accounting
             </p>
           </div>
+          {/* Mobile: show Filters toggle */}
+          <button
+            type="button"
+            onClick={() => setFiltersPanelOpen((o) => !o)}
+            className="lg:hidden flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            {filtersPanelOpen ? 'Hide filters' : 'Filters'}
+          </button>
         </div>
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Left sidebar - Filters + Feature links */}
-          <aside className="w-full lg:w-72 flex-shrink-0 space-y-6">
-            <FilterSidebar filters={filters} onFiltersChange={setFilters} />
-            <FinanceDashboardLinks />
+          {/* Left sidebar - Filters only; on mobile visible when toggled. Feature links at bottom on mobile. */}
+          <aside
+            className={`w-full lg:w-72 flex-shrink-0 ${filtersPanelOpen ? 'block' : 'hidden lg:block'}`}
+          >
+            <div className="space-y-6">
+              <FilterSidebar filters={filters} onFiltersChange={setFilters} />
+              {/* Feature links only in sidebar on desktop; hidden in aside on mobile */}
+              <div className="max-lg:hidden lg:block">
+                <FinanceDashboardLinks />
+              </div>
+            </div>
           </aside>
 
           {/* Main content */}
@@ -70,6 +87,10 @@ export default function SalesReportPage() {
               byType={mockRevenueByType}
             />
 
+            {/* Feature links at bottom on mobile; on desktop they stay in the sidebar */}
+            <div className="lg:hidden pt-4">
+              <FinanceDashboardLinks />
+            </div>
           </div>
         </div>
       </div>

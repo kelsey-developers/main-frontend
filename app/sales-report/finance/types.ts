@@ -25,6 +25,7 @@ export interface TopUnit {
   location: string;
   totalSales: number;
   imageUrl: string;
+  rate: number;
 }
 
 export interface SalesReportFilters {
@@ -112,15 +113,30 @@ export interface BookingLinkedRow {
   id: string;
   bookingId: string;
   unit: string;
+  /** Unit type for filtering (e.g. Condo, Apartment). Optional. */
+  unitType?: string;
+  /** Location for filtering (e.g. Davao City, Manila). Optional. */
+  location?: string;
+  /** Unit rate (e.g. nightly rate) */
+  rate: number;
+  agent: string;
+  guest: string;
   checkIn: string;
   checkOut: string;
+  /** Check-in time (e.g. "14:00" or "14:00:00"). Optional, shown on detail page only. */
+  checkInTime?: string;
+  /** Check-out time (e.g. "11:00" or "11:00:00"). Optional, shown on detail page only. */
+  checkOutTime?: string;
   guestType: 'Airbnb' | 'direct' | 'corporate';
   basePrice: number;
   discounts: number;
   extraHeads: number;
   extraHours: number;
   addOns: string[];
-  total: number;
+  /** Amount for add-ons (e.g. pool, towels). Used to compute total. */
+  addOnsAmount: number;
+  /** @deprecated Use computed total from rate × nights - discounts + extras + addOnsAmount instead. */
+  total?: number;
 }
 
 /** Charge type */
@@ -133,11 +149,25 @@ export interface ChargeType {
   exampleLabel: string;
 }
 
-/** Damage & penalty monthly summary */
-export interface DamagePenaltyMonth {
-  month: string;
+/** Damage & penalty incident */
+export interface DamagePenalty {
+  bookingId: string;
+  unit: string;
+  /** Unit type for filtering. Optional. */
+  unitType?: string;
+  /** Location for filtering. Optional. */
+  location?: string;
+  reportedAt: string;
+  description: string;
+  /** Reason/cause of damage (e.g. guest negligence, wear and tear). */
+  reasonOfDamage?: string;
+  /** Who reported the incident (e.g. staff name, guest). */
+  reportedBy?: string;
+  /** URLs of proof images (photos of damage). */
+  proofUrls?: string[];
+  cost: number;
   chargedToGuest: number;
   absorbed: number;
   totalLoss: number;
-  incidentCount: number;
+  status: string;
 }

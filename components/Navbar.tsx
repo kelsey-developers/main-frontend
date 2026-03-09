@@ -2,20 +2,17 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { useMockAuth } from '@/contexts/MockAuthContext';
+import { usePathname } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_COLORS } from '@/lib/constants';
 
-/**
- * Navbar - Matches oop-dev design exactly.
- * Fixed top, white bg, logo left, nav center, user/signup right.
- * Uses mock auth for now; ready to swap to real AuthContext/API.
- * Renders after mount to avoid hydration mismatch from browser extensions (e.g. fdprocessedid).
- */
+const HIDE_NAVBAR_ROUTES = ['/login', '/signup'];
+
 export default function Navbar() {
   const [mounted, setMounted] = useState(false);
   const [hiddenForModal, setHiddenForModal] = useState(false);
   const { user, signOut, userRole, userProfile, isAdmin, isAgent, roleLoading } =
-    useMockAuth();
+    useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -94,15 +91,9 @@ export default function Navbar() {
 
   /* Nav structure matches oop-dev; links use font-sans font-medium */
   /* If you change h-14/h-16 here, update LAYOUT_NAVBAR_OFFSET in lib/constants.ts so page content stays visually clear of the nav */
-  if (!mounted) {
-    return (
-      <nav className="fixed top-0 left-0 right-0 bg-white z-[100] shadow-sm" aria-hidden>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center h-14 sm:h-16 relative" />
-        </div>
-      </nav>
-    );
-  }
+  const isAuthPage = HIDE_NAVBAR_ROUTES.some((r) => pathname.startsWith(r));
+
+  if (!mounted || isAuthPage) return null;
 
   if (hiddenForModal) {
     return null;

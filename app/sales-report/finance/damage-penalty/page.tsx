@@ -1,15 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import FinancePageHeader from '../components/FinancePageHeader';
 import HorizontalFilter from '../components/HorizontalFilter';
 import DamagePenaltySection from '../components/DamagePenaltySection';
-import { mockDamagePenaltyMonths } from '../lib/mockData';
+import { mockDamagePenalty } from '../lib/mockData';
+import { filterDamageIncidents } from '../lib/filters';
 import { defaultSalesReportFilters } from '../types';
 import type { SalesReportFilters } from '../types';
 
 export default function DamagePenaltyPage() {
   const [filters, setFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
+  const update = (key: keyof SalesReportFilters, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+  const filteredIncidents = useMemo(() => filterDamageIncidents(mockDamagePenalty, filters), [filters]);
 
   return (
     <>
@@ -17,9 +23,29 @@ export default function DamagePenaltyPage() {
         title="Damage & penalty impact"
         description="View monthly losses due to damage (amounts charged vs absorbed) so finance can reconcile"
       />
-      <HorizontalFilter filters={filters} onFiltersChange={setFilters} />
+      <div className="mb-4">
+        <input
+          type="search"
+          value={filters.searchName}
+          onChange={(e) => update('searchName', e.target.value)}
+          placeholder="Search..."
+          className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+          style={{ fontFamily: 'Poppins' }}
+          aria-label="Search"
+        />
+      </div>
+      <button 
+      type="button" 
+      onClick={() => setFiltersPanelOpen((o) => !o)} 
+      className="lg:hidden flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 bg-white 
+      shadow-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors" style={{ fontFamily: 'Poppins' }}>
+        {filtersPanelOpen ? 'Hide filters' : 'Filters'}
+      </button>
+      <div className={`mt-4 ${filtersPanelOpen ? 'block' : 'hidden lg:block'}`}>
+        <HorizontalFilter filters={filters} onFiltersChange={setFilters} />
+      </div>
       <div className="mt-4">
-        <DamagePenaltySection months={mockDamagePenaltyMonths} />
+        <DamagePenaltySection incidents={filteredIncidents} />
       </div>
     </>
   );

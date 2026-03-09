@@ -1,30 +1,37 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
+import { cookies } from "next/headers";
 import "./globals.css";
 import Chatbot from "@/components/Chatbot";
-import { MockAuthProvider } from "@/contexts/MockAuthContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import ConditionalFooter from "@/components/ConditionalFooter";
+import type { UserInfo } from "@/lib/api/auth";
 
 export const metadata: Metadata = {
   title: "Kelsey's Homestay - Never feel the homesickness again",
   description: "Find your perfect home away from home while you're on your dream vacation",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const cookieStore = await cookies();
+  const userCookie = cookieStore.get("user")?.value;
+  const initialUser: UserInfo | null = userCookie
+    ? (JSON.parse(userCookie) as UserInfo)
+    : null;
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen flex flex-col font-sans" suppressHydrationWarning>
-        <MockAuthProvider>
+        <AuthProvider initialUser={initialUser}>
           <Navbar />
           <main className="flex-1">{children}</main>
-          <Footer />
+          <ConditionalFooter />
           <Chatbot />
-        </MockAuthProvider>
+        </AuthProvider>
       </body>
     </html>
   );
