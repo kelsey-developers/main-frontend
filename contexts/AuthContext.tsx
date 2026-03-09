@@ -13,7 +13,10 @@ import { logoutAction } from '@/lib/actions/auth';
 
 const PROTECTED_ROUTES = [
   '/admin',
+  '/manage-units',
   '/booking',
+  '/booking-details',
+  '/reserve',
   '/rewards',
   '/profile',
   '/settings',

@@ -1,12 +1,16 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Listing } from '@/types/listing';
-import { getAllUnitListings } from '@/lib/mockData';
+import { listUnitsForManage, updateUnit } from '@/lib/api/units';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ManageUnits: React.FC = () => {
   const router = useRouter();
+  const { isAdmin, isAgent, roleLoading } = useAuth();
+  const canAccess = isAdmin || isAgent;
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [typeFilter] = useState('All Types');
@@ -26,8 +30,25 @@ const ManageUnits: React.FC = () => {
   const [pageToast, setPageToast] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
   const pageToastRef = useRef<HTMLDivElement | null>(null);
 
-  const isAdmin = true;
-  const roleLoading = false;
+  const fetchUnits = useCallback(async () => {
+    if (!canAccess) return;
+    try {
+      setIsLoading(true);
+      setError(null);
+      const data = await listUnitsForManage();
+      setUnits(data);
+    } catch (err) {
+      console.error('Error loading units:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load units. Please try again later.');
+      setUnits([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [canAccess]);
+
+  useEffect(() => {
+    fetchUnits();
+  }, [fetchUnits]);
 
   const openDeleteModal = (unit: Listing) => {
     setUnitToDelete(unit);
@@ -42,28 +63,6 @@ const ManageUnits: React.FC = () => {
       setUnitToDelete(null);
     }, 250);
   };
-
-  useEffect(() => {
-    const fetchUnits = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const listings = getAllUnitListings();
-        // Simulate a brief loading delay for skeletons
-        setTimeout(() => {
-          setUnits(listings);
-          setIsLoading(false);
-        }, 350);
-      } catch (err) {
-        console.error('Error loading units:', err);
-        setError('Failed to load units. Please try again later.');
-        setUnits([]);
-        setIsLoading(false);
-      }
-    };
-
-    fetchUnits();
-  }, []);
 
   const showToast = (message: string) => {
     setPageToast({ visible: true, message });
@@ -149,16 +148,18 @@ const ManageUnits: React.FC = () => {
   const toggleAvailability = async (unitId: string, currentStatus: boolean) => {
     try {
       setTogglingUnits(prev => new Set(prev).add(unitId));
-      const newStatus = !currentStatus;
-      setUnits(prevUnits => 
-        prevUnits.map(unit => 
-          unit.id === unitId 
-            ? { ...unit, is_available: newStatus, updated_at: new Date().toISOString() }
+      const newStatus = !currentStatus ? 'available' : 'unavailable';
+      const result = await updateUnit(unitId, { status: newStatus });
+      setUnits(prevUnits =>
+        prevUnits.map(unit =>
+          unit.id === unitId
+            ? { ...unit, is_available: result.is_available, updated_at: result.updated_at }
             : unit
         )
       );
-    } catch (error) {
-      console.error('Error updating availability:', error);
+    } catch (err) {
+      console.error('Error updating availability:', err);
+      showToast(err instanceof Error ? err.message : 'Failed to update status. Please try again.');
     } finally {
       setTogglingUnits(prev => {
         const newSet = new Set(prev);
@@ -172,16 +173,17 @@ const ManageUnits: React.FC = () => {
     try {
       setTogglingFeatured(prev => new Set(prev).add(unitId));
       const newFeatured = !currentFeatured;
-      setUnits(prevUnits => 
-        prevUnits.map(unit => 
-          unit.id === unitId 
-            ? { ...unit, is_featured: newFeatured, updated_at: new Date().toISOString() }
+      const result = await updateUnit(unitId, { is_featured: newFeatured });
+      setUnits(prevUnits =>
+        prevUnits.map(unit =>
+          unit.id === unitId
+            ? { ...unit, is_featured: result.is_featured, updated_at: result.updated_at }
             : unit
         )
       );
-    } catch (error) {
-      console.error('Error updating featured status', error);
-      showToast('Failed to update featured status. Please try again.');
+    } catch (err) {
+      console.error('Error updating featured status', err);
+      showToast(err instanceof Error ? err.message : 'Failed to update featured status. Please try again.');
     } finally {
       setTogglingFeatured(prev => {
         const next = new Set(prev);
@@ -189,13 +191,6 @@ const ManageUnits: React.FC = () => {
         return next;
       });
     }
-  };
-
-  const restoreMockUnits = () => {
-    setUnits(getAllUnitListings());
-    setSearchTerm('');
-    setStatusFilter('All Status');
-    setViewMode('list');
   };
 
   const PageSkeleton = () => (
@@ -497,6 +492,9 @@ const ManageUnits: React.FC = () => {
                               Status
                             </th>
                             <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
+                              Owner
+                            </th>
+                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
                               Slots
                             </th>
                             <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap hidden md:table-cell" style={{fontFamily: 'Poppins'}}>
@@ -511,9 +509,9 @@ const ManageUnits: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {!isAdmin ? (
+                          {!canAccess ? (
                             <tr>
-                              <td className="px-6 py-8 text-center" colSpan={11}>
+                              <td className="px-6 py-8 text-center" colSpan={12}>
                                 <div className="text-red-500">
                                   <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -522,14 +520,14 @@ const ManageUnits: React.FC = () => {
                                     Access Denied
                                   </p>
                                   <p className="text-gray-600" style={{fontFamily: 'Poppins'}}>
-                                    You need admin privileges to access the Manage Listings page.
+                                    You need Admin or Agent privileges to access the Manage Listings page.
                                   </p>
                                 </div>
                               </td>
                             </tr>
                           ) : error ? (
                             <tr>
-                              <td className="px-6 py-8 text-center" colSpan={11}>
+                              <td className="px-6 py-8 text-center" colSpan={12}>
                                 <div className="text-red-500">
                                   <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
@@ -545,7 +543,7 @@ const ManageUnits: React.FC = () => {
                             </tr>
                           ) : filteredUnits.length === 0 ? (
                             <tr>
-                              <td className="px-6 py-8 text-center" colSpan={11}>
+                              <td className="px-6 py-8 text-center" colSpan={12}>
                                 <div className="text-gray-500">
                                   <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -556,13 +554,15 @@ const ManageUnits: React.FC = () => {
                                   <p className="text-gray-600" style={{fontFamily: 'Poppins', fontWeight: 400}}>
                                     {units.length === 0 ? 'No units available. Add your first listing!' : 'No units match your current filters.'}
                                   </p>
-                                  <button
-                                    onClick={restoreMockUnits}
-                                    className="mt-4 inline-flex items-center px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-300 hover:opacity-90 cursor-pointer"
-                                    style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}
-                                  >
-                                    Restore Mock Units
-                                  </button>
+                                  {units.length === 0 && (
+                                    <button
+                                      onClick={() => fetchUnits()}
+                                      className="mt-4 inline-flex items-center px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-300 hover:opacity-90 cursor-pointer"
+                                      style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}
+                                    >
+                                      Retry
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -695,6 +695,12 @@ const ManageUnits: React.FC = () => {
                                 </td>
 
                                 <td className="px-3 py-2.5 align-middle">
+                                  <span className="text-gray-900 text-sm" style={{fontFamily: 'Poppins'}}>
+                                    {unit.owner?.fullname ?? '—'}
+                                  </span>
+                                </td>
+
+                                <td className="px-3 py-2.5 align-middle">
                                   <button
                                     onClick={() => router.push(`/unit-calendar/${unit.id}`)}
                                     className="inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors border cursor-pointer"
@@ -716,7 +722,7 @@ const ManageUnits: React.FC = () => {
 
                                 <td className="px-3 py-2.5 align-middle hidden md:table-cell">
                                   <span className="text-gray-900 text-sm" style={{fontFamily: 'Poppins'}}>
-                                    0
+                                    {unit.bookings_count ?? 0}
                                   </span>
                                 </td>
 
@@ -781,7 +787,7 @@ const ManageUnits: React.FC = () => {
                 </>
               ) : (
                 <>
-                  {!isAdmin ? (
+                  {!canAccess ? (
                     <div className="flex flex-col items-center justify-center py-12">
                       <div className="text-red-500">
                         <svg className="w-20 h-20 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -791,7 +797,7 @@ const ManageUnits: React.FC = () => {
                           Access Denied
                         </h3>
                         <p className="text-gray-600 text-center" style={{fontFamily: 'Poppins'}}>
-                          You need admin privileges to access the Manage Units page.
+                          You need Admin or Agent privileges to access the Manage Units page.
                         </p>
                       </div>
                     </div>
@@ -821,13 +827,15 @@ const ManageUnits: React.FC = () => {
                         <p className="text-gray-600 text-center" style={{fontFamily: 'Poppins', fontWeight: 400}}>
                           {units.length === 0 ? 'No units available. Add your first listing!' : 'No units match your current filters.'}
                         </p>
-                        <button
-                          onClick={restoreMockUnits}
-                          className="mt-4 inline-flex items-center px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-300 hover:opacity-90 cursor-pointer"
-                          style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}
-                        >
-                          Restore Mock Units
-                        </button>
+                        {units.length === 0 && (
+                          <button
+                            onClick={() => fetchUnits()}
+                            className="mt-4 inline-flex items-center px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-300 hover:opacity-90 cursor-pointer"
+                            style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}
+                          >
+                            Retry
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -965,9 +973,12 @@ const ManageUnits: React.FC = () => {
                               </div>
                             </div>
                             <div className="mb-2">
-                              <div className="flex items-center justify-between text-xs">
+                              <div className="flex flex-col gap-0.5 text-xs">
                                 <span className="text-gray-500" style={{fontFamily: 'Poppins'}}>
-                                  Bookings: <span className="font-normal text-gray-700">0</span>
+                                  Owner: <span className="font-normal text-gray-700">{unit.owner?.fullname ?? '—'}</span>
+                                </span>
+                                <span className="text-gray-500" style={{fontFamily: 'Poppins'}}>
+                                  Bookings: <span className="font-normal text-gray-700">{unit.bookings_count ?? 0}</span>
                                 </span>
                                 <span className="text-gray-500" style={{fontFamily: 'Poppins'}}>
                                   Last Updated: <span className="font-normal text-gray-700">{new Date(unit.updated_at).toLocaleDateString()}</span>

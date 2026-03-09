@@ -191,6 +191,14 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
             onConfirm={handleComplete}
             onBack={prevStep}
             onCancel={onCancel}
+            onOverlapError={() => {
+              setCurrentStep(0);
+              setFormData(prev => ({
+                ...prev,
+                checkInDate: '',
+                checkOutDate: '',
+              }));
+            }}
           />
         );
 

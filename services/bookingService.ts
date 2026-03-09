@@ -130,7 +130,11 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data?.error || 'Request failed');
+    const message = data?.error || 'Request failed';
+    const err = new Error(message) as Error & { status?: number; overlapping?: boolean };
+    err.status = response.status;
+    err.overlapping = (data as { overlapping?: boolean }).overlapping === true;
+    throw err;
   }
 
   return data as T;
@@ -161,7 +165,12 @@ export const BookingService = {
         body: JSON.stringify(input),
       });
       return normalizeRecord(extractSinglePayload<any>(payload));
-    } catch {
+    } catch (err) {
+      // Re-throw API errors (409 overlap, 401, etc.) so the UI can show them
+      if (err instanceof Error && (err as Error & { status?: number }).status != null) {
+        throw err;
+      }
+      // Fall back to localStorage only when API is unavailable (network error, etc.)
       const now = toIsoNow();
       const records = readLocalBookings();
       const created: BookingRecord = {

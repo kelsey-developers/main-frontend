@@ -35,9 +35,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const token = request.cookies.get('accessToken')?.value;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(`${API_URL}/api/bookings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
 

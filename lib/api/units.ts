@@ -1,5 +1,46 @@
 import type { Listing, ListingView } from '@/types/listing';
 
+export async function listUnitsForManage(): Promise<Listing[]> {
+  const res = await fetch('/api/units/manage', { cache: 'no-store', credentials: 'include' });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to fetch units');
+  }
+
+  const data = await res.json();
+  return Array.isArray(data) ? data.map((u: Record<string, unknown>) => toManageListing(u)) : [];
+}
+
+export async function updateUnit(
+  id: string,
+  updates: { status?: 'available' | 'unavailable' | 'maintenance'; is_featured?: boolean }
+): Promise<{ id: string; status: string; is_available: boolean; is_featured: boolean; updated_at: string }> {
+  const res = await fetch(`/api/units/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(updates),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to update unit');
+  }
+
+  return res.json();
+}
+
+function toManageListing(u: Record<string, unknown>): Listing {
+  const base = toListing(u);
+  const owner = u.owner as { id: string; fullname: string; email: string } | null | undefined;
+  return {
+    ...base,
+    owner: owner ? { id: String(owner.id), fullname: owner.fullname || 'N/A', email: owner.email || '' } : null,
+    bookings_count: typeof u.bookings_count === 'number' ? u.bookings_count : 0,
+  };
+}
+
 export interface ListUnitsParams {
   featured?: boolean;
   city?: string;

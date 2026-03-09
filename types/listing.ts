@@ -1,3 +1,9 @@
+export interface ListingOwner {
+  id: string;
+  fullname: string;
+  email: string;
+}
+
 export interface Listing {
   id: string;
   title: string;
@@ -23,6 +29,8 @@ export interface Listing {
   check_out_time?: string;
   created_at: string;
   updated_at: string;
+  owner?: ListingOwner | null;
+  bookings_count?: number;
 }
 
 export interface ListingView {

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Navbar from '../../components/Navbar';
 import Footer from '../../components/Footer';
 
@@ -55,60 +56,113 @@ interface BookingDetails {
   };
 }
 
-// Mock booking data
-const mockBooking: BookingDetails = {
-  id: 'BK-2026-001234',
-  listing_id: 'LST-001',
-  check_in_date: '2026-02-15T14:00:00',
-  check_out_date: '2026-02-20T11:00:00',
-  nights: 5,
-  num_guests: 2,
-  extra_guests: 0,
-  unit_charge: 2500,
-  amenities_charge: 500,
-  service_charge: 250,
-  discount: 0,
-  total_amount: 13750,
-  currency: 'PHP',
-  status: 'booked',
-  landmark: 'Near White Beach, Boracay Station 2',
-  parking_info: 'Free private parking available',
-  notes: 'Guest requested early check-in. Confirmed available.',
-  listing: {
-    id: 'LST-001',
-    title: 'Seaside Villa Resort',
-    location: 'Station 2, Boracay, Aklan',
-    main_image_url: '/heroimage.png',
-    property_type: 'Beach Villa',
-    check_in_time: '14:00:00',
-    check_out_time: '11:00:00',
-    latitude: 11.9663,
-    longitude: 121.9308
-  },
-  agent: {
-    id: 'AG-001',
-    fullname: 'Maria Santos',
-    email: 'maria.santos@homestay.com',
-    profile_photo: undefined
-  },
-  client: {
-    first_name: 'John',
-    last_name: 'Dela Cruz',
-    email: 'john.delacruz@email.com',
-    contact_number: '+63 9178 123 4567'
-  },
-  payment: {
-    payment_method: 'bank_transfer',
-    reference_number: 'TXN-2026-001',
-    payment_status: 'completed',
-    bank_name: 'BDO Unibank',
-    depositor_name: 'John D. Dela Cruz'
-  }
-};
+function BookingDetailsContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id') || '';
 
-const BookingDetailsPage: React.FC = () => {
-  const [booking] = useState<BookingDetails>(mockBooking);
+  const [booking, setBooking] = useState<BookingDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<{ status?: number; message: string } | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!id) {
+      setError({ message: 'No booking ID provided' });
+      setIsLoading(false);
+      return;
+    }
+
+    let mounted = true;
+
+    async function fetchBooking() {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const res = await fetch(`/api/bookings/${id}`, { credentials: 'include' });
+        const data = await res.json().catch(() => ({}));
+
+        if (!mounted) return;
+
+        if (!res.ok) {
+          if (res.status === 403) {
+            setError({ status: 403, message: data?.error || 'You do not have access to this booking' });
+          } else if (res.status === 404) {
+            setError({ status: 404, message: data?.error || 'Booking not found' });
+          } else {
+            setError({ status: res.status, message: data?.error || 'Failed to load booking' });
+          }
+          setBooking(null);
+          return;
+        }
+
+        setBooking(data);
+      } catch (err) {
+        if (mounted) {
+          setError({ message: 'Failed to load booking' });
+          setBooking(null);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    }
+
+    fetchBooking();
+    return () => { mounted = false; };
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <div className="pt-20 pb-8 flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block w-10 h-10 border-4 border-gray-200 border-t-[#0B5858] rounded-full animate-spin" />
+            <p className="mt-3 text-sm text-gray-600" style={{ fontFamily: 'Poppins' }}>Loading booking...</p>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (error || !booking) {
+    const isForbidden = error?.status === 403;
+    const isNotFound = error?.status === 404;
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <Navbar />
+        <div className="pt-20 pb-8 flex-1 flex items-center justify-center px-4">
+          <div className="max-w-md w-full bg-white border border-gray-200 rounded-lg p-8 text-center">
+            <div className="flex justify-center mb-4">
+              {isForbidden ? (
+                <svg className="w-16 h-16 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              ) : (
+                <svg className="w-16 h-16 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              )}
+            </div>
+            <h1 className="text-xl font-semibold text-gray-800 mb-2" style={{ fontFamily: 'Poppins' }}>
+              {isForbidden ? 'Access Denied' : isNotFound ? 'Booking Not Found' : 'Error'}
+            </h1>
+            <p className="text-sm text-gray-600 mb-6" style={{ fontFamily: 'Poppins' }}>
+              {error?.message || 'Something went wrong.'}
+            </p>
+            <button
+              onClick={() => window.history.back()}
+              className="px-4 py-2 bg-[#0B5858] text-white rounded-md hover:bg-[#0a4a4a]"
+              style={{ fontFamily: 'Poppins' }}
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   const getAgentInitials = (fullname: string) => {
     const names = fullname.trim().split(/\s+/);
@@ -130,7 +184,7 @@ const BookingDetailsPage: React.FC = () => {
   };
 
   const formatCurrency = (value: number) =>
-    value.toLocaleString('en-PH', { style: 'currency', currency: booking.currency, minimumFractionDigits: 2 });
+    `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const formatDate = (dateString: string) => {
     const d = new Date(dateString);
@@ -335,7 +389,7 @@ const BookingDetailsPage: React.FC = () => {
                       </svg>
                       <div className="min-w-0">
                         <div className="font-medium break-words" style={{ wordBreak: 'break-word' }}>
-                          {booking.client.first_name} {booking.client.last_name}
+                          {[booking.client?.first_name, booking.client?.last_name].filter(Boolean).join(' ') || 'N/A'}
                         </div>
                         <div className="text-xs text-gray-500">Full name</div>
                       </div>
@@ -347,7 +401,7 @@ const BookingDetailsPage: React.FC = () => {
                         <rect x="3" y="4" width="18" height="16" rx="2"></rect>
                       </svg>
                       <div className="min-w-0">
-                        <div className="font-medium break-words" style={{ wordBreak: 'break-word' }}>{booking.client.email}</div>
+                        <div className="font-medium break-words" style={{ wordBreak: 'break-word' }}>{booking.client?.email || 'N/A'}</div>
                         <div className="text-xs text-gray-500">Email</div>
                       </div>
                     </div>
@@ -357,7 +411,7 @@ const BookingDetailsPage: React.FC = () => {
                         <path d="M22 16.92V21a1 1 0 01-1.11 1 19.86 19.86 0 01-8.63-3.07 19.89 19.89 0 01-6-6A19.86 19.86 0 013 3.11 1 1 0 014 2h4.09a1 1 0 01.95.68l1.2 3.6a1 1 0 01-.24 1.02L9.7 9.7a12 12 0 006.6 6.6l1.4-1.4a1 1 0 011.02-.24l3.6 1.2c.43.14.71.56.68.99z"></path>
                       </svg>
                       <div className="min-w-0">
-                        <div className="font-medium break-words" style={{ wordBreak: 'break-word' }}>{booking.client.contact_number}</div>
+                        <div className="font-medium break-words" style={{ wordBreak: 'break-word' }}>{booking.client?.contact_number || 'N/A'}</div>
                         <div className="text-xs text-gray-500">Phone</div>
                       </div>
                     </div>
@@ -412,6 +466,23 @@ const BookingDetailsPage: React.FC = () => {
                             </div>
                           </div>
                         )}
+
+                        {(() => {
+                          const depositAmt = (booking.payment as { deposit_amount?: number })?.deposit_amount ?? 0;
+                          return depositAmt > 0 && (
+                            <div className="flex items-start gap-3">
+                              <svg className="w-5 h-5 text-gray-500 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25">
+                                <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                              <div className="min-w-0">
+                                <div className="font-medium">
+                                  {formatCurrency(depositAmt)}
+                                </div>
+                                <div className="text-xs text-gray-500">Deposit / Amount</div>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <div className="mt-2 pt-2 border-t border-gray-200">
                           <div className="text-xs text-gray-500">Payment Status</div>
@@ -616,6 +687,18 @@ const BookingDetailsPage: React.FC = () => {
 
       <Footer />
     </div>
+  );
+}
+
+const BookingDetailsPage: React.FC = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="inline-block w-10 h-10 border-4 border-gray-200 border-t-[#0B5858] rounded-full animate-spin" />
+      </div>
+    }>
+      <BookingDetailsContent />
+    </Suspense>
   );
 };
 
