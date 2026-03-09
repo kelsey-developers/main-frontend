@@ -358,7 +358,8 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       setStatus('success');
 
       setTimeout(() => {
-        window.location.href = `/booking-details?id=${encodeURIComponent(String(booking.id))}`;
+        const ref = booking.reference_code || String(booking.id);
+        window.location.href = `/booking-details/${encodeURIComponent(ref)}`;
       }, 2000);
     } catch (err: unknown) {
       const isOverlap = err instanceof Error && (err as Error & { overlapping?: boolean }).overlapping === true;

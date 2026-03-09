@@ -2,24 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const API_URL = process.env.API_URL;
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest) {
   if (!API_URL) {
     return NextResponse.json({ error: 'API URL not configured' }, { status: 503 });
   }
 
-  const { id } = await params;
   const token = request.cookies.get('accessToken')?.value;
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  if (!token) {
+    return NextResponse.json({ error: 'Authorization token required' }, { status: 401 });
+  }
 
-  const res = await fetch(`${API_URL}/api/bookings/${id}`, {
+  const res = await fetch(`${API_URL}/api/bookings/my`, {
     method: 'GET',
-    headers,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
   });
 
   const data = await res.json().catch(() => ({}));

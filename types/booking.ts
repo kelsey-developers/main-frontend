@@ -174,6 +174,7 @@ export interface CreateBookingInput {
 
 export interface BookingRecord {
   id: string;
+  reference_code?: string;
   listing_id: string;
   check_in_date: string;
   check_out_date: string;
