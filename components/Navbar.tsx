@@ -79,11 +79,19 @@ export default function Navbar() {
   const mobileNavLinkClass =
     'block px-3 py-2 text-black font-sans font-medium uppercase text-sm hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors text-left cursor-pointer';
 
+  const hideNavbar = HIDE_NAVBAR_ROUTES.some((route) =>
+    pathname?.startsWith(route)
+  );
+
+  if (hideNavbar) {
+    return null;
+  }
+
   /* Nav structure matches oop-dev; links use font-sans font-medium */
   /* If you change h-14/h-16 here, update LAYOUT_NAVBAR_OFFSET in lib/constants.ts so page content stays visually clear of the nav */
   if (!mounted) {
     return (
-      <nav className="fixed top-0 left-0 right-0 bg-white z-0 shadow-sm" aria-hidden>
+      <nav className="fixed top-0 left-0 right-0 bg-white z-[100] shadow-sm" aria-hidden>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-14 sm:h-16 relative" />
         </div>
@@ -92,7 +100,7 @@ export default function Navbar() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white z-0 shadow-sm">
+    <nav className="fixed top-0 left-0 right-0 bg-white z-[100] shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center h-14 sm:h-16 relative">
           {/* Logo */}
