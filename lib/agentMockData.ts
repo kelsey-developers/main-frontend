@@ -4,6 +4,8 @@ export const agentProfile: AgentProfile = {
   id: 'agent-001',
   slug: 'juan',
   name: 'Juan Dela Cruz',
+  referralCode: 'JUAN2025',
+  referralLevel: 1,
   tagline: 'Luxury Homestays for Modern Travelers',
   bio: 'With over 5 years of experience in hospitality across the Philippines, I connect travelers with handpicked properties that feel like home. From beachfront villas to city escapes — I make every stay unforgettable.',
   avatarUrl: '/heroimage.png',
