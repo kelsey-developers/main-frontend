@@ -44,17 +44,17 @@ const SHIFT_OPTIONS = [
   { label: '12:00 PM – 6:00 PM', start: '12:00', end: '18:00' },
 ];
 
-// ADDED: Shift status helper
-function getShiftStatus(shift: { start: string; end: string } | null) {
-  if (!shift) return null;
+// Shift status helper — based on the valid time-in window (9 AM – 12 PM)
+// Blue  : before 9 AM  → not yet in any shift window
+// Green : 9 AM – 12 PM  → within the shift start window, can time in
+// Red   : after 12 PM  → shift start hours have passed, cannot time in
+function getShiftStatus() {
   const now = new Date();
-  const [sh, sm] = shift.start.split(':').map(Number);
-  const [eh, em] = shift.end.split(':').map(Number);
-  const shiftStart = new Date(now); shiftStart.setHours(sh, sm, 0, 0);
-  const shiftEnd   = new Date(now); shiftEnd.setHours(eh, em, 0, 0);
-  if (now < shiftStart) return { label: 'Shift Not Started',  color: 'text-yellow-700', bg: 'bg-yellow-50', border: 'border-yellow-200' };
-  if (now <= shiftEnd)  return { label: 'Within Shift Hours', color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-300'  };
-  return                       { label: 'Shift Ended',        color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-200'    };
+  const earliest = new Date(now); earliest.setHours(9, 0, 0, 0);
+  const latest   = new Date(now); latest.setHours(12, 0, 0, 0);
+  if (now < earliest) return { label: 'Not Within Shift Hours',   color: 'text-blue-700',  bg: 'bg-blue-50',  border: 'border-blue-300'  };
+  if (now <= latest)  return { label: 'Within Shift Hours',       color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-300' };
+  return                     { label: 'Shift Start Hours Passed', color: 'text-red-700',   bg: 'bg-red-50',   border: 'border-red-200'   };
 }
 
 // Simple Navbar
@@ -123,11 +123,18 @@ const BackButton: React.FC = () => (
 
 // ADDED: Shift Selector component
 const ShiftSelector: React.FC<{
-  selectedShift: { start: string; end: string } | null;
-  onSelect: (shift: { start: string; end: string }) => void;
+  selectedShift: { label: string; start: string; end: string } | null;
+  onSelect: (shift: { label: string; start: string; end: string }) => void;
   disabled?: boolean;
 }> = ({ selectedShift, onSelect, disabled }) => {
-  const status = getShiftStatus(selectedShift);
+  // Re-evaluate shift status every minute so the badge stays accurate
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const status = getShiftStatus();
   return (
     <div className="bg-white rounded-lg shadow-lg border-t-4 border-gray-300 p-6">
       <h2 className="text-2xl font-bold text-gray-900 mb-2" style={{fontFamily: 'Poppins'}}>
@@ -144,7 +151,7 @@ const ShiftSelector: React.FC<{
               key={opt.start}
               type="button"
               disabled={disabled}
-              onClick={() => onSelect({ start: opt.start, end: opt.end })}
+              onClick={() => onSelect(opt)}
               className={`py-3 px-3 rounded-lg border text-sm font-semibold transition-all text-center ${
                 isSelected
                   ? 'bg-[#0B5858] text-white border-[#0B5858] shadow'
@@ -157,14 +164,12 @@ const ShiftSelector: React.FC<{
           );
         })}
       </div>
-      {status && (
-        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${status.bg} ${status.border}`}>
-          <span className={`w-2 h-2 rounded-full ${status.color.replace('text-', 'bg-')}`} />
-          <span className={`text-sm font-semibold ${status.color}`} style={{fontFamily: 'Poppins'}}>
-            {status.label}
-          </span>
-        </div>
-      )}
+      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${status.bg} ${status.border}`}>
+        <span className={`w-2 h-2 rounded-full ${status.color.replace('text-', 'bg-')}`} />
+        <span className={`text-sm font-semibold ${status.color}`} style={{fontFamily: 'Poppins'}}>
+          {status.label}
+        </span>
+      </div>
     </div>
   );
 };
@@ -223,7 +228,8 @@ const TimeTrackingCard: React.FC<{
   onTimeIn: () => void;
   onTimeOut: () => void;
   isLoading: boolean;
-}> = ({ currentDTR, onTimeIn, onTimeOut, isLoading }) => {
+  selectedShift: { label: string; start: string; end: string } | null;
+}> = ({ currentDTR, onTimeIn, onTimeOut, isLoading, selectedShift }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
   const [isMounted, setIsMounted] = useState(false);
 
@@ -268,6 +274,10 @@ const TimeTrackingCard: React.FC<{
     hour12: true
   }) : null;
 
+  const shiftStatus = getShiftStatus();
+  // Can only time in if: not already timed in, not loading, AND current time is within the 9am–12pm window
+  const timeInDisabled = !!isTimedIn || isLoading || shiftStatus.label !== 'Within Shift Hours';
+
   return (
     <div className="bg-white rounded-lg shadow-lg border-t-4 border-[#0B5858] overflow-hidden">
       <div className="relative bg-gradient-to-r from-[#0B5858] to-[#094444] text-white p-6 sm:p-8 overflow-hidden">
@@ -297,6 +307,27 @@ const TimeTrackingCard: React.FC<{
           </div>
         </div>
 
+        {/* Selected Shift */}
+        {selectedShift ? (
+          <div className="mb-4 flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
+            <svg className="w-4 h-4 text-teal-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm font-semibold text-teal-100" style={{ fontFamily: 'Poppins' }}>
+              Shift: {selectedShift.label}
+            </span>
+          </div>
+        ) : (
+          <div className="mb-4 flex items-center gap-2 bg-white/10 rounded-lg px-4 py-2">
+            <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm text-gray-300 italic" style={{ fontFamily: 'Poppins' }}>
+              No shift selected
+            </span>
+          </div>
+        )}
+
         {/* Time Status */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
           <div className="bg-grey bg-opacity-20 rounded-lg p-4">
@@ -322,9 +353,9 @@ const TimeTrackingCard: React.FC<{
           <button
             type="button"
             onClick={onTimeIn}
-            disabled={isTimedIn || isLoading}
+            disabled={timeInDisabled}
             className={`flex-1 py-4 rounded-lg font-bold text-lg transition-all ${
-              isTimedIn || isLoading
+              timeInDisabled
                 ? 'bg-gray-400 cursor-not-allowed text-gray-600'
                 : 'bg-green-500 hover:bg-green-600 text-white shadow-lg hover:shadow-xl'
             }`}
@@ -595,7 +626,7 @@ export default function CleanerDTRPage() {
   const [todaysTasks, setTodaysTasks] = useState<TaskLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<{ start: string; end: string } | null>(null); // ADDED
+  const [selectedShift, setSelectedShift] = useState<{ label: string; start: string; end: string } | null>(null); // ADDED
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean } | null>(null);
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -635,15 +666,7 @@ export default function CleanerDTRPage() {
       // const data = await response.json();
       // setCurrentDTR(data);
 
-      // Mock data
-      const mockDTR: DTRRecord = {
-        dtr_id: 1,
-        employee_id: 1,
-        work_date: new Date().toISOString().split('T')[0],
-        time_in: new Date(new Date().setHours(8, 0, 0)).toISOString(),
-        status: 'OPEN'
-      };
-      setCurrentDTR(mockDTR);
+      // Back-end will provide the actual DTR record; leave null until Time In is pressed
     } catch (error) {
       console.error('Error loading DTR:', error);
     }
@@ -892,6 +915,7 @@ export default function CleanerDTRPage() {
               onTimeIn={handleTimeIn}
               onTimeOut={handleTimeOut}
               isLoading={isLoading}
+              selectedShift={selectedShift}
             />
           </div>
 

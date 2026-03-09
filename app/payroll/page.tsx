@@ -420,8 +420,30 @@ const GCashModal: React.FC<{
 }> = ({ modal, onClose, onConfirm }) => {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  // visible drives the CSS transition — separate from modal.open so we can animate out
+  const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  if (!modal.open) return null;
+  // Mount first, then flip visible on next frame so the enter transition fires
+  useEffect(() => {
+    if (modal.open) {
+      setMounted(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+    }
+  }, [modal.open]);
+
+  // Animate out: flip visible → false, then unmount after transition
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(() => {
+      setMounted(false);
+      setReceiptPreview(null);
+      setReceiptFile(null);
+      onClose();
+    }, 300);
+  };
+
+  if (!mounted) return null;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -435,12 +457,23 @@ const GCashModal: React.FC<{
   const handleConfirm = () => {
     const mockReceiptUrl = receiptPreview ?? '';
     onConfirm(modal.payrollId, modal.bookingId, '', mockReceiptUrl);
-    onClose();
+    handleClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+    /* Backdrop — fades from transparent to black/40 */
+    <div
+      className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0
+        transition-[background-color] duration-300 ease-in-out
+        ${visible ? 'bg-black/60' : 'bg-black/0'}`}
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose(); }}
+    >
+      {/* Card — slides up from below and fades in */}
+      <div
+        className={`bg-white rounded-2xl shadow-2xl w-full max-w-md p-6
+          transition-all duration-300 ease-in-out
+          ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}
+      >
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-sm" style={{fontFamily: 'Poppins'}}>G</span>
@@ -479,7 +512,7 @@ const GCashModal: React.FC<{
         </div>
 
         <div className="flex gap-3">
-          <button type="button" onClick={onClose}
+          <button type="button" onClick={handleClose}
             className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium text-sm transition-colors" style={{fontFamily: 'Poppins'}}>
             Cancel
           </button>
