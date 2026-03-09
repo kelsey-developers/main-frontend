@@ -75,14 +75,14 @@ export default function AuditAlertsPage() {
       });
 
     const missingReferenceCount = mockStockMovements.filter(
-      (entry) => !entry.referenceId && (entry.type === 'out' || entry.type === 'adjustment')
+      (entry) => !entry.referenceId && entry.type === 'out'
     ).length;
 
     if (missingReferenceCount > 0) {
       rows.push({
         id: 'audit-missing-reference',
         title: 'Audit gap: movement references missing',
-        detail: `${missingReferenceCount} stock-out or adjustment entries have no reference id.`,
+        detail: `${missingReferenceCount} stock-out entries have no reference id.`,
         severity: 'warning',
         signal: 'Audit Quality',
       });
