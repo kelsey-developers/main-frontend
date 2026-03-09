@@ -1,4 +1,5 @@
 import type { BlockedRange, PricingRule } from '@/types/booking';
+import { getBlockedRanges as getBlockedRangesApi, getPricingRules as getPricingRulesApi } from '@/lib/api/calendar';
 
 function toDateOnly(value: string): Date | null {
   if (!value) return null;
@@ -33,35 +34,13 @@ function normalizePricingRule(raw: any): PricingRule {
   };
 }
 
-function extractArrayPayload<T>(payload: any): T[] {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.ranges)) return payload.ranges;
-  if (Array.isArray(payload?.rules)) return payload.rules;
-  return [];
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data?.error || 'Request failed');
-  }
-
-  return data as T;
-}
-
 export const CalendarService = {
   async getBlockedRanges(listingId: string): Promise<BlockedRange[]> {
     if (!listingId) return [];
 
     try {
-      const payload = await fetchJson<any>(
-        `/api/calendar/blocked-ranges?listingId=${encodeURIComponent(listingId)}`
-      );
-
-      return extractArrayPayload<any>(payload)
+      const payload = await getBlockedRangesApi(listingId);
+      return (Array.isArray(payload) ? payload : [])
         .map(normalizeBlockedRange)
         .filter((range) => !!range.start_date && !!range.end_date);
     } catch {
@@ -73,11 +52,8 @@ export const CalendarService = {
     if (!listingId) return [];
 
     try {
-      const payload = await fetchJson<any>(
-        `/api/calendar/pricing-rules?listingId=${encodeURIComponent(listingId)}`
-      );
-
-      return extractArrayPayload<any>(payload)
+      const payload = await getPricingRulesApi(listingId);
+      return (Array.isArray(payload) ? payload : [])
         .map(normalizePricingRule)
         .filter((rule) => !!rule.start_date && !!rule.end_date);
     } catch {

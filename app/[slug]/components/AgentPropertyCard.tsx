@@ -13,11 +13,11 @@ const AgentPropertyCard: React.FC<AgentPropertyCardProps> = ({ property }) => {
 
   const handleBookNow = (e: React.MouseEvent) => {
     e.stopPropagation();
-    router.push(`/unit-view?id=${property.id}`);
+    router.push(`/unit/${property.id}`);
   };
 
   const handleCardClick = () => {
-    router.push(`/unit-view?id=${property.id}`);
+    router.push(`/unit/${property.id}`);
   };
 
   return (

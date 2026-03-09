@@ -10,6 +10,7 @@ interface ConfirmationStepProps {
   onConfirm: () => void | Promise<void>;
   onBack: () => void;
   onCancel: () => void;
+  onOverlapError?: () => void;
 }
 
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
@@ -130,11 +131,12 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   formData,
   onConfirm,
   onBack,
-  onCancel
+  onCancel,
+  onOverlapError,
 }) => {
   // new state for showing the confirmation/processing modal
   const [isProcessing, setIsProcessing] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error' | 'overlap'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Get current user for assigned agent
@@ -308,10 +310,6 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
     setErrorMessage(null);
 
     try {
-      if (!user) {
-        throw new Error('User must be logged in to create a booking');
-      }
-
       if (!formData.listingId) {
         throw new Error('Listing ID is required');
       }
@@ -338,8 +336,9 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         payment_method: formData.paymentMethod,
         require_payment: formData.requirePayment !== false,
         total_amount: summary.totalCharges,
-        assigned_agent_id: String(user.id),
-        assigned_agent_email: user.email,
+        guest_user_id: undefined,
+        assigned_agent_id: user ? String(user.id) : undefined,
+        assigned_agent_email: user?.email || undefined,
         assigned_agent_name: userProfile?.fullname || undefined,
         client: {
           first_name: formData.firstName || '',
@@ -359,15 +358,23 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       setStatus('success');
 
       setTimeout(() => {
-        window.location.href = `/booking-details?id=${encodeURIComponent(String(booking.id))}`;
+        const ref = booking.reference_code || String(booking.id);
+        window.location.href = `/booking-details/${encodeURIComponent(ref)}`;
       }, 2000);
     } catch (err: unknown) {
-      setStatus('error');
+      const isOverlap = err instanceof Error && (err as Error & { overlapping?: boolean }).overlapping === true;
       const message =
         err instanceof Error
           ? err.message
           : 'An error occurred while confirming your booking.';
-      setErrorMessage(message);
+      setIsProcessing(false);
+      if (isOverlap) {
+        setStatus('overlap');
+        setErrorMessage(message);
+      } else {
+        setStatus('error');
+        setErrorMessage(message);
+      }
     }
   };
 
@@ -931,7 +938,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       </div>
 
       {/* Modal / Notification overlay */}
-      {isProcessing && (
+      {(isProcessing || status === 'success' || status === 'error' || status === 'overlap') && (
         <div
           role="dialog"
           aria-modal="true"
@@ -993,7 +1000,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
                 </div>
               )}
 
-              {status === 'error' && (
+              {(status === 'error' || status === 'overlap') && (
                 <div className="w-24 h-24 flex items-center justify-center">
                   <svg viewBox="0 0 80 80" className="w-24 h-24">
                     <circle cx="40" cy="40" r="36" fill="#fef2f2" />
@@ -1008,12 +1015,30 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               {status === 'processing' && 'Confirming booking'}
               {status === 'success' && 'Booking successfully placed!'}
               {status === 'error' && 'Something went wrong'}
+              {status === 'overlap' && 'Dates unavailable'}
             </h3>
             <p className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Poppins' }}>
               {status === 'processing' && "We're confirming your booking with our system. It could take a moment so hang in there."}
               {status === 'success' && 'Redirecting to booking details...'}
               {status === 'error' && (errorMessage ?? 'Unable to confirm booking. Please try again.')}
+              {status === 'overlap' && (errorMessage ?? 'Dates overlap with an existing booking.')}
             </p>
+
+            {status === 'overlap' && onOverlapError && (
+              <div className="flex items-center justify-center">
+                <button
+                  onClick={() => {
+                    setStatus('idle');
+                    setErrorMessage(null);
+                    onOverlapError();
+                  }}
+                  className="px-6 py-2 bg-[#0B5858] text-white rounded text-sm"
+                  style={{ fontFamily: 'Poppins' }}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
 
             {status === 'error' && (
               <div className="flex items-center justify-center gap-3">
