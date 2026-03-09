@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory } from '../types';
 import { ITEM_CATEGORIES } from '../lib/mockData';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
@@ -21,6 +22,7 @@ interface AddItemModalProps {
 }
 
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) => {
+  const [mounted, setMounted] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<ItemType | ''>('');
   const [category, setCategory] = useState<ItemCategory | ''>('');
@@ -48,14 +50,17 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
     if (/^\d+$/.test(v)) setQuantity(v);
   };
 
-  if (!isOpen) return null;
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  return (
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center z-[9999] p-4"
       style={{
-        backdropFilter: 'blur(4px)',
-        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+        backgroundColor: 'rgba(17, 24, 39, 0.38)',
       }}
       onClick={onClose}
       role="dialog"
@@ -157,7 +162,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -5,4 +5,6 @@ export interface EnhancedMovement extends StockMovement {
   productSku: string;
   productCategory: string;
   warehouseName: string;
+  recordedDate: string;
+  recordedTime: string;
 }

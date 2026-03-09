@@ -1,12 +1,33 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import StockOutModal from '../components/StockOutModal';
 
 export default function StockOutPage() {
+  const searchParams = useSearchParams();
   const [modalMode, setModalMode] = useState<'warehouse' | 'unit' | null>(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+
+  const unitPrefill = useMemo(
+    () => ({
+      unitId: searchParams.get('unitId') || '',
+      confirmedBy: searchParams.get('confirmedBy') || '',
+      idNumber: searchParams.get('idNumber') || '',
+      itemId: searchParams.get('itemId') || '',
+    }),
+    [searchParams]
+  );
+
+  const returnTo = searchParams.get('returnTo') || '/sales-report/inventory/stock-movements';
+
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    if (mode === 'warehouse' || mode === 'unit') {
+      setModalMode(mode);
+    }
+  }, [searchParams]);
 
   const cards = [
     {
@@ -179,7 +200,14 @@ export default function StockOutPage() {
       </div>
 
       {/* ── Modal pop-up ── */}
-      {modalMode && <StockOutModal mode={modalMode} onClose={() => setModalMode(null)} />}
+      {modalMode && (
+        <StockOutModal
+          mode={modalMode}
+          onClose={() => setModalMode(null)}
+          unitPrefill={modalMode === 'unit' ? unitPrefill : undefined}
+          returnTo={returnTo}
+        />
+      )}
     </>
   );
 }
