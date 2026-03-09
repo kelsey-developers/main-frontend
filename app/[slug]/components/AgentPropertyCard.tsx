@@ -6,18 +6,22 @@ import type { AgentProperty } from '@/types/agent';
 
 interface AgentPropertyCardProps {
   property: AgentProperty;
+  referralCode?: string;
 }
 
-const AgentPropertyCard: React.FC<AgentPropertyCardProps> = ({ property }) => {
+const AgentPropertyCard: React.FC<AgentPropertyCardProps> = ({ property, referralCode }) => {
   const router = useRouter();
+
+  const buildUrl = (base: string) =>
+    referralCode ? `${base}&ref=${referralCode}` : base;
 
   const handleBookNow = (e: React.MouseEvent) => {
     e.stopPropagation();
-    router.push(`/unit-view?id=${property.id}`);
+    router.push(buildUrl(`/unit-view?id=${property.id}`));
   };
 
   const handleCardClick = () => {
-    router.push(`/unit-view?id=${property.id}`);
+    router.push(buildUrl(`/unit-view?id=${property.id}`));
   };
 
   return (
@@ -142,7 +146,7 @@ const AgentPropertyCard: React.FC<AgentPropertyCardProps> = ({ property }) => {
           className="w-full py-3 px-4 bg-[#0B5858] hover:bg-[#094848] text-white rounded-xl text-sm font-semibold transition-colors cursor-pointer"
           style={{ fontFamily: 'Poppins', fontWeight: 600 }}
         >
-          Book Now
+          {referralCode ? `Book via Agent` : 'Book Now'}
         </button>
       </div>
     </div>
