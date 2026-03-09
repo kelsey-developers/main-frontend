@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { mockListings } from '@/lib/mockData';
 
 const API_URL = process.env.API_URL;
 
@@ -15,6 +16,36 @@ export async function GET(request: NextRequest) {
     if (city) params.set('city', city);
     if (limit) params.set('limit', limit);
     if (offset) params.set('offset', offset);
+
+    // Local fallback for environments without a configured backend API.
+    if (!API_URL) {
+      let data = [...mockListings];
+
+      if (featured === 'true') {
+        data = data.filter((listing) => listing.is_featured);
+      }
+
+      if (city) {
+        const normalizedCity = city.trim().toLowerCase();
+        data = data.filter(
+          (listing) => (listing.city ?? '').trim().toLowerCase() === normalizedCity
+        );
+      }
+
+      const parsedOffset = Number.parseInt(offset ?? '0', 10);
+      const safeOffset = Number.isFinite(parsedOffset)
+        ? Math.max(0, parsedOffset)
+        : 0;
+
+      const parsedLimit = Number.parseInt(limit ?? '', 10);
+      const hasValidLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
+
+      data = hasValidLimit
+        ? data.slice(safeOffset, safeOffset + parsedLimit)
+        : data.slice(safeOffset);
+
+      return NextResponse.json(data);
+    }
 
     const qs = params.toString();
     const res = await fetch(`${API_URL}/api/units${qs ? `?${qs}` : ''}`);
