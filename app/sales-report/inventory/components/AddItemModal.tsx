@@ -2,14 +2,17 @@
 
 import React, { useState } from 'react';
 import type { ItemType, ItemCategory } from '../types';
-
-const ALL_CATEGORIES: ItemCategory[] = [
-  'Cleaning', 'Hygiene', 'Food & Drinks', 'Cooking', 'Appliances',
-  'furniture', 'Cloth & Sheets', 'Kitchenware', 'Other',
-];
+import { ITEM_CATEGORIES } from '../lib/mockData';
+import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
 
 const inputClass = 'w-full px-3 py-2 rounded-lg border border-gray-200 text-gray-700 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] outline-none bg-white';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
+
+const ITEM_TYPE_OPTIONS: InventoryDropdownOption<ItemType | ''>[] = [
+  { value: '', label: 'Select type' },
+  { value: 'consumable', label: 'Consumable' },
+  { value: 'reusable', label: 'Reusable' },
+];
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -96,34 +99,32 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
             <label htmlFor="add-item-type" className={labelClass}>
               Type
             </label>
-            <select
-              id="add-item-type"
+            <InventoryDropdown
               value={type}
-              onChange={(e) => setType(e.target.value as ItemType | '')}
-              className={inputClass}
-            >
-              <option value="">Select type</option>
-              <option value="consumable">Consumable</option>
-              <option value="reusable">Reusable</option>
-            </select>
+              onChange={(value) => setType(value as ItemType | '')}
+              options={ITEM_TYPE_OPTIONS}
+              placeholder="Select type"
+              placeholderWhen=""
+              fullWidth={true}
+              minWidthClass="min-w-0"
+            />
           </div>
           <div>
             <label htmlFor="add-item-category" className={labelClass}>
               Category
             </label>
-            <select
-              id="add-item-category"
+            <InventoryDropdown
               value={category}
-              onChange={(e) => setCategory(e.target.value as ItemCategory | '')}
-              className={inputClass}
-            >
-              <option value="">Select category</option>
-              {ALL_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setCategory(value as ItemCategory | '')}
+              options={[
+                { value: '', label: 'Select category' },
+                ...ITEM_CATEGORIES.map((cat) => ({ value: cat, label: cat })),
+              ]}
+              placeholder="Select category"
+              placeholderWhen=""
+              fullWidth={true}
+              minWidthClass="min-w-0"
+            />
           </div>
           <div>
             <label htmlFor="add-item-quantity" className={labelClass}>

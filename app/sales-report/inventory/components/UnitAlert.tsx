@@ -55,7 +55,7 @@ const UnitAlert: React.FC<UnitAlertProps> = ({ units, unitItems, onUnitClick }) 
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 flex flex-col max-h-[420px] overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-200 flex flex-col max-h-[50vh] md:max-h-[420px] overflow-hidden">
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-200">
         <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2" style={{ fontFamily: 'Poppins' }}>
           <svg className="w-6 h-6 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

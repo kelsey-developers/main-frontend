@@ -6,6 +6,10 @@ import type { InventoryFeatureLink } from '../types';
 
 const FEATURE_LINKS: InventoryFeatureLink[] = [
     { href: '/sales-report/inventory/items', title: 'Inventory items', icon: 'items' },
+    { href: '/sales-report/inventory/suppliers', title: 'Supplier Directory', icon: 'suppliers' },
+    { href: '/sales-report/inventory/warehouses', title: 'Warehouse Directory', icon: 'warehouses' },
+    { href: '/sales-report/inventory/purchase-orders', title: 'Purchase Order Archive', icon: 'purchaseOrders' },
+    { href: '/sales-report/inventory/stock-movements', title: 'Stock Movement History', icon: 'stockMovements' },
 ];
 
 const IconSvg: React.FC<{ icon: InventoryFeatureLink['icon'] }> = ({ icon }) => {
@@ -15,6 +19,30 @@ const IconSvg: React.FC<{ icon: InventoryFeatureLink['icon'] }> = ({ icon }) => 
             return (
                 <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+            );
+        case 'suppliers':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+            );
+        case 'warehouses':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10l9-7 9 7v10a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V10z" />
+                </svg>
+            );
+        case 'purchaseOrders':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6M8 4h8a2 2 0 012 2v12a2 2 0 01-2 2H8a2 2 0 01-2-2V6a2 2 0 012-2z" />
+                </svg>
+            );
+        case 'stockMovements':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
             );
     }

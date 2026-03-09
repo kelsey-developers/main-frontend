@@ -11,6 +11,24 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit');
     const offset = searchParams.get('offset');
 
+    // If no API_URL is configured, use mock data
+    if (!API_URL) {
+      let filteredData = [...mockListings];
+      
+      if (featured === 'true') {
+        filteredData = filteredData.filter(u => u.is_featured);
+      }
+      if (city) {
+        filteredData = filteredData.filter(u => u.city === city);
+      }
+      
+      const offsetNum = offset ? parseInt(offset) : 0;
+      const limitNum = limit ? parseInt(limit) : filteredData.length;
+      
+      const result = filteredData.slice(offsetNum, offsetNum + limitNum);
+      return NextResponse.json(result);
+    }
+
     const params = new URLSearchParams();
     if (featured) params.set('featured', featured);
     if (city) params.set('city', city);
@@ -51,14 +69,47 @@ export async function GET(request: NextRequest) {
     const res = await fetch(`${API_URL}/api/units${qs ? `?${qs}` : ''}`);
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      return NextResponse.json(err, { status: res.status });
+      // Fall back to mock data on error
+      console.warn('Backend API failed, using mock data');
+      let filteredData = [...mockListings];
+      
+      if (featured === 'true') {
+        filteredData = filteredData.filter(u => u.is_featured);
+      }
+      if (city) {
+        filteredData = filteredData.filter(u => u.city === city);
+      }
+      
+      const offsetNum = offset ? parseInt(offset) : 0;
+      const limitNum = limit ? parseInt(limit) : filteredData.length;
+      
+      const result = filteredData.slice(offsetNum, offsetNum + limitNum);
+      return NextResponse.json(result);
     }
 
     const data = await res.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Units API proxy error:', error);
-    return NextResponse.json({ error: 'Failed to fetch units' }, { status: 500 });
+    console.error('Units API proxy error, using mock data:', error);
+    // Fall back to mock data
+    let filteredData = [...mockListings];
+    const { searchParams } = new URL(request.url);
+    const featured = searchParams.get('featured');
+    const city = searchParams.get('city');
+    const limit = searchParams.get('limit');
+    const offset = searchParams.get('offset');
+    
+    if (featured === 'true') {
+      filteredData = filteredData.filter(u => u.is_featured);
+    }
+    if (city) {
+      filteredData = filteredData.filter(u => u.city === city);
+    }
+    
+    const offsetNum = offset ? parseInt(offset) : 0;
+    const limitNum = limit ? parseInt(limit) : filteredData.length;
+    
+    const result = filteredData.slice(offsetNum, offsetNum + limitNum);
+    return NextResponse.json(result);
   }
 }

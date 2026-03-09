@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import type { RevenueByProperty, RevenueByChannel, RevenueByAgent, RevenueByTypeItem } from '../types';
 import { formatPHP } from '../lib/format';
@@ -17,6 +17,11 @@ const tooltipStyle = { backgroundColor: 'white', border: '1px solid #e5e7eb', bo
 
 const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byChannel, byAgent, byType }) => {
   const [activeTab, setActiveTab] = useState<'property' | 'channel' | 'agent' | 'type'>('property');
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -43,7 +48,9 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
       </div>
       <div className="p-6 overflow-x-auto overflow-y-hidden -mx-1 px-1">
         <div className="min-w-[320px] w-full h-[320px]" style={{ width: 'max(320px, 100%)' }}>
-        {activeTab === 'property' && (
+        {!isMounted ? (
+          <div className="h-full w-full" />
+        ) : activeTab === 'property' ? (
           <ResponsiveContainer width="100%" height="100%" debounce={50}>
             <BarChart data={byProperty} margin={{ top: 10, right: 10, left: 0, bottom: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -53,8 +60,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
               <Bar dataKey="revenue" fill="#0B5858" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        )}
-        {activeTab === 'channel' && (
+        ) : activeTab === 'channel' ? (
           <ResponsiveContainer width="100%" height="100%" debounce={50}>
             <PieChart>
               <Pie
@@ -75,8 +81,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
               <Legend />
             </PieChart>
           </ResponsiveContainer>
-        )}
-        {activeTab === 'agent' && (
+        ) : activeTab === 'agent' ? (
           <ResponsiveContainer width="100%" height="100%" debounce={50}>
             <BarChart data={byAgent} layout="vertical" margin={{ top: 10, right: 30, left: 90, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -86,8 +91,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
               <Bar dataKey="revenue" fill="#0d9488" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        )}
-        {activeTab === 'type' && (
+        ) : (
           <ResponsiveContainer width="100%" height="100%" debounce={50}>
             <PieChart>
               <Pie

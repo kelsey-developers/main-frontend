@@ -1,23 +1,66 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import Link from 'next/link';
-import type { InventoryUnit } from '../types';
+import type { InventoryUnit, ReplenishmentItem } from '../types';
 import SearchUnits from './SearchUnits';
 import InventoryTable from './InventoryTable';
-import { mockUnits, mockReplenishmentItems } from '../lib/mockData';
+import { mockUnits, mockUnitItems } from '../lib/mockData';
 
 interface UnitPageProps {
   unit: InventoryUnit;
 }
 
 const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
+  // Filter items for this unit and transform to ReplenishmentItem format
+  const unitInventoryItems = useMemo<ReplenishmentItem[]>(() => {
+    return mockUnitItems
+      .filter((item) => item.assignedToUnit === unit.id)
+      .map((item) => ({
+        id: item.id,
+        sku: `UNIT-${item.id.toUpperCase()}`,
+        name: item.name,
+        type: item.type,
+        category: item.category,
+        unit: item.unit,
+        currentStock: item.currentStock,
+        minStock: item.minStock,
+        shortfall: Math.max(0, item.minStock - item.currentStock),
+        unitCost: 150, // Default cost for unit items
+        totalValue: item.currentStock * 150,
+        warehouseId: 'unit-storage',
+        warehouseName: unit.name,
+        isActive: true,
+        createdAt: '2025-01-01',
+        updatedAt: '2025-03-08',
+        lastModifiedBy: 'System',
+        currentsupplierId: 's1',
+        supplierName: 'Clean & Co',
+      }));
+  }, [unit.id, unit.name]);
+
   return (
     <div className="mx-auto">
+      <style>{`
+        @keyframes inventoryReveal {
+          from {
+            opacity: 0;
+            transform: translate3d(0, 14px, 0);
+          }
+          to {
+            opacity: 1;
+            transform: translate3d(0, 0, 0);
+          }
+        }
+        .inventory-reveal {
+          opacity: 0;
+          animation: inventoryReveal 560ms ease-in-out forwards;
+        }
+      `}</style>
       <Link
         href="/sales-report/inventory"
-        className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline mb-6"
-        style={{ fontFamily: 'Poppins' }}
+        className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline mb-6 inventory-reveal"
+        style={{ fontFamily: 'Poppins', animationDelay: '30ms' }}
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -26,11 +69,11 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
       </Link>
 
       <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
-        <aside className="w-full lg:w-80 flex-shrink-0">
+        <aside className="w-full lg:w-80 flex-shrink-0 inventory-reveal" style={{ animationDelay: '90ms' }}>
           <SearchUnits units={mockUnits} />
         </aside>
         <div className="flex-1 flex-col min-w-0 gap-6">
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden p-6 flex flex-row gap-6">
+          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden p-6 flex flex-row gap-6 inventory-reveal" style={{ animationDelay: '140ms' }}>
             <div className="w-1/2 h-60 bg-gray-100 rounded-lg overflow-hidden">
               <img
                 src={unit.imageUrl || '/heroimage.png'}
@@ -73,15 +116,44 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
                   {unit.location}
                 </p>
               )}
-              {unit.itemCount != null && (
+              {unitInventoryItems.length > 0 && (
                 <p className="text-sm text-gray-500 mt-2" style={{ fontFamily: 'Poppins' }}>
-                  {unit.itemCount} items assigned
+                  {unitInventoryItems.length} items assigned
                 </p>
               )}
             </div>
           </div>
-          <div className="mb-4"></div>
-          <InventoryTable items={mockReplenishmentItems} />
+          
+          {/* Unit Inventory Header */}
+          <div className="mb-6 mt-6 inventory-reveal" style={{ animationDelay: '190ms' }}>
+            <div className="mb-3">
+              <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+                Unit Inventory
+              </h2>
+              <p className="text-sm text-gray-600 mt-1" style={{ fontFamily: 'Poppins' }}>
+                Items currently stocked in this unit. Stock levels reflect items moved or stocked out to {unit.name}.
+              </p>
+            </div>
+            
+            {/* Info Box */}
+            <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-xs font-semibold text-blue-900" style={{ fontFamily: 'Poppins' }}>
+                  Unit-Specific Stock Tracking
+                </p>
+                <p className="text-xs text-blue-700 mt-1" style={{ fontFamily: 'Poppins' }}>
+                  These stock numbers show only items currently in <strong>{unit.name}</strong>. Shortfalls are calculated based on this unit's minimum requirements. This differs from warehouse inventory which tracks storage facility levels.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="inventory-reveal" style={{ animationDelay: '240ms' }}>
+            <InventoryTable items={unitInventoryItems} hideEditButton={true} isUnitView={true} />
+          </div>
         </div>
         
       </div>
