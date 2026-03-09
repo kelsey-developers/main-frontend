@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import type { CleaningTask } from '../types';
 import { mockCleaningTasksToday } from '../lib/mockData';
+import { LostBrokenItemsTable, type ItemRow } from '../components/LostBrokenItemsTable';
 
 function HousekeepingReportSkeleton() {
   return (
@@ -37,7 +38,6 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-/** Build dropdown label: show Unit and Booking ID when present */
 function taskOptionLabel(task: CleaningTask): string {
   if (task.bookingId) {
     return `${task.unit} — ${task.bookingId}`;
@@ -49,24 +49,7 @@ type ProofFile = { file: File; preview?: string };
 
 export type ReportCategory = 'loss' | 'broken';
 
-/** One row in the lost/broken items table */
-export type ItemRow = { item: string; loss: boolean; broken: boolean };
-
-/** Predefined items that can be selected in the report (e.g. from inventory) */
-const MOCK_REPORT_ITEMS = [
-  'Towel set',
-  'Remote control',
-  'Glass / vase',
-  'Lamp',
-  'Carpet',
-  'Mirror',
-  'Chair',
-  'Table',
-  'Bedding',
-  'Kitchenware',
-];
-
-const emptyRow: ItemRow = { item: '', loss: false, broken: false };
+const emptyRow: ItemRow = { item: '', type: null };
 
 export default function HousekeepingReportPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -116,18 +99,8 @@ export default function HousekeepingReportPage() {
     });
   }, []);
 
-  const addItemRow = () => setItemRows((prev) => [...prev, { ...emptyRow }]);
-  const removeItemRow = (index: number) => {
-    setItemRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
-  };
-  const updateItemRow = (index: number, field: keyof ItemRow, value: string | boolean) => {
-    setItemRows((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
-    );
-  };
-
   const hasValidItemEntry = itemRows.some(
-    (r) => r.item !== '' && (r.loss || r.broken)
+    (r) => r.item !== '' && (r.type === 'loss' || r.type === 'broken')
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -159,7 +132,7 @@ export default function HousekeepingReportPage() {
     <div style={{ fontFamily: 'Poppins' }}>
       <div className="mb-6">
         <Link
-          href="/housekeeping"
+          href="/sales-report/housekeeping"
           className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline mb-4"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,7 +156,6 @@ export default function HousekeepingReportPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-        {/* Column 1: Form */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <form id="housekeeping-report-form" onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -220,78 +192,9 @@ export default function HousekeepingReportPage() {
                 Lost or broken items <span className="text-red-500">*</span>
               </span>
               <p className="text-xs text-gray-500 mb-2">
-                Select an item and check Loss and/or Broken. Add more rows as needed.
+                Select an item and choose either Loss or Broken per row. Add more rows as needed.
               </p>
-              <div className="border border-gray-200 rounded-lg overflow-hidden flex flex-col shadow-sm border border-gray-100">
-                <div className="max-h-40 overflow-y-auto overflow-x-auto flex-1 min-h-40">
-                  <table className="min-w-full divide-y divide-gray-200 min-w-[420px]">
-                    <thead className="bg-gradient-to-r from-[#0b5858] to-[#05807e] rounded-t-xl sticky top-0 z-10">
-                      <tr>
-                        <th className="px-3 py-2.5 text-center text-xs font-semibold text-white uppercase ">
-                          Item
-                        </th>
-                        <th className="px-3 py-2.5 text-center text-xs font-semibold text-white uppercase tracking-wider w-24">
-                          Loss
-                        </th>
-                        <th className="px-3 py-2.5 text-center text-xs font-semibold text-white uppercase tracking-wider w-24">
-                          Broken
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-100">
-                    {itemRows.map((row, index) => (
-                      <tr key={index} className="hover:bg-gray-50/50">
-                        <td className="px-3 py-2">
-                          <select
-                            value={row.item}
-                            onChange={(e) => updateItemRow(index, 'item', e.target.value)}
-                            className="w-full px-3 py-1.5 rounded-md border border-gray-200 bg-white text-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
-                          >
-                            <option value="">Select item</option>
-                            {MOCK_REPORT_ITEMS.map((name) => (
-                              <option key={name} value={name}>
-                                {name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={row.loss}
-                            onChange={(e) => updateItemRow(index, 'loss', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-[#0B5858] focus:ring-[#0B5858]"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={row.broken}
-                            onChange={(e) => updateItemRow(index, 'broken', e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-[#0B5858] focus:ring-[#0B5858]"
-                          />
-                        </td>
-                    
-                      </tr>
-                    ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border-t border-gray-200 bg-gray-50/50 px-3 py-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={addItemRow}
-                    className="flex items-center gap-2 text-sm font-medium text-[#0B5858] hover:text-[#0a4a4a] transition-colors"
-                  >
-                    <span className="w-6 h-6 rounded-full border-2 border-[#0B5858] flex items-center justify-center">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                    </span>
-                    Add item
-                  </button>
-                </div>
-              </div>
+              <LostBrokenItemsTable rows={itemRows} onRowsChange={setItemRows} />
             </div>
 
             <div>
@@ -325,7 +228,6 @@ export default function HousekeepingReportPage() {
           </form>
         </div>
 
-        {/* Column 2: Proof of damage - upload pictures or videos */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <h3 className="text-base font-semibold text-gray-800 mb-2">Proof of damage/loss</h3>
           <p className="text-sm text-gray-500 mb-4">
