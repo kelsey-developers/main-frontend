@@ -20,8 +20,8 @@ export default function LoginPage() {
     startTransition(async () => {
       try {
         await loginAction(email, password);
-        // loginAction calls redirect('/') on success — no router.push needed
       } catch (err) {
+        if (err instanceof Error && err.message === 'NEXT_REDIRECT') throw err;
         setError(err instanceof Error ? err.message : 'Unable to connect to the server.');
       }
     });
