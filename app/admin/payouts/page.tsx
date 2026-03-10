@@ -188,14 +188,14 @@ export default function AdminPayoutsPage() {
     </div>;
   }
 
-  if (!isAdmin) {
-    return <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-      <p className="text-gray-500 text-sm" style={{ fontFamily: 'Poppins' }}>Admin access required.</p>
-      <button onClick={() => router.push('/admin')} className="px-4 py-2 bg-[#0B5858] text-white rounded-xl text-sm cursor-pointer" style={{ fontFamily: 'Poppins' }}>
-        Back to Admin
-      </button>
-    </div>;
-  }
+  // if (!isAdmin) {
+  //   return <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+  //     <p className="text-gray-500 text-sm" style={{ fontFamily: 'Poppins' }}>Admin access required.</p>
+  //     <button onClick={() => router.push('/admin')} className="px-4 py-2 bg-[#0B5858] text-white rounded-xl text-sm cursor-pointer" style={{ fontFamily: 'Poppins' }}>
+  //       Back to Admin
+  //     </button>
+  //   </div>;
+  // }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
