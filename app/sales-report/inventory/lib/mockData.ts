@@ -217,6 +217,8 @@ export const mockUnitStockMovements: UnitStockMovementRow[] = [];
 let isDatasetLoaded = false;
 let datasetLoadPromise: Promise<void> | null = null;
 
+export const isInventoryDatasetLoaded = () => isDatasetLoaded;
+
 const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockWarehouseDirectoryData, dataset.warehouseDirectoryData);
   replaceArray(mockSuppliers, dataset.suppliers);
@@ -290,11 +292,8 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
   return datasetLoadPromise;
 };
 
-if (typeof window !== 'undefined') {
-  void loadInventoryDataset().catch(() => {
-    // Keep UI functional even when backend is temporarily unavailable.
-  });
-}
+// Note: we intentionally do not auto-fetch on module import. Pages/components control when
+// loading spinners should show, and tying fetch timing to import can cause confusing flashes.
 
 const normalizeInventoryName = (value: string) =>
   value

@@ -1,12 +1,8 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.API_URL || '';
-
 const nextConfig: NextConfig = {
-  async rewrites() {
-    if (!apiUrl) return [];
-    return [{ source: '/api/:path*', destination: `${apiUrl}/api/:path*` }];
-  },
+  // API proxying is handled via `app/api/**/route.ts` handlers (server-side),
+  // so we don't need Next rewrites (which can shadow route handlers).
 };
 
 export default nextConfig;
