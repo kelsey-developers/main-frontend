@@ -10,6 +10,7 @@ import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 import { processStockOut } from '../lib/inventoryLedger';
 import { 
+  loadInventoryDataset,
   mockReplenishmentItems, 
   mockWarehouseDirectoryData,
   mockUnits,
@@ -806,6 +807,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
   const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [, setRefreshTick] = useState(0);
   const { toasts, removeToast, success, error } = useToast();
   const mockAuth = useMockAuth();
   const [warehouseDraft, setWarehouseDraft] = useState<WarehouseDraft | null>(null);
@@ -815,6 +817,25 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    void loadInventoryDataset()
+      .finally(() => {
+        setRefreshTick((tick) => tick + 1);
+      });
+
+    const refresh = () => {
+      setRefreshTick((tick) => tick + 1);
+    };
+
+    window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
 
   // Trap scroll
@@ -830,7 +851,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
     setTimeout(onClose, 230);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     try {
       const isWH = mode === 'warehouse';
       
@@ -856,8 +877,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
           return;
         }
 
-        validItems.forEach((entry) => {
-          processStockOut({
+        for (const entry of validItems) {
+          await processStockOut({
             productId: entry.productId,
             warehouseId: warehouseDraft.warehouse,
             quantity: Number(entry.quantity),
@@ -871,7 +892,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
                 ? warehouseDraft.toWarehouse
                 : undefined,
           });
-        });
+        }
       } else {
         if (!unitDraft) {
           error('Form is still loading. Please try again.');
@@ -890,8 +911,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
           return;
         }
 
-        validItems.forEach((entry) => {
-          processStockOut({
+        for (const entry of validItems) {
+          await processStockOut({
             productId: entry.productId,
             warehouseId: unitDraft.srcWarehouse,
             quantity: Number(entry.quantity),
@@ -902,7 +923,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
             createdBy: unitDraft.confirmedBy || undefined,
             unitId: unitDraft.unit,
           });
-        });
+        }
       }
 
       success('Stock Out logged successfully!');

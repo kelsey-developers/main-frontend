@@ -26,8 +26,13 @@ function InventoryItemsPageContent() {
 
   useEffect(() => {
     const refresh = () => {
-      recomputeAllInventoryDerivedValues();
-      setRefreshTick((tick) => tick + 1);
+      void recomputeAllInventoryDerivedValues()
+        .finally(() => {
+          if (itemIdFromQuery) {
+            setSelectedItem(mockReplenishmentItems.find((item) => item.id === itemIdFromQuery) || null);
+          }
+          setRefreshTick((tick) => tick + 1);
+        });
     };
 
     refresh();

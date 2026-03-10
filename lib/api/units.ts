@@ -1,16 +1,30 @@
 import type { Listing, ListingView } from '@/types/listing';
 import { apiClient } from './client';
 
+type ApiError = Error & { status?: number };
+
+const isUnitsApiUnavailable = (err: unknown) => {
+  if (!(err instanceof Error)) return false;
+  const error = err as ApiError;
+  const message = error.message.toLowerCase();
+  return error.status === 404 || message.includes('api route not found');
+};
+
 export async function listUnitsForManage(): Promise<Listing[]> {
-  const data = await apiClient.get<unknown[]>('/api/units/manage', { credentials: 'include' });
-  return Array.isArray(data) ? data.map((u) => toManageListing(u as Record<string, unknown>)) : [];
+  try {
+    const data = await apiClient.get<unknown[]>('/api/units/manage');
+    return Array.isArray(data) ? data.map((u) => toManageListing(u as Record<string, unknown>)) : [];
+  } catch (err) {
+    if (isUnitsApiUnavailable(err)) return [];
+    throw err;
+  }
 }
 
 export async function updateUnit(
   id: string,
   updates: { status?: 'available' | 'unavailable' | 'maintenance'; is_featured?: boolean }
 ): Promise<{ id: string; status: string; is_available: boolean; is_featured: boolean; updated_at: string }> {
-  return apiClient.patch(`/api/units/${id}`, updates, { credentials: 'include' });
+  return apiClient.patch(`/api/units/${id}`, updates);
 }
 
 function toManageListing(u: Record<string, unknown>): Listing {
@@ -38,8 +52,13 @@ export async function listUnits(params?: ListUnitsParams): Promise<ListingView[]
   if (params?.offset) searchParams.set('offset', String(params.offset));
 
   const qs = searchParams.toString();
-  const data = await apiClient.get<unknown[]>(`/api/units${qs ? `?${qs}` : ''}`);
-  return (Array.isArray(data) ? data : []).map((u) => toListingView(u as Record<string, unknown>));
+  try {
+    const data = await apiClient.get<unknown[]>(`/api/units${qs ? `?${qs}` : ''}`);
+    return (Array.isArray(data) ? data : []).map((u) => toListingView(u as Record<string, unknown>));
+  } catch (err) {
+    if (isUnitsApiUnavailable(err)) return [];
+    throw err;
+  }
 }
 
 export async function getUnitById(id: string): Promise<Listing | null> {
@@ -47,7 +66,9 @@ export async function getUnitById(id: string): Promise<Listing | null> {
     const data = await apiClient.get<Record<string, unknown>>(`/api/units/${id}`);
     return toListing(data);
   } catch (err) {
-    if (err instanceof Error && (err as Error & { status?: number }).status === 404) return null;
+    if (err instanceof Error && ((err as Error & { status?: number }).status === 404 || isUnitsApiUnavailable(err))) {
+      return null;
+    }
     throw err;
   }
 }

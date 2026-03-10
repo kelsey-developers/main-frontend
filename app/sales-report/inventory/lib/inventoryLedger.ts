@@ -1,15 +1,8 @@
-import type { ItemCategory, ItemType, ReplenishmentItem, StockMovement } from '../types';
-import {
-  mockDashboardSummary,
-  mockReplenishmentItems,
-  mockStockMovements,
-  mockUnitStockMovements,
-  mockUnitItems,
-  mockUnits,
-  mockWarehouseDirectoryData,
-} from './mockData';
+import { apiClient } from '@/lib/api/client';
+import type { ItemCategory, ItemType, ReplenishmentItem } from '../types';
+import { loadInventoryDataset, mockDashboardSummary, mockReplenishmentItems } from './mockData';
 
-type MovementKind = 'IN' | 'OUT';
+type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
 
 export interface LedgerMovementInput {
   productId: string;
@@ -58,326 +51,25 @@ export interface LedgerResult {
   totalStock: number;
 }
 
-const MOCK_LOGGED_IN_USER_NAME = 'Admin User';
+interface InventoryMovementResponse {
+  movement: { id: string };
+}
 
-const nowIsoDate = () => new Date().toISOString();
+const mapReferenceType = (
+  explicitType?: 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL',
+  reference?: string
+): BackendReferenceType => {
+  if (explicitType === 'PO') return 'purchase_order';
+  if (explicitType === 'BOOKING') return 'booking';
+  if (explicitType === 'DAMAGE') return 'damage_incident';
+  if (explicitType === 'MANUAL') return 'manual_adjustment';
 
-const pad2 = (value: number) => String(value).padStart(2, '0');
-
-const formatMovementDateTime = (value?: string) => {
-  if (!value) {
-    const now = new Date();
-    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())} ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/.test(value)) {
-    return value;
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return `${value} 00:00`;
-  }
-
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())} ${pad2(parsed.getHours())}:${pad2(parsed.getMinutes())}`;
-  }
-
-  return value;
+  const normalized = String(reference ?? '').toUpperCase();
+  if (normalized.startsWith('PO') || normalized.startsWith('GR')) return 'purchase_order';
+  if (normalized.startsWith('BK')) return 'booking';
+  if (normalized.startsWith('DI')) return 'damage_incident';
+  return 'manual_adjustment';
 };
-
-const splitMovementDateTime = (value?: string) => {
-  const formatted = formatMovementDateTime(value);
-  const [date = '', time = '00:00'] = formatted.split(' ');
-  return { date, time, recordedAt: `${date} ${time}`.trim() };
-};
-
-const resolveCreatedBy = (createdBy?: string) => {
-  if (!createdBy || createdBy.includes('Modal')) {
-    return MOCK_LOGGED_IN_USER_NAME;
-  }
-  return createdBy;
-};
-
-const normalizeInventoryName = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-
-const toStockMovementType = (kind: MovementKind): StockMovement['type'] =>
-  kind === 'IN' ? 'in' : 'out';
-
-const inferReferenceType = (
-  reference?: string,
-  explicitType?: 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL'
-): 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL' => {
-  if (explicitType) return explicitType;
-  if (!reference) return 'MANUAL';
-
-  const normalized = reference.toUpperCase();
-  if (normalized.startsWith('PO') || normalized.startsWith('GR')) return 'PO';
-  if (normalized.startsWith('BK')) return 'BOOKING';
-  if (normalized.startsWith('DI') || normalized.includes('DAMAGE')) return 'DAMAGE';
-  return 'MANUAL';
-};
-
-const findItem = (productId: string): ReplenishmentItem => {
-  const item = mockReplenishmentItems.find((entry) => entry.id === productId);
-  if (!item) {
-    throw new Error(`Unknown item/product: ${productId}`);
-  }
-  return item;
-};
-
-const findWarehouse = (warehouseId: string) => {
-  const warehouse = mockWarehouseDirectoryData.find((entry) => entry.id === warehouseId);
-  if (!warehouse) {
-    throw new Error(`Unknown warehouse: ${warehouseId}`);
-  }
-  return warehouse;
-};
-
-const upsertWarehouseBalance = (
-  warehouseId: string,
-  productId: string,
-  productName: string,
-  reorderLevel: number,
-  delta: number
-): { before: number; after: number } => {
-  const warehouse = findWarehouse(warehouseId);
-  const row = warehouse.inventoryBalances.find((entry) => entry.productId === productId);
-
-  if (!row) {
-    if (delta < 0) {
-      throw new Error(`Insufficient stock in warehouse ${warehouse.name}`);
-    }
-
-    warehouse.inventoryBalances.push({
-      productId,
-      productName,
-      quantity: delta,
-      reorderLevel,
-    });
-    return { before: 0, after: delta };
-  }
-
-  const before = row.quantity;
-  const nextQty = row.quantity + delta;
-  if (nextQty < 0) {
-    throw new Error(`Insufficient stock in warehouse ${warehouse.name}`);
-  }
-
-  row.quantity = nextQty;
-  row.reorderLevel = reorderLevel;
-  return { before, after: nextQty };
-};
-
-const appendWarehouseMovement = (
-  warehouseId: string,
-  args: {
-    id: string;
-    productName: string;
-    quantity: number;
-    recordedAt: string;
-    note: string;
-    type: 'in' | 'out' | 'transfer';
-  }
-) => {
-  const warehouse = findWarehouse(warehouseId);
-  const timestamp = splitMovementDateTime(args.recordedAt);
-  warehouse.stockMovements.unshift({
-    id: args.id,
-    type: args.type,
-    productName: args.productName,
-    quantity: args.quantity,
-    date: timestamp.date,
-    time: timestamp.time,
-    recordedAt: timestamp.recordedAt,
-    note: args.note,
-  });
-};
-
-const appendUnitMovement = (
-  input: StockOutInput,
-  args: {
-    productName: string;
-    quantity: number;
-    createdBy?: string;
-    beforeQuantity: number;
-    afterQuantity: number;
-  }
-) => {
-  if (!input.unitId) return;
-
-  const unit = mockUnits.find((entry) => entry.id === input.unitId);
-  if (!unit) {
-    throw new Error(`Unknown unit: ${input.unitId}`);
-  }
-
-  const sourceWarehouse = findWarehouse(input.warehouseId);
-  const timestamp = splitMovementDateTime(input.date);
-
-  mockUnitStockMovements.unshift({
-    id: generateMovementId('UM'),
-    productId: input.productId,
-    productName: args.productName,
-    unitId: unit.id,
-    unitName: unit.name,
-    sourceWarehouseId: sourceWarehouse.id,
-    sourceWarehouseName: sourceWarehouse.name,
-    quantity: args.quantity,
-    reason: input.reason,
-    referenceType: inferReferenceType(input.reference, input.referenceType),
-    referenceId: input.reference,
-    beforeQuantity: args.beforeQuantity,
-    afterQuantity: args.afterQuantity,
-    recordedAt: timestamp.recordedAt,
-    recordedDate: timestamp.date,
-    recordedTime: timestamp.time,
-    createdBy: resolveCreatedBy(args.createdBy),
-  });
-};
-
-const appendGlobalMovement = (
-  kind: MovementKind,
-  input: LedgerMovementInput | StockOutInput,
-  id: string,
-  qtySnapshot: { before: number; after: number }
-) => {
-  const movementDateTime = formatMovementDateTime(input.date);
-  const destinationUnitId = 'unitId' in input ? input.unitId : undefined;
-  const destinationUnitName = destinationUnitId
-    ? mockUnits.find((unit) => unit.id === destinationUnitId)?.name
-    : undefined;
-
-  const movement: StockMovement = {
-    id,
-    productId: input.productId,
-    warehouseId: input.warehouseId,
-    unitId: destinationUnitId,
-    unitName: destinationUnitName,
-    type: toStockMovementType(kind),
-    quantity: input.quantity,
-    reason: input.reason,
-    referenceType: inferReferenceType(input.reference, input.referenceType),
-    beforeQuantity: qtySnapshot.before,
-    afterQuantity: qtySnapshot.after,
-    movementDateTime,
-    notes: [input.reason, input.notes].filter(Boolean).join(' | '),
-    referenceId: input.reference,
-    createdAt: movementDateTime,
-    createdBy: resolveCreatedBy(input.createdBy),
-  };
-
-  mockStockMovements.unshift(movement);
-
-  const item = findItem(input.productId);
-  item.stockMovements = [movement, ...(item.stockMovements ?? [])];
-};
-
-const recomputeItemDerived = (productId: string) => {
-  const item = findItem(productId);
-  const totalStock = mockWarehouseDirectoryData.reduce((sum, warehouse) => {
-    const row = warehouse.inventoryBalances.find((entry) => entry.productId === productId);
-    return sum + (row?.quantity ?? 0);
-  }, 0);
-
-  item.currentStock = totalStock;
-  item.shortfall = Math.max(0, item.minStock - item.currentStock);
-  item.isLowStock = item.currentStock < item.minStock;
-  item.totalValue = item.currentStock * item.unitCost;
-  item.updatedAt = nowIsoDate();
-
-  return {
-    item,
-    totalStock,
-    shortfall: item.shortfall,
-    lowStock: item.isLowStock,
-  };
-};
-
-const recomputeDashboardSummary = () => {
-  mockDashboardSummary.totalItems = mockReplenishmentItems.length;
-  mockDashboardSummary.totalStocks = mockReplenishmentItems.reduce(
-    (sum, entry) => sum + entry.currentStock,
-    0
-  );
-  mockDashboardSummary.lowStockCount = mockReplenishmentItems.filter(
-    (entry) => entry.currentStock < entry.minStock
-  ).length;
-  mockDashboardSummary.replenishmentNeeded = mockReplenishmentItems.reduce(
-    (sum, entry) => sum + Math.max(0, entry.minStock - entry.currentStock),
-    0
-  );
-};
-
-const addToUnitAllocation = (productId: string, unitId: string, quantity: number) => {
-  if (quantity <= 0) return;
-
-  const item = findItem(productId);
-  const unit = mockUnits.find((entry) => entry.id === unitId);
-  if (!unit) {
-    throw new Error(`Unknown unit: ${unitId}`);
-  }
-
-  const normalized = normalizeInventoryName(item.name);
-  const unitRow = mockUnitItems.find(
-    (entry) =>
-      entry.assignedToUnit === unitId &&
-      normalizeInventoryName(entry.name) === normalized
-  );
-
-  if (unitRow) {
-    unitRow.currentStock += quantity;
-  } else {
-    mockUnitItems.push({
-      id: `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      name: item.name,
-      type: item.type,
-      category: item.category,
-      unit: item.unit,
-      currentStock: quantity,
-      minStock: Math.max(1, item.minStock),
-      assignedToUnit: unitId,
-    });
-  }
-
-  unit.itemCount = (unit.itemCount ?? 0) + 1;
-};
-
-const generateMovementId = (prefix: 'SM' | 'WM' | 'UM') =>
-  (() => {
-    if (prefix === 'SM') {
-      const maxExisting = mockStockMovements.reduce((max, movement) => {
-        const matched = movement.id.match(/^SM-(\d+)$/i);
-        if (!matched) return max;
-        return Math.max(max, Number(matched[1]));
-      }, 0);
-      return `SM-${String(maxExisting + 1).padStart(3, '0')}`;
-    }
-
-    if (prefix === 'UM') {
-      const maxUnitMovement = mockUnitStockMovements.reduce((max, movement) => {
-        const matched = movement.id.match(/^UM-(\d+)$/i);
-        if (!matched) return max;
-        return Math.max(max, Number(matched[1]));
-      }, 0);
-      return `UM-${String(maxUnitMovement + 1).padStart(3, '0')}`;
-    }
-
-    const maxWarehouseMovement = mockWarehouseDirectoryData.reduce((max, warehouse) => {
-      const warehouseMax = warehouse.stockMovements.reduce((innerMax, movement) => {
-        const matched = movement.id.match(/^WM-(\d+)$/i);
-        if (!matched) return innerMax;
-        return Math.max(innerMax, Number(matched[1]));
-      }, 0);
-      return Math.max(max, warehouseMax);
-    }, 0);
-
-    return `WM-${String(maxWarehouseMovement + 1).padStart(3, '0')}`;
-  })();
 
 const emitInventoryMovementUpdated = (detail: {
   source: 'stock-in' | 'stock-out' | 'recompute';
@@ -388,228 +80,191 @@ const emitInventoryMovementUpdated = (detail: {
   window.dispatchEvent(new CustomEvent('inventory:movement-updated', { detail }));
 };
 
-export const processStockIn = (input: LedgerMovementInput): LedgerResult => {
+const buildLedgerResult = (productId: string, movementIds: string[]): LedgerResult => {
+  const item = mockReplenishmentItems.find((entry) => entry.id === productId);
+  if (!item) {
+    throw new Error('Item not found after refreshing inventory dataset.');
+  }
+
+  return {
+    movementIds,
+    item,
+    lowStock: item.currentStock < item.minStock,
+    shortfall: Math.max(0, item.minStock - item.currentStock),
+    totalStock: item.currentStock,
+  };
+};
+
+const postMovement = async (
+  input: LedgerMovementInput,
+  type: 'IN' | 'OUT' | 'ADJUSTMENT',
+  overrides?: Partial<{ warehouseId: string; referenceId: string; notes: string }>
+) => {
+  const payload = {
+    productId: input.productId,
+    warehouseId: overrides?.warehouseId ?? input.warehouseId,
+    type,
+    quantity: input.quantity,
+    reason: input.reason,
+    referenceType: mapReferenceType(input.referenceType, input.reference),
+    referenceId: overrides?.referenceId ?? input.reference,
+    notes: overrides?.notes ?? input.notes,
+  };
+
+  const response = await apiClient.post<InventoryMovementResponse>('/api/inventory/movements', payload);
+  return response.movement.id;
+};
+
+const toCategoryCode = (value: string) =>
+  value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'OTHER';
+
+const ensureCategoryId = async (categoryName: ItemCategory): Promise<string> => {
+  const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
+    '/api/product-categories'
+  );
+
+  const normalizedName = categoryName.toLowerCase();
+  const code = toCategoryCode(categoryName);
+  const existing = categories.find(
+    (category) => category.name.toLowerCase() === normalizedName || category.code === code
+  );
+  if (existing) return existing.id;
+
+  const created = await apiClient.post<{ id: string }>('/api/product-categories', {
+    code,
+    name: categoryName,
+    description: `Auto-created for category ${categoryName}`,
+  });
+
+  return created.id;
+};
+
+export const processStockIn = async (input: LedgerMovementInput): Promise<LedgerResult> => {
   if (input.quantity <= 0) {
     throw new Error('Quantity must be greater than zero.');
   }
 
-  const item = findItem(input.productId);
-  findWarehouse(input.warehouseId);
+  const movementId = await postMovement(input, 'IN');
+  await loadInventoryDataset(true);
 
-  const qtySnapshot = upsertWarehouseBalance(
-    input.warehouseId,
-    item.id,
-    item.name,
-    item.minStock,
-    input.quantity
-  );
-
-  const globalMovementId = generateMovementId('SM');
-  appendGlobalMovement('IN', input, globalMovementId, qtySnapshot);
-  appendWarehouseMovement(input.warehouseId, {
-    id: generateMovementId('WM'),
-    type: 'in',
-    productName: item.name,
-    quantity: input.quantity,
-    recordedAt: input.date,
-    note: [input.reason, input.reference].filter(Boolean).join(' · '),
-  });
-
-  const derived = recomputeItemDerived(item.id);
-  recomputeDashboardSummary();
+  const result = buildLedgerResult(input.productId, [movementId]);
   emitInventoryMovementUpdated({
     source: 'stock-in',
-    movementIds: [globalMovementId],
-    productId: item.id,
+    movementIds: [movementId],
+    productId: input.productId,
   });
 
-  return {
-    movementIds: [globalMovementId],
-    item: derived.item,
-    lowStock: derived.lowStock,
-    shortfall: derived.shortfall,
-    totalStock: derived.totalStock,
-  };
+  return result;
 };
 
-export const createItemAndProcessStockIn = (
+export const createItemAndProcessStockIn = async (
   input: NewItemStockInInput
-): { item: ReplenishmentItem; movementIds: string[] } => {
-  if (!input.name.trim()) {
-    throw new Error('Item name is required.');
-  }
-  if (!input.sku.trim()) {
-    throw new Error('SKU is required.');
-  }
-  if (!input.initialStocks.length) {
-    throw new Error('At least one warehouse stock line is required.');
-  }
+): Promise<{ item: ReplenishmentItem; movementIds: string[] }> => {
+  if (!input.name.trim()) throw new Error('Item name is required.');
+  if (!input.sku.trim()) throw new Error('SKU is required.');
+  if (!input.initialStocks.length) throw new Error('At least one warehouse stock line is required.');
 
-  const productId = `itm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const primaryWarehouse = findWarehouse(input.initialStocks[0].warehouseId);
-  const now = nowIsoDate();
+  const categoryId = await ensureCategoryId(input.category);
 
-  const newItem: ReplenishmentItem = {
-    id: productId,
+  const product = await apiClient.post<{ id: string }>('/api/products', {
     sku: input.sku,
     name: input.name,
-    type: input.itemType,
-    category: input.category,
     unit: input.unit,
-    currentStock: 0,
-    minStock: Math.max(0, input.minStock),
-    shortfall: 0,
-    isLowStock: false,
-    unitCost: input.unitCost ?? 0,
-    totalValue: 0,
-    warehouseId: primaryWarehouse.id,
-    warehouseName: primaryWarehouse.name,
-    isActive: input.isActive ?? true,
-    createdAt: now,
-    updatedAt: now,
-    lastModifiedBy: input.createdBy || 'System',
-    currentsupplierId: input.supplierId || '',
-    supplierName: input.supplierName || '',
-    stockMovements: [],
-    damageAdjustments: [],
-  };
-
-  mockReplenishmentItems.unshift(newItem);
-
-  const movementIds: string[] = [];
-  input.initialStocks.forEach((stockLine) => {
-    const result = processStockIn({
-      productId,
-      warehouseId: stockLine.warehouseId,
-      quantity: stockLine.quantity,
-      reason: stockLine.reason,
-      date: stockLine.date,
-      reference: stockLine.reference,
-      notes: stockLine.notes,
-      createdBy: input.createdBy,
-    });
-    movementIds.push(...result.movementIds);
+    itemType: input.itemType === 'consumable' ? 'consumable' : 'non_consumable',
+    reorderLevel: Math.max(0, input.minStock),
+    supplierId: input.supplierId || undefined,
+    categoryId,
   });
 
-  const { item } = recomputeItemDerived(productId);
-  recomputeDashboardSummary();
+  const movementIds: string[] = [];
+  for (const stockLine of input.initialStocks) {
+    const movementId = await apiClient.post<InventoryMovementResponse>('/api/inventory/movements', {
+      productId: product.id,
+      warehouseId: stockLine.warehouseId,
+      type: 'IN',
+      quantity: stockLine.quantity,
+      reason: stockLine.reason,
+      referenceType: mapReferenceType(undefined, stockLine.reference),
+      referenceId: stockLine.reference,
+      notes: stockLine.notes,
+    });
+    movementIds.push(movementId.movement.id);
+  }
+
+  await loadInventoryDataset(true);
+  const createdItem = mockReplenishmentItems.find((entry) => entry.id === product.id);
+  if (!createdItem) {
+    throw new Error('Product was created but could not be loaded into inventory list.');
+  }
+
   emitInventoryMovementUpdated({
     source: 'stock-in',
     movementIds,
-    productId,
+    productId: product.id,
   });
 
-  return {
-    item,
-    movementIds,
-  };
+  return { item: createdItem, movementIds };
 };
 
-export const processStockOut = (input: StockOutInput): LedgerResult => {
+export const processStockOut = async (input: StockOutInput): Promise<LedgerResult> => {
   if (input.quantity <= 0) {
     throw new Error('Quantity must be greater than zero.');
   }
 
-  const item = findItem(input.productId);
-
-  const sourceWarehouse = findWarehouse(input.warehouseId);
-  const sourceBalance = sourceWarehouse.inventoryBalances.find(
-    (entry) => entry.productId === input.productId
-  );
-  const available = sourceBalance?.quantity ?? 0;
-
-  if (available < input.quantity) {
-    throw new Error(
-      `Insufficient stock for ${item.name}. Available: ${available}, requested: ${input.quantity}.`
-    );
-  }
-
-  const sourceQtySnapshot = upsertWarehouseBalance(
-    input.warehouseId,
-    item.id,
-    item.name,
-    item.minStock,
-    -input.quantity
-  );
-
   const movementIds: string[] = [];
-  const globalMovementId = generateMovementId('SM');
-  appendGlobalMovement('OUT', input, globalMovementId, sourceQtySnapshot);
-  movementIds.push(globalMovementId);
-
-  appendWarehouseMovement(input.warehouseId, {
-    id: generateMovementId('WM'),
-    type: input.transferToWarehouseId ? 'transfer' : 'out',
-    productName: item.name,
-    quantity: input.quantity,
-    recordedAt: input.date,
-    note: [input.reason, input.reference].filter(Boolean).join(' · '),
+  const outMovementId = await postMovement(input, 'OUT', {
+    referenceId: input.reference || input.unitId,
   });
+  movementIds.push(outMovementId);
 
   if (input.transferToWarehouseId) {
-    const destinationQtySnapshot = upsertWarehouseBalance(
-      input.transferToWarehouseId,
-      item.id,
-      item.name,
-      item.minStock,
-      input.quantity
-    );
-
-    const transferInId = generateMovementId('SM');
-    appendGlobalMovement(
-      'IN',
-      {
-        ...input,
-        warehouseId: input.transferToWarehouseId,
-        notes: [input.notes, `Transfer from ${sourceWarehouse.name}`].filter(Boolean).join(' | '),
-      },
-      transferInId,
-      destinationQtySnapshot
-    );
-    movementIds.push(transferInId);
-
-    appendWarehouseMovement(input.transferToWarehouseId, {
-      id: generateMovementId('WM'),
-      type: 'in',
-      productName: item.name,
-      quantity: input.quantity,
-      recordedAt: input.date,
-      note: `Transfer in · ${sourceWarehouse.name}`,
+    const transferInId = await postMovement(input, 'IN', {
+      warehouseId: input.transferToWarehouseId,
+      notes: [input.notes, `Transfer from ${input.warehouseId}`].filter(Boolean).join(' | '),
     });
+    movementIds.push(transferInId);
   }
 
   if (input.unitId) {
-    addToUnitAllocation(item.id, input.unitId, input.quantity);
-    appendUnitMovement(input, {
-      productName: item.name,
-      quantity: input.quantity,
-      createdBy: input.createdBy,
-      beforeQuantity: sourceQtySnapshot.before,
-      afterQuantity: sourceQtySnapshot.after,
+    await apiClient.post('/api/inventory/allocations', {
+      productId: input.productId,
+      unitId: input.unitId,
+      quantityDelta: input.quantity,
     });
   }
 
-  const derived = recomputeItemDerived(item.id);
-  recomputeDashboardSummary();
+  await loadInventoryDataset(true);
+  const result = buildLedgerResult(input.productId, movementIds);
+
   emitInventoryMovementUpdated({
     source: 'stock-out',
     movementIds,
-    productId: item.id,
+    productId: input.productId,
   });
 
-  return {
-    movementIds,
-    item: derived.item,
-    lowStock: derived.lowStock,
-    shortfall: derived.shortfall,
-    totalStock: derived.totalStock,
-  };
+  return result;
 };
 
-export const recomputeAllInventoryDerivedValues = () => {
-  mockReplenishmentItems.forEach((item) => {
-    recomputeItemDerived(item.id);
-  });
-  recomputeDashboardSummary();
+export const recomputeAllInventoryDerivedValues = async () => {
+  await loadInventoryDataset(true);
+
+  // Keep summary aligned in case other parts mutate the arrays client-side.
+  mockDashboardSummary.totalItems = mockReplenishmentItems.length;
+  mockDashboardSummary.totalStocks = mockReplenishmentItems.reduce(
+    (sum, item) => sum + item.currentStock,
+    0
+  );
+  mockDashboardSummary.lowStockCount = mockReplenishmentItems.filter(
+    (item) => item.currentStock < item.minStock
+  ).length;
+  mockDashboardSummary.replenishmentNeeded = mockReplenishmentItems.reduce(
+    (sum, item) => sum + Math.max(0, item.minStock - item.currentStock),
+    0
+  );
+
   emitInventoryMovementUpdated({ source: 'recompute' });
 };
