@@ -5,7 +5,6 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/purchase-orders',
   '/api/product-categories',
   '/api/units',
-  '/api/bookings',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -39,17 +38,22 @@ function hasExistingAuthHeaders(headers: Record<string, string>): boolean {
 
 /** Client: same-origin by default, with backend fallback for inventory stack. Server: API_URL or localhost fallback. */
 function getBaseUrl(endpoint: string): string {
-  const configuredServerUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || '';
-
   if (typeof window !== 'undefined') {
-    if (shouldUseBackendFallback(endpoint)) {
-      return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
-    }
-
+    // Always prefer same-origin in the browser so Next rewrites can proxy without CORS,
+    // and so we don't need to expose backend URLs via NEXT_PUBLIC_* env vars.
     return '';
   }
 
-  return configuredServerUrl || 'http://localhost:4000';
+  // Server-side fetches need absolute URLs. Route inventory/market endpoints to MARKET_API_URL.
+  if (shouldUseBackendFallback(endpoint)) {
+    const marketUrl = process.env.MARKET_API_URL || '';
+    if (!marketUrl) throw new Error('Market API URL is not configured. Set MARKET_API_URL.');
+    return marketUrl;
+  }
+
+  const apiUrl = process.env.API_URL || '';
+  if (!apiUrl) throw new Error('API URL is not configured. Set API_URL.');
+  return apiUrl;
 }
 
 type RequestOptions = Omit<RequestInit, 'body'> & {
@@ -69,10 +73,6 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const { body, token, headers, credentials, ...rest } = options;
   const baseUrl = getBaseUrl(endpoint);
   const requestMethod = String(rest.method ?? 'GET').toUpperCase();
-
-  if (!baseUrl && typeof window === 'undefined') {
-    throw new Error('API URL is not configured. Set API_URL.');
-  }
 
   const mergedHeaders: Record<string, string> = {
     'Content-Type': 'application/json',

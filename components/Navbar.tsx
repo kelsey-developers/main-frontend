@@ -313,13 +313,41 @@ export default function Navbar() {
                     {/* Nav links: text-only hover, stronger contrast */}
                     <div className="px-3">
                       {isAdmin && (
+                        <>
+                          <Link
+                            href="/admin"
+                            onClick={() => setIsDropdownOpen(false)}
+                            className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            Admin Panel
+                          </Link>
+                          <Link
+                            href="/admin/agents"
+                            onClick={() => setIsDropdownOpen(false)}
+                            className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            Agent Directory
+                          </Link>
+                          <Link
+                            href="/admin/payouts"
+                            onClick={() => setIsDropdownOpen(false)}
+                            className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            Payout Management
+                          </Link>
+                        </>
+                      )}
+                      {isAgent && (
                         <Link
-                          href="/admin"
+                          href="/agent"
                           onClick={() => setIsDropdownOpen(false)}
-                          className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
                           style={{ fontFamily: 'var(--font-poppins)' }}
                         >
-                          Admin Panel
+                          Agent Hub
                         </Link>
                       )}
                       {(isAdmin || isAgent) && (
