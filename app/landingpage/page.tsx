@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import PropertyCard from '@/components/PropertyCard';
 import type { ListingView } from '@/types/listing';
+import { listUnits } from '@/lib/api/units';
 
 type RevealProps = {
   children: React.ReactNode;
@@ -52,10 +53,13 @@ const RevealOnScroll: React.FC<RevealProps> = ({ children, className = '', delay
 export default function Homepage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
+  const [featuredStays, setFeaturedStays] = useState<ListingView[]>([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 1000);
-    return () => clearTimeout(timer);
+    listUnits({ featured: true, limit: 3 })
+      .then(setFeaturedStays)
+      .catch(() => setFeaturedStays([]))
+      .finally(() => setIsLoading(false));
   }, []);
 
   if (isLoading) {
@@ -278,74 +282,7 @@ export default function Homepage() {
           </div>
         </RevealOnScroll>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[
-            {
-              id: 'featured-1',
-              title: 'Apartment complex in Davao',
-              description: 'Spacious apartment near city center.',
-              price: 4320,
-              price_unit: 'night',
-              currency: '₱',
-              location: 'Matina, Aplaya Davao City',
-              city: 'Davao',
-              bedrooms: 1,
-              bathrooms: 1,
-              square_feet: 30,
-              property_type: 'apartment',
-              main_image_url: '/heroimage.png',
-              amenities: ['Wi‑Fi', 'Air conditioning', 'Kitchen'],
-              is_available: true,
-              is_featured: true,
-              created_at: '',
-              updated_at: '',
-              details: '',
-              formatted_price: '',
-            },
-            {
-              id: 'featured-2',
-              title: 'Apartment complex in Davao',
-              description: 'Comfortable stay close to attractions.',
-              price: 4320,
-              price_unit: 'night',
-              currency: '₱',
-              location: 'Matina, Aplaya Davao City',
-              city: 'Davao',
-              bedrooms: 1,
-              bathrooms: 1,
-              square_feet: 30,
-              property_type: 'apartment',
-              main_image_url: '/heroimage.png',
-              amenities: ['Wi‑Fi', 'Parking'],
-              is_available: true,
-              is_featured: true,
-              created_at: '',
-              updated_at: '',
-              details: '',
-              formatted_price: '',
-            },
-            {
-              id: 'featured-3',
-              title: 'Apartment complex in Davao',
-              description: 'Cozy unit perfect for short stays.',
-              price: 4320,
-              price_unit: 'night',
-              currency: '₱',
-              location: 'Matina, Aplaya Davao City',
-              city: 'Davao',
-              bedrooms: 1,
-              bathrooms: 1,
-              square_feet: 30,
-              property_type: 'apartment',
-              main_image_url: '/heroimage.png',
-              amenities: ['Wi‑Fi'],
-              is_available: true,
-              is_featured: true,
-              created_at: '',
-              updated_at: '',
-              details: '',
-              formatted_price: '',
-            },
-          ].map((stay: ListingView, i) => (
+          {featuredStays.map((stay, i) => (
             <RevealOnScroll key={stay.id} delay={i * 120}>
               <PropertyCard
                 apartment={stay}

@@ -18,12 +18,8 @@ export default function LoginPage() {
     setError('');
 
     startTransition(async () => {
-      try {
-        await loginAction(email, password);
-      } catch (err) {
-        if (err instanceof Error && err.message === 'NEXT_REDIRECT') throw err;
-        setError(err instanceof Error ? err.message : 'Unable to connect to the server.');
-      }
+      const result = await loginAction(email, password);
+      if (result?.error) setError(result.error);
     });
   };
 
