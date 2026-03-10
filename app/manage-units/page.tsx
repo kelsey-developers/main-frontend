@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { Listing } from '@/types/listing';
 import { listUnitsForManage, updateUnit } from '@/lib/api/units';
 import { useAuth } from '@/contexts/AuthContext';
+import NewListingForm, { type NewListingFormPayload } from '@/components/NewListingForm';
 
 const ManageUnits: React.FC = () => {
   const router = useRouter();
@@ -29,6 +30,7 @@ const ManageUnits: React.FC = () => {
   const [deleteModalActive, setDeleteModalActive] = useState(false);
   const [pageToast, setPageToast] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
   const pageToastRef = useRef<HTMLDivElement | null>(null);
+  const [showNewListing, setShowNewListing] = useState(false);
 
   const fetchUnits = useCallback(async () => {
     if (!canAccess) return;
@@ -97,6 +99,12 @@ const ManageUnits: React.FC = () => {
 
   const formatPrice = (price: number, currency: string) => {
     return `${currency} ${price.toLocaleString()}`;
+  };
+
+  const handleCreateListing = async (data: NewListingFormPayload) => {
+    console.info('New listing payload (UI only):', data);
+    showToast('Create listing is not yet wired to the backend.');
+    setShowNewListing(false);
   };
 
   const getCapacityText = (bedrooms: number) => {
@@ -372,6 +380,7 @@ const ManageUnits: React.FC = () => {
                 </div>
               </div>
 
+              {!showNewListing && (
               <div className="mb-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex flex-col md:flex-row gap-4 items-center w-full">
@@ -455,7 +464,7 @@ const ManageUnits: React.FC = () => {
 
                   <div className="w-full md:w-auto flex justify-end">
                     <button 
-                      onClick={() => showToast('Create listing is mocked in this demo.')}
+                      onClick={() => setShowNewListing(true)}
                       className="px-6 py-3 rounded-lg text-white font-semibold transition-all duration-300 hover:opacity-90 whitespace-nowrap shrink-0 cursor-pointer"
                       style={{backgroundColor: '#0B5858', fontFamily: 'Poppins'}}
                     >
@@ -464,8 +473,17 @@ const ManageUnits: React.FC = () => {
                   </div>
                 </div>
               </div>
+              )}
 
-              {viewMode === 'list' ? (
+              {showNewListing ? (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <NewListingForm
+                    onSubmit={handleCreateListing}
+                    onCancel={() => setShowNewListing(false)}
+                    showToast={showToast}
+                  />
+                </div>
+              ) : viewMode === 'list' ? (
                 <>
                   <div className="bg-gray-50 rounded-lg shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
