@@ -4,6 +4,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { signupApi } from '@/lib/api/auth';
 
 const FloatingInput: React.FC<{
   id: string;
@@ -240,12 +241,34 @@ export default function SignUpPage() {
     setLoading(true);
     setError('');
 
-    // Mock: simulate network delay then show success
-    await new Promise(res => setTimeout(res, 1200));
-    setLoading(false);
-    setSuccess(true);
+    try {
+      const birthDate =
+        birthYear && birthMonth && birthDay
+          ? `${birthYear}-${birthMonth}-${birthDay.padStart(2, '0')}`
+          : undefined;
 
-    setTimeout(() => { router.push('/login'); }, 2500);
+      await signupApi({
+        firstName,
+        lastName,
+        email,
+        password,
+        phone: phone ? `${countryCode}${phone.replace(/\s/g, '')}` : undefined,
+        gender: gender ? gender.toLowerCase().replace(/\s+/g, '_') : undefined,
+        birthDate,
+        street: street || undefined,
+        barangay: barangay || undefined,
+        city: city || undefined,
+        zipCode: zipCode || undefined,
+      });
+
+      setSuccess(true);
+      setTimeout(() => { router.push('/login'); }, 2500);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const dropdownMenuStyle: React.CSSProperties = {
