@@ -1,16 +1,38 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import InventoryTable from './components/InventoryTable';
 import InventorySummaryCards from './components/InventorySummaryCards';
 import SearchUnits from './components/SearchUnits';
 import UnitAlert from './components/UnitAlert';
 import type { InventoryDashboardSummary } from './types';
-import { mockReplenishmentItems, mockUnits, mockUnitItems } from './lib/mockData';
+import { loadInventoryDataset, mockReplenishmentItems, mockUnits, mockUnitItems } from './lib/mockData';
 import InventoryDashboardLinks from './components/InventoryDashboardLinks';
 
 export default function InventoryDashboardPage() {
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    void loadInventoryDataset()
+      .finally(() => {
+        if (isMounted) {
+          setRefreshTick((tick) => tick + 1);
+        }
+      });
+
+    const onUpdate = () => setRefreshTick((tick) => tick + 1);
+    window.addEventListener('inventory:movement-updated', onUpdate);
+    window.addEventListener('focus', onUpdate);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('inventory:movement-updated', onUpdate);
+      window.removeEventListener('focus', onUpdate);
+    };
+  }, []);
+
   const summary = useMemo((): InventoryDashboardSummary => {
     const items = mockReplenishmentItems;
     const totalStocks = items.reduce((sum, item) => sum + item.currentStock, 0);
@@ -21,7 +43,7 @@ export default function InventoryDashboardPage() {
       lowStockCount,
       replenishmentNeeded: lowStockCount,
     };
-  }, []);
+  }, [refreshTick]);
 
   return (
     <>

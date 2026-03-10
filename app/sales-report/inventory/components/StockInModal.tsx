@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import { 
+  loadInventoryDataset,
   mockReplenishmentItems, 
   mockWarehouseDirectoryData,
   ITEM_CATEGORIES,
@@ -147,6 +148,7 @@ interface StockInModalProps {
 export default function StockInModal({ mode, onClose }: StockInModalProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [, setRefreshTick] = useState(0);
   const [form, setForm] = useState({
     sku: '',
     name: '',
@@ -175,6 +177,25 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
     setMounted(true);
   }, []);
 
+  useEffect(() => {
+    void loadInventoryDataset()
+      .finally(() => {
+        setRefreshTick((tick) => tick + 1);
+      });
+
+    const refresh = () => {
+      setRefreshTick((tick) => tick + 1);
+    };
+
+    window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+
   // Trap scroll
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -200,7 +221,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
     setTimeout(onClose, 220);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     try {
       const quantity = Number(form.quantity || 0);
       if (quantity <= 0) {
@@ -218,7 +239,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
           return;
         }
 
-        processStockIn({
+        await processStockIn({
           productId: form.existingItem,
           warehouseId: form.warehouse[0],
           quantity,
@@ -237,7 +258,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
           return;
         }
 
-        createItemAndProcessStockIn({
+        await createItemAndProcessStockIn({
           sku: form.sku,
           name: form.name,
           category: form.category as ItemCategory,
