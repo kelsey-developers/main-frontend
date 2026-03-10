@@ -73,13 +73,18 @@ export function AuthProvider({
   }, [initialUser?.id ?? null]);
 
   const signOut = useCallback(async () => {
-    setUser(null); // instant UI update — no reload needed
+    setUser(null); // instant UI update
     await logoutAction();
+
     const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
+
     if (isProtected) {
       router.push('/login');
     } else {
-      router.refresh(); // stay on page, just re-render server components
+      // After logout, always go through the root (/) so the
+      // server-side RootPage can decide the correct logged-out view
+      // (landing page with loading screen) and hide calendar, etc.
+      router.push('/');
     }
   }, [router, pathname]);
 

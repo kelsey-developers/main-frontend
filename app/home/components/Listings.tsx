@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { ListingView } from '@/types/listing';
-import PropertyCard from './PropertyCard';
+import PropertyCard from '@/components/PropertyCard';
 
 interface ListingsProps {
   apartments: ListingView[];

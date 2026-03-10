@@ -27,6 +27,8 @@ export default function Navbar() {
   const [hideNavbarByDataset, setHideNavbarByDataset] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const homeHref = user ? '/home' : '/';
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -131,7 +133,7 @@ export default function Navbar() {
         <div className="flex items-center h-14 sm:h-16 relative">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link href="/" className="block cursor-pointer">
+            <Link href={homeHref} className="block cursor-pointer">
               {/* Use img for external/copied logo; replace with Image when logo is in public */}
               <img
                 src="/logo-black.png"
@@ -177,14 +179,19 @@ export default function Navbar() {
           {/* Center nav - desktop (position matches old: -137px for 3 items) */}
           <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 translate-x-[-137px]">
             <div className="flex items-baseline">
-              <Link href="/" className={navLinkClass}>
+              <Link href={homeHref} className={navLinkClass}>
                 HOME
               </Link>
               <Link href="/listings" className={navLinkClass}>
                 LISTINGS
               </Link>
-              <Link href="/calendar" className={navLinkClass}>
-                CALENDAR
+              {user && (
+                <Link href="/calendar" className={navLinkClass}>
+                  CALENDAR
+                </Link>
+              )}
+              <Link href="/about" className={navLinkClass}>
+                ABOUT
               </Link>
             </div>
           </div>
@@ -350,6 +357,19 @@ export default function Navbar() {
                           Agent Hub
                         </Link>
                       )}
+                      {!roleLoading && !isAdmin && !isAgent && (
+                        <Link
+                          href="/become-an-agent"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="flex items-center gap-1.5 py-1.5 text-sm font-semibold hover:opacity-80 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)', color: '#b45309' }}
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                          </svg>
+                          Become an Agent
+                        </Link>
+                      )}
                       {(isAdmin || isAgent) && (
                         <>
                           <Link
@@ -415,16 +435,10 @@ export default function Navbar() {
               <>
                 <Link
                   href="/login"
-                  className="text-black font-sans font-medium uppercase text-sm hover:text-gray-600 transition-colors cursor-pointer"
-                >
-                  LOGIN
-                </Link>
-                <Link
-                  href="/signup"
                   className="text-white px-4 py-2 rounded-lg font-sans font-medium uppercase text-sm transition-colors hover:opacity-90 cursor-pointer"
                   style={{ backgroundColor: '#0B5858' }}
                 >
-                  SIGNUP
+                  Login
                 </Link>
               </>
             )}
@@ -437,7 +451,7 @@ export default function Navbar() {
         >
           <div className="px-4 py-3 space-y-1">
             <Link
-              href="/"
+              href={homeHref}
               onClick={() => setIsMobileMenuOpen(false)}
               className={mobileNavLinkClass}
             >
@@ -450,12 +464,21 @@ export default function Navbar() {
             >
               LISTINGS
             </Link>
+            {user && (
+                <Link
+                href="/calendar"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={mobileNavLinkClass}
+              >
+                CALENDAR
+              </Link>
+            )}
             <Link
-              href="/calendar"
+              href="/about"
               onClick={() => setIsMobileMenuOpen(false)}
               className={mobileNavLinkClass}
             >
-              CALENDAR
+              ABOUT
             </Link>
             <span
               className="flex items-center gap-2 px-3 py-2 text-black font-sans font-medium text-sm rounded-md text-left cursor-default opacity-90"
@@ -544,6 +567,19 @@ export default function Navbar() {
                       Rewards Hub
                     </Link>
                   </>
+                )}
+                {!roleLoading && !isAdmin && !isAgent && (
+                  <Link
+                    href="/become-an-agent"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-md transition-colors text-left hover:bg-amber-50"
+                    style={{ fontFamily: 'var(--font-poppins)', color: '#b45309' }}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                    Become an Agent
+                  </Link>
                 )}
                 <Link
                   href="/settings"

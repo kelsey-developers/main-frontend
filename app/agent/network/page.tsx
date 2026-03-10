@@ -44,7 +44,7 @@ export default function AgentNetworkPage() {
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const recruitLink = `https://${DOMAIN}/register-agent?recruitedBy=${AGENT_ID}`;
+  const recruitLink = `https://${DOMAIN}/become-an-agent?recruitedBy=${AGENT_ID}`;
   const qrSvg = useMemo(() => generateQRSVG(recruitLink, QR_SIZE), [recruitLink]);
 
   useEffect(() => {
