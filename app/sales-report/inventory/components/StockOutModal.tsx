@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import SingleDatePicker from '@/components/SingleDatePicker';
 import ToastContainer from './ToastContainer';
 import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
@@ -226,18 +227,26 @@ function LineItemRow({
             Item <span style={{ color: C.red }}>*</span>
           </label>
         )}
-        <select
-          value={item.productId}
-          onChange={(e) => onUpdate(index, 'productId', e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">Select item…</option>
-          {mockReplenishmentItems.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.sku} — {p.name}
-            </option>
-          ))}
-        </select>
+        <InventoryDropdown
+          value={item.productId || ''}
+          onChange={(value) => onUpdate(index, 'productId', value)}
+          options={[
+            { value: '', label: 'Select item…' },
+            ...mockReplenishmentItems.map((p) => ({
+              value: p.id,
+              label: `${p.sku} — ${p.name}`,
+            })),
+          ]}
+          placeholder="Select item…"
+          placeholderWhen=""
+          hideIcon={true}
+          fullWidth={true}
+          minWidthClass="min-w-0"
+          align="left"
+          backdropZIndexClass="z-[10005]"
+          menuZIndexClass="z-[10010]"
+          useFixedPosition={true}
+        />
         {product && <StockPill available={avail} reorder={product.minStock} unit={product.unit} />}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -413,6 +422,10 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Reason" required>
@@ -431,14 +444,18 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Date" required>
-          <input 
-            type="date" 
+          <SingleDatePicker
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={inputStyle} 
+            onChange={setDate}
+            placeholder="Select date"
+            calendarZIndex={10020}
           />
         </Field>
         <Field label="Reference No." hint="Optional">
@@ -466,6 +483,10 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
               hideIcon={true}
               fullWidth={true}
               minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
+              useFixedPosition={true}
             />
           </Field>
         </div>
@@ -641,6 +662,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Link to Booking" hint="Optional">
@@ -656,6 +681,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
       </div>
@@ -721,6 +750,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Pull from Warehouse" required>
@@ -736,14 +769,18 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Date" required>
-          <input 
-            type="date" 
+          <SingleDatePicker
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={inputStyle} 
+            onChange={setDate}
+            placeholder="Select date"
+            calendarZIndex={10020}
           />
         </Field>
         <Field label="Reference No." hint="Optional">
@@ -930,8 +967,10 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
       router.push(returnTo || '/sales-report/inventory/stock-movements');
       handleClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to process stock-out movement.';
-      error(message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Stock-out error:', err);
+      }
+      error('We couldn’t complete the stock-out. Please try again.');
     }
   };
 

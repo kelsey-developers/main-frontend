@@ -94,6 +94,26 @@ function CreatePurchaseOrderPageContent() {
     }
   }, [showAddItemDropdown]);
 
+  // Keep fixed dropdowns aligned with triggers on scroll/resize
+  const updateDropdownPositions = () => {
+    if (supplierButtonRef.current && showSupplierDropdown) {
+      const rect = supplierButtonRef.current.getBoundingClientRect();
+      setSupplierDropdownPosition({ top: rect.bottom, left: rect.left, width: rect.width });
+    }
+    if (addItemButtonRef.current && showAddItemDropdown) {
+      const rect = addItemButtonRef.current.getBoundingClientRect();
+      setDropdownPosition({ top: rect.bottom, left: Math.max(8, rect.right - 320) });
+    }
+  };
+  useEffect(() => {
+    window.addEventListener('scroll', updateDropdownPositions, true);
+    window.addEventListener('resize', updateDropdownPositions);
+    return () => {
+      window.removeEventListener('scroll', updateDropdownPositions, true);
+      window.removeEventListener('resize', updateDropdownPositions);
+    };
+  }, [showSupplierDropdown, showAddItemDropdown]);
+
   const supplierOptions: InventoryDropdownOption<string>[] = [
     { value: '', label: 'Select supplier', disabled: true },
     ...mockSuppliers.map((s) => ({
@@ -126,10 +146,19 @@ function CreatePurchaseOrderPageContent() {
     setLineItems(lineItems.filter((line) => line.id !== lineId));
   };
 
-  const handleUpdateLineItem = (lineId: string, field: 'quantity' | 'unitPrice', value: number) => {
-    setLineItems(
-      lineItems.map((line) =>
-        line.id === lineId ? { ...line, [field]: value } : line
+  const handleUpdateLineItem = (lineId: string, field: 'quantity' | 'unitPrice', rawValue: number | string) => {
+    const numeric = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+    let clean = Number.isFinite(numeric) ? numeric : 0;
+
+    if (field === 'quantity') {
+      clean = Math.max(1, Math.floor(clean || 0)); // minimum 1, whole number
+    } else {
+      clean = Math.max(0, clean || 0); // unit price can't be negative
+    }
+
+    setLineItems((prev) =>
+      prev.map((line) =>
+        line.id === lineId ? { ...line, [field]: clean } : line
       )
     );
   };
@@ -193,13 +222,6 @@ function CreatePurchaseOrderPageContent() {
           opacity: 0;
           animation: inventoryReveal 560ms ease-in-out forwards;
         }
-        .create-po-btn:hover {
-          background: #0b5858 !important;
-          color: #ffffff !important;
-        }
-        .cancel-btn:hover {
-          background: #f1f5f9 !important;
-        }
         .remove-btn:hover {
           background: #fef2f2 !important;
           color: #f10e3b !important;
@@ -245,8 +267,8 @@ function CreatePurchaseOrderPageContent() {
                 if (!showSupplierDropdown && supplierButtonRef.current) {
                   const rect = supplierButtonRef.current.getBoundingClientRect();
                   setSupplierDropdownPosition({
-                    top: rect.bottom + window.scrollY,
-                    left: rect.left + window.scrollX,
+                    top: rect.bottom,
+                    left: rect.left,
                     width: rect.width,
                   });
                 }
@@ -271,9 +293,9 @@ function CreatePurchaseOrderPageContent() {
               <div
                 className="fixed bg-white border-[1.5px] border-gray-200 rounded-xl shadow-xl z-[10000] max-h-[260px] overflow-y-auto"
                 style={{
-                  top: supplierDropdownPosition.top + 8,
-                  left: supplierDropdownPosition.left,
-                  width: supplierDropdownPosition.width || 'auto',
+                  top: `${supplierDropdownPosition.top + 8}px`,
+                  left: `${supplierDropdownPosition.left}px`,
+                  width: supplierDropdownPosition.width ? `${supplierDropdownPosition.width}px` : 'auto',
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -377,8 +399,8 @@ function CreatePurchaseOrderPageContent() {
                 if (!showAddItemDropdown && addItemButtonRef.current) {
                   const rect = addItemButtonRef.current.getBoundingClientRect();
                   setDropdownPosition({
-                    top: rect.bottom + window.scrollY,
-                    left: rect.right - 320 + window.scrollX, // 320 is width of dropdown
+                    top: rect.bottom,
+                    left: Math.max(8, rect.right - 320),
                   });
                 }
                 setShowAddItemDropdown(!showAddItemDropdown);
@@ -394,8 +416,8 @@ function CreatePurchaseOrderPageContent() {
               <div
                 className="fixed bg-white border-[1.5px] border-gray-200 rounded-lg shadow-lg z-[10000] max-h-64 overflow-y-auto w-80"
                 style={{
-                  top: dropdownPosition.top + 8,
-                  left: dropdownPosition.left,
+                  top: `${dropdownPosition.top + 8}px`,
+                  left: `${dropdownPosition.left}px`,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -482,7 +504,13 @@ function CreatePurchaseOrderPageContent() {
                       <input
                         type="number"
                         value={line.quantity}
-                        onChange={(e) => handleUpdateLineItem(line.id, 'quantity', Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          if (line.quantity === 0 && /^\d$/.test(e.key)) {
+                            e.currentTarget.select();
+                          }
+                        }}
+                        onChange={(e) => handleUpdateLineItem(line.id, 'quantity', e.target.value)}
                         min="1"
                         className="w-24 px-[12px] py-[10px] border-[1.5px] border-gray-200 rounded-[10px] text-[14px] text-gray-700 text-right outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
                         style={{ fontFamily: 'Poppins' }}
@@ -492,7 +520,13 @@ function CreatePurchaseOrderPageContent() {
                       <input
                         type="number"
                         value={line.unitPrice}
-                        onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          if (line.unitPrice === 0 && /^\d$/.test(e.key)) {
+                            e.currentTarget.select();
+                          }
+                        }}
+                        onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', e.target.value)}
                         min="0"
                         step="1"
                         className="w-32 px-[12px] py-[10px] border-[1.5px] border-gray-200 rounded-[10px] text-[14px] text-gray-700 text-right outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
@@ -544,7 +578,7 @@ function CreatePurchaseOrderPageContent() {
         <button
           type="button"
           onClick={() => router.push('/sales-report/inventory/purchase-orders')}
-          className="cancel-btn px-6 py-2.5 bg-white border-[1.5px] border-gray-300 text-gray-700 rounded-lg text-[13px] font-semibold transition-colors"
+          className="cancel-btn px-6 py-2.5 bg-white border-[1.5px] border-[#0B5858] text-[#0B5858] rounded-lg text-[13px] font-semibold transition-all duration-150 hover:bg-[#e8f4f4] hover:text-[#0B5858] hover:shadow-sm hover:-translate-y-[1px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0B5858]"
           style={{ fontFamily: 'Poppins' }}
         >
           Cancel
@@ -552,8 +586,8 @@ function CreatePurchaseOrderPageContent() {
         <button
           type="button"
           onClick={handleSubmit}
-          className="create-po-btn px-6 py-2.5 bg-[#0B5858] text-white rounded-lg text-[13px] font-semibold transition-colors"
-          style={{ fontFamily: 'Poppins' }}
+          className="create-po-btn flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white rounded-lg text-[13px] font-semibold transition-all hover:shadow-lg hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0B5858]"
+          style={{ fontFamily: 'Poppins', boxShadow: '0 2px 8px rgba(11,88,88,0.2)' }}
         >
           Create Purchase Order
         </button>

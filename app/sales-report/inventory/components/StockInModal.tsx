@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import ToastContainer from './ToastContainer';
+import { useToast } from '../hooks/useToast';
 import { 
   loadInventoryDataset,
   mockReplenishmentItems, 
@@ -147,6 +149,7 @@ interface StockInModalProps {
 
 export default function StockInModal({ mode, onClose }: StockInModalProps) {
   const router = useRouter();
+  const { toasts, removeToast, success, error } = useToast();
   const [mounted, setMounted] = useState(false);
   const [, setRefreshTick] = useState(0);
   const [form, setForm] = useState({
@@ -225,17 +228,17 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
     try {
       const quantity = Number(form.quantity || 0);
       if (quantity <= 0) {
-        alert('Quantity must be greater than zero.');
+        error('Quantity must be greater than zero.');
         return;
       }
 
       if (mode === 'existing') {
         if (!form.existingItem) {
-          alert('Select an existing item.');
+          error('Select an existing item.');
           return;
         }
         if (!form.warehouse[0]) {
-          alert('Select a destination warehouse.');
+          error('Select a destination warehouse.');
           return;
         }
 
@@ -250,11 +253,11 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
         });
       } else {
         if (!form.sku || !form.name || !form.category || !form.itemType || !form.unit) {
-          alert('Please complete required item details (SKU, name, category, type, unit).');
+          error('Please complete required item details (SKU, name, category, type, unit).');
           return;
         }
         if (!form.warehouse.length) {
-          alert('Select at least one warehouse.');
+          error('Select at least one warehouse.');
           return;
         }
 
@@ -277,10 +280,13 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
         });
       }
 
+      success(mode === 'existing' ? 'Stock in recorded.' : 'Item created and stock added.');
       router.push('/sales-report/inventory/items');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to process stock-in movement.';
-      alert(message);
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Stock-in error:', err);
+      }
+      error('We couldn’t complete the stock-in. Please try again.');
     }
   };
 
@@ -305,6 +311,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
   }
 
   return createPortal(
+    <>
     <div
       onClick={handleClose}
       style={{
@@ -754,7 +761,9 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
           </div>
         </div>
       </div>
-    </div>,
+    </div>
+    <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>,
     document.body
   );
 }

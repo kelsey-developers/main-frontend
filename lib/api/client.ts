@@ -36,7 +36,7 @@ function hasExistingAuthHeaders(headers: Record<string, string>): boolean {
   );
 }
 
-/** Client: same-origin by default, with backend fallback for inventory stack. Server: API_URL or localhost fallback. */
+/** Client: same-origin by default, with backend fallback for inventory stack. */
 function getBaseUrl(endpoint: string): string {
   if (typeof window !== 'undefined') {
     // Always prefer same-origin in the browser so Next rewrites can proxy without CORS,
@@ -99,7 +99,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   };
 
-  const requestUrl = `${baseUrl}${endpoint}`;
+  const base = baseUrl.replace(/\/+$/, '');
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const requestUrl = base ? `${base}${path}` : path;
   const canRetrySameOrigin =
     typeof window !== 'undefined' &&
     shouldUseBackendFallback(endpoint) &&

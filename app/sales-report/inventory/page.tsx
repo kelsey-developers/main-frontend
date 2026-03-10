@@ -99,17 +99,22 @@ export default function InventoryDashboardPage() {
           <InventorySummaryCards summary={summary} isLoading={isLoading} />
         </div>
 
-        {/* 3. Inventory Table */}
+        {/* 3. Unit Alert */}
+        <div className="inventory-reveal" style={{ animationDelay: '230ms' }}>
+          <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
+        </div>
+
+        {/* 4. Inventory Table */}
         <div>
-          <div className="mb-4 inventory-reveal" style={{ animationDelay: '230ms' }}>
+          <div className="mb-4 inventory-reveal" style={{ animationDelay: '280ms' }}>
             <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
               Inventory items
             </h3>
             <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
               View all inventory items, stock out, and add new items
-            </p>    
+            </p>
           </div>
-          <div className="inventory-reveal" style={{ animationDelay: '300ms' }}>
+          <div className="inventory-reveal" style={{ animationDelay: '340ms' }}>
             <InventoryTable
               items={mockReplenishmentItems}
               redirectOnClick={true}
@@ -119,13 +124,8 @@ export default function InventoryDashboardPage() {
           </div>
         </div>
 
-        {/* 4. Unit Alert */}
-        <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
-          <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
-        </div>
-
         {/* 5. Dashboard Links */}
-        <div className="inventory-reveal" style={{ animationDelay: '420ms' }}>
+        <div className="inventory-reveal" style={{ animationDelay: '400ms' }}>
           <InventoryDashboardLinks />
         </div>
       </div>
@@ -142,24 +142,24 @@ export default function InventoryDashboardPage() {
           <div className="inventory-reveal" style={{ animationDelay: '180ms' }}>
             <InventorySummaryCards summary={summary} isLoading={isLoading} />
           </div>
-          <div className="mb-4 inventory-reveal" style={{ animationDelay: '230ms' }}>
+          <div className="inventory-reveal" style={{ animationDelay: '240ms' }}>
+            <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
+          </div>
+          <div className="mb-4 inventory-reveal" style={{ animationDelay: '300ms' }}>
             <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
               Inventory items
             </h3>
             <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
               View all inventory items, stock out, and add new items
-            </p>    
+            </p>
           </div>
-          <div className="inventory-reveal" style={{ animationDelay: '300ms' }}>
+          <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
             <InventoryTable
               items={mockReplenishmentItems}
               redirectOnClick={true}
               hideEditButton={true}
               isLoading={isLoading}
             />
-          </div>
-          <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
-            <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
           </div>
         </div>
       </div>

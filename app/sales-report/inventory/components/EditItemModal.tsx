@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import ToastContainer from './ToastContainer';
+import { useToast } from '../hooks/useToast';
 import { 
   mockWarehouseDirectoryData,
   ITEM_CATEGORIES,
@@ -143,6 +145,7 @@ interface EditItemModalProps {
 }
 
 export default function EditItemModal({ item, onClose, onSave }: EditItemModalProps) {
+  const { toasts, removeToast, success, error } = useToast();
   const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState({
     sku: '',
@@ -197,7 +200,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
       const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
       if (nextModalCount === 0) {
         delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
       } else {
         document.body.dataset.modalCount = String(nextModalCount);
       }
@@ -207,33 +209,31 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!form.name.trim()) {
-      alert('Item name is required');
+      error('Item name is required');
       return;
     }
     if (!form.category) {
-      alert('Category is required');
+      error('Category is required');
       return;
     }
     if (!form.unit) {
-      alert('Unit is required');
+      error('Unit is required');
       return;
     }
     if (form.minStock < 0) {
-      alert('Minimum stock cannot be negative');
+      error('Minimum stock cannot be negative');
       return;
     }
     if (form.currentStock < 0) {
-      alert('Current stock cannot be negative');
+      error('Current stock cannot be negative');
       return;
     }
     if (form.unitCost < 0) {
-      alert('Unit cost cannot be negative');
+      error('Unit cost cannot be negative');
       return;
     }
 
-    // TODO(backend): Send update request to API
     const updatedData: Partial<ReplenishmentItem> = {
       ...form,
       category: form.category as ItemCategory,
@@ -242,13 +242,11 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
       updatedAt: new Date().toISOString(),
     };
 
-    console.log('Updating item:', updatedData);
-    
     if (onSave) {
       onSave(updatedData);
     }
 
-    alert(`Item "${form.name}" updated successfully!`);
+    success(`Item "${form.name}" updated successfully`);
     onClose();
   };
 
@@ -393,6 +391,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
 
@@ -407,6 +408,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
 
@@ -423,6 +427,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
           </div>
@@ -481,6 +488,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 placeholderWhen=""
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
 
@@ -626,6 +636,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
           }
         }
       `}</style>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>,
     document.body
   );

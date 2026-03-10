@@ -9,7 +9,7 @@ interface InventorySummaryCardsProps {
 const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary, isLoading = false }) => {
   const Value = ({ children }: { children: React.ReactNode }) =>
     isLoading ? (
-      <div className="mt-1 h-8 w-16 rounded bg-white/30 animate-pulse" />
+      <span className="mt-1 h-8 w-16 rounded bg-white/30 animate-pulse inline-block align-middle" />
     ) : (
       <>{children}</>
     );
