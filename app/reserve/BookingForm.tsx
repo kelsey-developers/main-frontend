@@ -22,9 +22,10 @@ interface BookingFormProps {
    * (status = pending) which requires admin confirmation before payment.
    */
   requirePayment?: boolean;
+  onBookingsReady?: () => void;
 }
 
-const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerNight, priceUnit, extraGuestFeePerPerson, baseGuests, onCancel, onComplete, requirePayment = true }) => {
+const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerNight, priceUnit, extraGuestFeePerPerson, baseGuests, onCancel, onComplete, requirePayment = true, onBookingsReady }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
   // Initial form data filled out with all commonly-referenced fields so child steps
@@ -148,6 +149,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
             onUpdate={updateFormData}
             onNext={nextStep}
             onCancel={onCancel}
+            onBookingsReady={onBookingsReady}
           />
         );
 

@@ -11,11 +11,12 @@ interface StayDetailsStepProps {
   onUpdate: (data: Partial<BookingFormData>) => void;
   onNext: () => void;
   onCancel: () => void;
+  onBookingsReady?: () => void;
 }
 
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, listing, onUpdate, onNext, onCancel }) => {
+const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, listing, onUpdate, onNext, onCancel, onBookingsReady }) => {
   const parseYMD = (s?: string): Date | null => {
     if (!s) return null;
     // Handle ISO strings that may include a time (e.g., "2025-11-06T00:00:00Z")
@@ -94,14 +95,18 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
     }
   }, [formData.checkInDate, formData.checkOutDate, defaultCheckInTime, defaultCheckOutTime]);
 
+  const onBookingsReadyRef = useRef(onBookingsReady);
+  onBookingsReadyRef.current = onBookingsReady;
+
   // Fetch existing bookings and poll periodically so the calendar stays in sync
   useEffect(() => {
     let mounted = true;
     let timer: ReturnType<typeof setInterval> | null = null;
 
-    const fetchBookings = async () => {
+    const fetchBookings = async (isInitial = false) => {
       if (!listingId) {
         if (mounted) setExistingBookings([]);
+        if (isInitial) onBookingsReadyRef.current?.();
         return;
       }
       try {
@@ -110,14 +115,16 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
       } catch (error) {
         console.error('Error fetching bookings:', error);
         if (mounted) setExistingBookings([]);
+      } finally {
+        if (isInitial && mounted) onBookingsReadyRef.current?.();
       }
     };
 
-    // initial fetch
-    fetchBookings();
+    // initial fetch — signals the parent when done
+    fetchBookings(true);
 
     // poll every 15 seconds to stay in sync with other bookings
-    timer = setInterval(fetchBookings, 15000);
+    timer = setInterval(() => fetchBookings(false), 15000);
 
     return () => {
       mounted = false;
