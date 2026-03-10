@@ -4,7 +4,13 @@ import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
-import { mockReplenishmentItems, mockStockMovements, mockUnitStockMovements, mockWarehouseDirectoryData } from '../lib/mockData';
+import {
+  loadInventoryDataset,
+  mockReplenishmentItems,
+  mockStockMovements,
+  mockUnitStockMovements,
+  mockWarehouseDirectoryData,
+} from '../lib/mockData';
 
 type MovementView = 'warehouse' | 'unit';
 type MovementType = 'in' | 'out';
@@ -72,7 +78,11 @@ const OptionalValueBadge = () => (
 
 export default function StockMovementsPage() {
   const [isLoading, setIsLoading] = useState(true);
-  const [view, setView] = useState<MovementView>('warehouse');
+  const [view, setView] = useState<MovementView>(() => {
+    if (typeof window === 'undefined') return 'warehouse';
+    const saved = window.localStorage.getItem(MOVEMENT_VIEW_STORAGE_KEY);
+    return saved === 'warehouse' || saved === 'unit' ? saved : 'warehouse';
+  });
   const [refreshTick, setRefreshTick] = useState(0);
   const [search, setSearch] = useState('');
   const [warehouseFilter, setWarehouseFilter] = useState('all');
@@ -81,6 +91,7 @@ export default function StockMovementsPage() {
   const [referenceFilter, setReferenceFilter] = useState<'all' | ReferenceType>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [datasetTick, setDatasetTick] = useState(0);
 
   const warehouseRows = useMemo<WarehouseMovementRow[]>(() => {
     const byWarehouseId = new Map(mockWarehouseDirectoryData.map((warehouse) => [warehouse.id, warehouse.name]));
@@ -105,9 +116,9 @@ export default function StockMovementsPage() {
         recordedTime: dateTime.time,
       };
     });
-  }, [refreshTick]);
+  }, [refreshTick, datasetTick]);
 
-  const unitRows = useMemo<UnitMovementRow[]>(() => [...mockUnitStockMovements], [refreshTick]);
+  const unitRows = useMemo<UnitMovementRow[]>(() => [...mockUnitStockMovements], [refreshTick, datasetTick]);
 
   const warehouseOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
     const source = view === 'warehouse'
@@ -217,15 +228,18 @@ export default function StockMovementsPage() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
+    let isMounted = true;
+    void loadInventoryDataset()
+      .finally(() => {
+        if (isMounted) {
+          setDatasetTick((tick) => tick + 1);
+          setIsLoading(false);
+        }
+      });
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(MOVEMENT_VIEW_STORAGE_KEY);
-    if (saved === 'warehouse' || saved === 'unit') {
-      setView(saved);
-    }
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -233,7 +247,10 @@ export default function StockMovementsPage() {
   }, [view]);
 
   useEffect(() => {
-    const refresh = () => setRefreshTick((tick) => tick + 1);
+    const refresh = () => {
+      setRefreshTick((tick) => tick + 1);
+      setDatasetTick((tick) => tick + 1);
+    };
     window.addEventListener('inventory:movement-updated', refresh);
     window.addEventListener('focus', refresh);
     return () => {

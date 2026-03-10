@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { InventoryUnit, ReplenishmentItem } from '../types';
 import SearchUnits from './SearchUnits';
 import InventoryTable from './InventoryTable';
-import { mockUnits, mockUnitItems } from '../lib/mockData';
+import { loadInventoryDataset, mockUnits, mockUnitItems } from '../lib/mockData';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 
 interface UnitPageProps {
@@ -20,6 +20,11 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
 
   // Listen for inventory movement updates to refresh unit items
   useEffect(() => {
+    void loadInventoryDataset()
+      .finally(() => {
+        setRefreshTick((tick) => tick + 1);
+      });
+
     const handleInventoryUpdate = () => setRefreshTick((tick) => tick + 1);
     window.addEventListener('inventory:movement-updated', handleInventoryUpdate);
     return () => {

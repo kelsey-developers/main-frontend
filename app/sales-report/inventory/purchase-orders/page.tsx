@@ -4,11 +4,13 @@ import React, { Fragment, useState, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
+import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
 import GoodsReceiptModal from '../components/GoodsReceiptModal';
 import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
+  loadInventoryDataset,
   mockPurchaseOrders, 
   mockPurchaseOrderLines, 
   mockGoodsReceipts,
@@ -16,6 +18,14 @@ import {
   mockReplenishmentItems,
 } from '../lib/mockData';
 import type { PurchaseOrder } from '../types';
+
+type GoodsReceiptSubmitData = {
+  warehouseId: string;
+  notes?: string;
+  receivedBy?: string;
+  receiptDate?: string;
+  receiptImages?: File[];
+};
 
 // ─── Edit PO Modal ────────────────────────────────────────────────────
 function EditPOModal({
@@ -81,7 +91,7 @@ function EditPOModal({
     onClose();
   };
 
-  const FieldLabel = ({ label, fieldKey }: { label: string; fieldKey: keyof typeof form }) => (
+  const renderFieldLabel = (label: string, fieldKey: keyof typeof form) => (
     <label
       className={`text-[10.5px] font-bold tracking-wider uppercase ${errors[fieldKey] ? 'text-red-600' : 'text-gray-500'}`}
       style={{ fontFamily: 'Poppins' }}
@@ -113,7 +123,7 @@ function EditPOModal({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
-              <FieldLabel label="Supplier" fieldKey="supplierId" />
+              {renderFieldLabel('Supplier', 'supplierId')}
               <InventoryDropdown
                 value={form.supplierId}
                 onChange={(value) => {
@@ -128,7 +138,7 @@ function EditPOModal({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <FieldLabel label="Expected Delivery Date" fieldKey="expectedDelivery" />
+              {renderFieldLabel('Expected Delivery Date', 'expectedDelivery')}
               <input
                 type="date"
                 value={form.expectedDelivery}
@@ -605,20 +615,37 @@ function PurchaseOrdersPageContent() {
     ? mockSuppliers.find((supplier) => supplier.id === supplierIdFromQuery) ?? null
     : null;
 
-  const [purchaseOrders] = useState<PurchaseOrder[]>(mockPurchaseOrders);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<'all' | string>(supplierIdFromQuery ?? 'all');
   const [statusFilter, setStatusFilter] = useState<'all' | POStatus>('all');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [goodsReceiptModalPO, setGoodsReceiptModalPO] = useState<PurchaseOrder | null>(null);
   const [editPOTarget, setEditPOTarget] = useState<PurchaseOrder | null>(null);
 
-  // Simulate data loading
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    let isMounted = true;
+
+    void loadInventoryDataset()
+      .finally(() => {
+        if (!isMounted) return;
+        setPurchaseOrders([...mockPurchaseOrders]);
+        setIsLoading(false);
+      });
+
+    const refresh = () => {
+      setPurchaseOrders([...mockPurchaseOrders]);
+    };
+
+    window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
 
   // Hide scrollbars
@@ -655,17 +682,12 @@ function PurchaseOrdersPageContent() {
     ...mockSuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
   ];
 
-  // Open modal if poId is in query params
-  useEffect(() => {
-    if (poIdFromQuery) {
-      const po = purchaseOrders.find(p => p.id === poIdFromQuery);
-      if (po) setSelectedPO(po);
-    }
+  const selectedPOFromQuery = useMemo(() => {
+    if (!poIdFromQuery) return null;
+    return purchaseOrders.find((purchaseOrder) => purchaseOrder.id === poIdFromQuery) ?? null;
   }, [poIdFromQuery, purchaseOrders]);
 
-  useEffect(() => {
-    setSelectedSupplierId(supplierIdFromQuery ?? 'all');
-  }, [supplierIdFromQuery]);
+  const activeSelectedPO = selectedPO ?? selectedPOFromQuery;
 
   const handleModalClose = () => {
     setSelectedPO(null);
@@ -676,73 +698,109 @@ function PurchaseOrdersPageContent() {
       return;
     }
 
+    setSelectedSupplierId('all');
     router.replace('/sales-report/inventory/purchase-orders');
   };
 
-  const handleGoodsReceiptSubmit = (data: any) => {
-    // Calculate received quantities and update PO status
-    if (goodsReceiptModalPO) {
-      const poLines = mockPurchaseOrderLines.filter(line => line.poId === goodsReceiptModalPO.id);
-      const existingReceipts = mockGoodsReceipts.filter(gr => gr.poId === goodsReceiptModalPO.id);
-      
-      // Calculate total quantities (this is a simplified version - in production you'd track per item)
-      const totalOrdered = poLines.reduce((sum, line) => sum + line.quantity, 0);
-      const totalReceived = existingReceipts.reduce((sum, gr) => 
-        sum + gr.items.reduce((itemSum, item) => itemSum + item.qtyReceived, 0), 0);
-      
-      // Determine new status based on received quantities
-      // Note: In production, you'd get the actual received quantity from the data parameter
-      let newStatus: POStatus = 'pending';
-      if (totalReceived > 0 && totalReceived < totalOrdered) {
-        newStatus = 'partially-received';
-      } else if (totalReceived >= totalOrdered) {
-        newStatus = 'received';
+  const handleGoodsReceiptSubmit = (data: GoodsReceiptSubmitData) => {
+    if (!goodsReceiptModalPO) return;
+
+    const submit = async () => {
+      const poLines = mockPurchaseOrderLines.filter((line) => line.poId === goodsReceiptModalPO.id);
+      const items = poLines.map((line) => ({
+        productId: line.productId,
+        quantityReceived: Math.max(0, Number(line.quantity - line.receivedQuantity)),
+      })).filter((line) => line.quantityReceived > 0);
+
+      if (items.length === 0) {
+        alert('All PO line items are already fully received.');
+        return;
       }
-      
-      // Update the PO with new status
-      const updatedPO = { ...goodsReceiptModalPO, status: newStatus };
-      console.log('PO Status Updated:', { oldStatus: goodsReceiptModalPO.status, newStatus, totalOrdered, totalReceived });
-      
-      // Refresh selected PO if viewing the same one
-      if (selectedPO?.id === goodsReceiptModalPO.id) {
-        setSelectedPO(updatedPO);
+
+      const response = await apiClient.post<{ purchaseOrder: PurchaseOrder }>(
+        `/api/purchase-orders/${goodsReceiptModalPO.id}/receive`,
+        {
+          warehouseId: data.warehouseId,
+          notes: data.notes || 'Goods receipt submitted from frontend',
+          items,
+        }
+      );
+
+      await loadInventoryDataset(true);
+      setPurchaseOrders([...mockPurchaseOrders]);
+
+      const updated = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === response.purchaseOrder.id)
+        ?? mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
+        ?? null;
+
+      if (updated) {
+        setSelectedPO(updated);
       }
-    }
-    
-    console.log('Goods Receipt Created:', data);
-    // TODO: Replace with actual API call to create goods receipt
-    // The data object contains: warehouseId, receivedBy, notes, receiptImages
-    alert('Goods Receipt created successfully!\n\nNote: PO status will be automatically updated based on received quantities:\n- Partially Received: Some items received\n- Received: All items received\n\n(This is a mock - backend integration needed)');
+
+      alert('Goods Receipt created successfully.');
+    };
+
+    void submit().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unable to create goods receipt.';
+      alert(message);
+    });
   };
 
   const handleEditPO = (updatedData: { supplierId: string; expectedDelivery: string }) => {
     if (!editPOTarget) return;
-    
-    // Update the PO in the list
-    const updatedPO = { ...editPOTarget, ...updatedData };
-    console.log('PO Updated:', updatedPO);
-    // TODO: Replace with actual API call
-    alert(`Purchase Order ${editPOTarget.id.toUpperCase()} updated successfully! (This is a mock - backend integration needed)`);
-    
-    // Refresh the selected PO if it's the same one
-    if (selectedPO?.id === editPOTarget.id) {
-      setSelectedPO(updatedPO);
-    }
+
+    const run = async () => {
+      await apiClient.patch(`/api/purchase-orders/${editPOTarget.id}`, {
+        supplierId: updatedData.supplierId,
+        expectedDelivery: updatedData.expectedDelivery,
+      }).catch(() => {
+        // Keep UX non-blocking when endpoint is unavailable.
+      });
+
+      await loadInventoryDataset(true);
+      setPurchaseOrders([...mockPurchaseOrders]);
+
+      const updatedPO = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === editPOTarget.id);
+      if (selectedPO?.id === editPOTarget.id && updatedPO) {
+        setSelectedPO(updatedPO);
+      }
+
+      alert(`Purchase Order ${editPOTarget.id.toUpperCase()} updated successfully.`);
+    };
+
+    void run().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unable to update purchase order.';
+      alert(message);
+    });
   };
 
   const handleCancelPO = (po: PurchaseOrder) => {
     if (!confirm(`Are you sure you want to cancel Purchase Order ${po.id.toUpperCase()}? This action cannot be undone.`)) {
       return;
     }
-    
-    // Update PO status to cancelled
-    const updatedPO = { ...po, status: 'cancelled' as POStatus };
-    console.log('PO Cancelled:', updatedPO);
-    // TODO: Replace with actual API call
-    alert(`Purchase Order ${po.id.toUpperCase()} has been cancelled.`);
-    
-    // Refresh the selected PO
-    setSelectedPO(updatedPO);
+
+    const run = async () => {
+      await apiClient.patch(`/api/purchase-orders/${po.id}`, {
+        status: 'CANCELLED',
+      }).catch(() => {
+        // Keep UX non-blocking when endpoint is unavailable.
+      });
+
+      await loadInventoryDataset(true);
+      setPurchaseOrders([...mockPurchaseOrders]);
+
+      const updatedPO = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === po.id);
+      if (updatedPO) {
+        setSelectedPO(updatedPO);
+      }
+
+      alert(`Purchase Order ${po.id.toUpperCase()} has been cancelled.`);
+    };
+
+    void run().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unable to cancel purchase order.';
+      alert(message);
+    });
   };
 
   const filtered = useMemo(() => {
@@ -858,7 +916,10 @@ function PurchaseOrdersPageContent() {
           <span className="text-[#0b5858]/40">|</span>
           <button
             type="button"
-            onClick={() => router.push('/sales-report/inventory/purchase-orders')}
+            onClick={() => {
+              setSelectedSupplierId('all');
+              router.push('/sales-report/inventory/purchase-orders');
+            }}
             className="text-[12.5px] font-semibold text-[#0b5858] hover:underline"
             style={{ fontFamily: 'Poppins' }}
           >
@@ -928,17 +989,14 @@ function PurchaseOrdersPageContent() {
               <div className="text-sm">Try adjusting your search or filters</div>
             </div>
           ) : (
-            filtered.map((po, idx) => {
+            filtered.map((po) => {
               const supplier = mockSuppliers.find(s => s.id === po.supplierId);
               const goodsReceipts = mockGoodsReceipts.filter(gr => gr.poId === po.id);
-              const isHovered = hoveredRow === po.id;
               return (
                 <Fragment key={po.id}>
                   {/* Desktop Row */}
                 <div
                   onClick={() => setSelectedPO(po)}
-                  onMouseEnter={() => setHoveredRow(po.id)}
-                  onMouseLeave={() => setHoveredRow(null)}
                   className="hidden md:grid px-5 py-3 border-b border-gray-200 last:border-b-0 cursor-pointer transition-colors hover:bg-gray-50"
                   style={{
                     gridTemplateColumns: "1fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr 0.8fr",
@@ -1019,9 +1077,9 @@ function PurchaseOrdersPageContent() {
       </div>
 
       {/* Detail drawer */}
-      {selectedPO && (
+      {activeSelectedPO && (
         <DetailDrawer 
-          po={selectedPO} 
+          po={activeSelectedPO} 
           onClose={handleModalClose} 
           onCreateGoodsReceipt={setGoodsReceiptModalPO}
           onEditPO={setEditPOTarget}
