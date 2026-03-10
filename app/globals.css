@@ -63,10 +63,18 @@
 }
 
 /* Footer / section animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(30px);
+    transform: translateY(15px);
   }
   to {
     opacity: 1;
@@ -93,8 +101,12 @@
     transform: translateX(0);
   }
 }
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+  opacity: 0;
+}
 .animate-fade-in-up {
-  animation: fadeInUp 0.8s ease-out forwards;
+  animation: fadeInUp 0.4s ease-out forwards;
   opacity: 0;
 }
 .animate-fade-in-left {
@@ -210,4 +222,14 @@ body:has([data-sales-report-root]) footer {
 /* Hide scrollbar for proof gallery (navigation via arrows) */
 .proof-gallery-scroll::-webkit-scrollbar {
   display: none;
+}
+
+/* Remove default focus outline from recharts elements to prevent blue focus rings */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-responsive-container {
+  outline: none !important;
 }

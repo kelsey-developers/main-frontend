@@ -1,8 +1,23 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // API proxying is handled via `app/api/**/route.ts` handlers (server-side),
-  // so we don't need Next rewrites (which can shadow route handlers).
+  // Add this line to satisfy the Turbopack build requirement
+  turbopack: {}, 
+  
+  webpack: (config, { dev }) => {
+    if (dev) {
+      // Ignore heavy directories to prevent watcher memory leaks
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: ['**/node_modules', '**/.git'],
+      };
+    }
+    return config;
+  },
+  async rewrites() {
+    if (!apiUrl) return [];
+    return [{ source: '/api/:path*', destination: `${apiUrl}/api/:path*` }];
+  },
 };
 
 export default nextConfig;

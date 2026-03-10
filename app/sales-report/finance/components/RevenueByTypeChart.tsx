@@ -56,7 +56,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="propertyName" stroke="#666" fontSize={11} tick={{ fontFamily: 'Poppins' }} angle={-15} textAnchor="end" />
               <YAxis stroke="#666" fontSize={12} tick={{ fontFamily: 'Poppins' }} tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(value: number | undefined) => [value != null ? formatPHP(value) : '', 'Revenue']} contentStyle={tooltipStyle} />
+              <Tooltip formatter={(value: any) => [value != null ? formatPHP(value) : '', 'Revenue']} contentStyle={tooltipStyle} />
               <Bar dataKey="revenue" fill="#0B5858" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -77,7 +77,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
               >
                 {byChannel.map((_, i) => <Cell key={i} fill={CHANNEL_COLORS[i % CHANNEL_COLORS.length]} />)}
               </Pie>
-              <Tooltip formatter={(value: number | undefined) => [value != null ? formatPHP(value) : '', 'Revenue']} contentStyle={tooltipStyle} />
+              <Tooltip formatter={(value: any) => [value != null ? formatPHP(value) : '', 'Revenue']} contentStyle={tooltipStyle} />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
@@ -87,7 +87,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis type="number" stroke="#666" fontSize={12} tick={{ fontFamily: 'Poppins' }} tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
               <YAxis type="category" dataKey="agentName" stroke="#666" fontSize={12} tick={{ fontFamily: 'Poppins' }} width={80} />
-              <Tooltip formatter={(value: number | undefined) => [value != null ? formatPHP(value) : '', 'Revenue']} contentStyle={tooltipStyle} />
+              <Tooltip formatter={(value: any) => [value != null ? formatPHP(value) : '', 'Revenue']} contentStyle={tooltipStyle} />
               <Bar dataKey="revenue" fill="#0d9488" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -108,7 +108,7 @@ const RevenueByTypeChart: React.FC<RevenueByTypeChartProps> = ({ byProperty, byC
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: number | undefined) => [value != null ? `${value}%` : '', 'Share']}
+                formatter={(value: any) => [value != null ? `${value}%` : '', 'Share']}
                 contentStyle={tooltipStyle}
               />
               <Legend
