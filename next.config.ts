@@ -1,12 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Add this line to satisfy the Turbopack build requirement
-  turbopack: {}, 
-  
+  turbopack: {},
+
   webpack: (config, { dev }) => {
     if (dev) {
-      // Ignore heavy directories to prevent watcher memory leaks
       config.watchOptions = {
         ...config.watchOptions,
         ignored: ['**/node_modules', '**/.git'],
@@ -15,6 +13,7 @@ const nextConfig: NextConfig = {
     return config;
   },
   async rewrites() {
+    const apiUrl = process.env.API_URL || '';
     if (!apiUrl) return [];
     return [{ source: '/api/:path*', destination: `${apiUrl}/api/:path*` }];
   },
