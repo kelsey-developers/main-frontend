@@ -2,8 +2,8 @@
 
 import React from 'react';
 import Link from 'next/link';
-import type { BookingLinkedRow } from '../types';
-import { formatPHP, formatDateNumeric, getBasePrice, getBookingTotal } from '../lib/format';
+import type { BookingLinkedRow } from '../../types';
+import { formatPHP, formatDateNumeric, getBasePrice, getBookingTotal } from '../../lib/format';
 
 interface BookingLinkedTableProps {
   rows: BookingLinkedRow[];

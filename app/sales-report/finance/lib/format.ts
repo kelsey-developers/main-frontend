@@ -13,6 +13,29 @@ export function formatPHP(value: number | undefined | null): string {
   return `PHP ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+export function formatPHPForChart(value: number | undefined | null): string {
+  const n = value != null && Number.isFinite(value) ? value : 0;
+
+  // Millions: show whole M (1M, 2M, …) until we reach at least 100k into that million,
+  // then show one decimal (1.1M, 1.5M, …).
+  if (n >= 1_000_000) {
+    const millions = n / 1_000_000;
+    const remainder = n % 1_000_000;
+    if (remainder < 100_000) {
+      return `PHP ${Math.round(millions)}M`;
+    }
+    return `PHP ${millions.toFixed(1)}M`;
+  }
+
+  // Ten-thousands and hundred-thousands: use k with no decimals.
+  if (n >= 10_000) {
+    return `PHP ${Math.round(n / 1_000)}k`;
+  }
+
+  // Below 10,000: show plain number without decimals.
+  return `PHP ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
 /**
  * Number of nights between check-in and check-out (check-out day excluded).
  * Dates as YYYY-MM-DD strings.

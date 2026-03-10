@@ -47,7 +47,7 @@ const FinanceSummaryCards: React.FC<FinanceSummaryCardsProps> = ({ summary }) =>
               </svg>
             </div>
           </div>
-          <p className="text-white/90 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Rent</p>
+          <p className="text-white/90 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Bookings</p>
           <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatNumber(summary.totalRent)}</p>
         </div>
       </div>

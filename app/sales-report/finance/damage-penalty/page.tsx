@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import FinancePageHeader from '../components/FinancePageHeader';
 import HorizontalFilter from '../components/HorizontalFilter';
-import DamagePenaltySection from '../components/DamagePenaltySection';
+import DamagePenaltySection from './DamagePenaltySection';
 import { mockDamagePenalty } from '../lib/mockData';
 import { filterDamageIncidents } from '../lib/filters';
 import { defaultSalesReportFilters } from '../types';
