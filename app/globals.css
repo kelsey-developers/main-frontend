@@ -224,12 +224,41 @@ body:has([data-sales-report-root]) footer {
   display: none;
 }
 
-/* Remove default focus outline from recharts elements to prevent blue focus rings */
-.recharts-wrapper,
-.recharts-wrapper *,
-.recharts-surface,
-.recharts-surface:focus,
-.recharts-surface:focus-visible,
-.recharts-responsive-container {
-  outline: none !important;
+/* ========== Calendar page (status colors & utilities) – match kelsey-frontend ========== */
+/* Cell backgrounds: light tints (same as kelsey index.css) */
+.bg-booked {
+  background-color: rgba(184, 76, 76, 0.12);
+}
+.bg-pending {
+  background-color: rgba(246, 214, 88, 0.18);
+}
+.bg-available {
+  background-color: rgba(85, 139, 139, 0.12);
+}
+.bg-blocked {
+  background-color: rgba(77, 80, 78, 0.12);
+}
+/* Hover states for calendar day cells */
+.bg-booked:hover {
+  background-color: rgba(184, 76, 76, 0.25) !important;
+}
+.bg-pending:hover {
+  background-color: rgba(246, 214, 88, 0.35) !important;
+}
+.bg-available:hover {
+  background-color: rgba(85, 139, 139, 0.25) !important;
+}
+.bg-blocked:hover {
+  background-color: rgba(77, 80, 78, 0.25) !important;
+}
+.hover-soft-teal:hover {
+  background-color: rgba(11, 88, 88, 0.08);
+}
+.header-pop-enter {
+  animation: headerPop 0.28s ease-out;
+}
+@keyframes headerPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
 }

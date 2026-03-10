@@ -27,6 +27,8 @@ export default function Navbar() {
   const [hideNavbarByDataset, setHideNavbarByDataset] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const homeHref = user ? '/home' : '/';
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -131,7 +133,7 @@ export default function Navbar() {
         <div className="flex items-center h-14 sm:h-16 relative">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link href="/" className="block cursor-pointer">
+            <Link href={homeHref} className="block cursor-pointer">
               {/* Use img for external/copied logo; replace with Image when logo is in public */}
               <img
                 src="/logo-black.png"
@@ -177,14 +179,19 @@ export default function Navbar() {
           {/* Center nav - desktop (position matches old: -137px for 3 items) */}
           <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 translate-x-[-137px]">
             <div className="flex items-baseline">
-              <Link href="/" className={navLinkClass}>
+              <Link href={homeHref} className={navLinkClass}>
                 HOME
               </Link>
               <Link href="/listings" className={navLinkClass}>
                 LISTINGS
               </Link>
-              <Link href="/calendar" className={navLinkClass}>
-                CALENDAR
+              {user && (
+                <Link href="/calendar" className={navLinkClass}>
+                  CALENDAR
+                </Link>
+              )}
+              <Link href="/about" className={navLinkClass}>
+                ABOUT
               </Link>
             </div>
           </div>
@@ -428,16 +435,10 @@ export default function Navbar() {
               <>
                 <Link
                   href="/login"
-                  className="text-black font-sans font-medium uppercase text-sm hover:text-gray-600 transition-colors cursor-pointer"
-                >
-                  LOGIN
-                </Link>
-                <Link
-                  href="/signup"
                   className="text-white px-4 py-2 rounded-lg font-sans font-medium uppercase text-sm transition-colors hover:opacity-90 cursor-pointer"
                   style={{ backgroundColor: '#0B5858' }}
                 >
-                  SIGNUP
+                  Login
                 </Link>
               </>
             )}
@@ -450,7 +451,7 @@ export default function Navbar() {
         >
           <div className="px-4 py-3 space-y-1">
             <Link
-              href="/"
+              href={homeHref}
               onClick={() => setIsMobileMenuOpen(false)}
               className={mobileNavLinkClass}
             >
@@ -463,12 +464,21 @@ export default function Navbar() {
             >
               LISTINGS
             </Link>
+            {user && (
+                <Link
+                href="/calendar"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={mobileNavLinkClass}
+              >
+                CALENDAR
+              </Link>
+            )}
             <Link
-              href="/calendar"
+              href="/about"
               onClick={() => setIsMobileMenuOpen(false)}
               className={mobileNavLinkClass}
             >
-              CALENDAR
+              ABOUT
             </Link>
             <span
               className="flex items-center gap-2 px-3 py-2 text-black font-sans font-medium text-sm rounded-md text-left cursor-default opacity-90"
