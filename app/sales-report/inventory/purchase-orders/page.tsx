@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Fragment, useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
@@ -8,6 +9,8 @@ import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
 import GoodsReceiptModal from '../components/GoodsReceiptModal';
+import ToastContainer from '../components/ToastContainer';
+import { useToast } from '../hooks/useToast';
 import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
   loadInventoryDataset,
@@ -51,7 +54,6 @@ function EditPOModal({
 
     const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
     document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
 
     window.addEventListener('keydown', fn);
     document.body.style.overflow = 'hidden';
@@ -63,7 +65,6 @@ function EditPOModal({
       const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
       if (nextModalCount === 0) {
         delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
       } else {
         document.body.dataset.modalCount = String(nextModalCount);
       }
@@ -101,7 +102,7 @@ function EditPOModal({
     </label>
   );
 
-  return (
+  return createPortal(
     <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl">
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center">
@@ -178,7 +179,8 @@ function EditPOModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -208,7 +210,6 @@ function DetailDrawer({
   useEffect(() => {
     const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
     document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
     document.body.style.overflow = "hidden";
 
     return () => {
@@ -216,7 +217,6 @@ function DetailDrawer({
       const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
       if (nextModalCount === 0) {
         delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
       } else {
         document.body.dataset.modalCount = String(nextModalCount);
       }
@@ -229,7 +229,7 @@ function DetailDrawer({
   const totalReceived = goodsReceipts.reduce((s, gr) =>
     s + gr.items.reduce((ss, i) => ss + i.qtyReceived * i.unitCost, 0), 0);
 
-  return (
+  return createPortal(
     <div
       onClick={handleClose}
       className="fixed inset-0 z-[10000] flex justify-end overflow-hidden"
@@ -253,9 +253,11 @@ function DetailDrawer({
         {/* Drawer header */}
         <div className="flex-shrink-0 px-7 py-6 text-white" style={{ background: `linear-gradient(135deg, #0b5858 0%, #05807e 100%)` }}>
           <div className="flex justify-between items-start gap-3">
-            <div>
+            <div className="min-w-0">
               <div className="text-[10px] font-bold tracking-widest mb-1.5" style={{ color: "rgba(255,255,255,0.5)" }}>PURCHASE ORDER</div>
-              <div className="text-2xl font-black mb-1">{po.id.toUpperCase()}</div>
+              <div className="text-[18px] sm:text-2xl font-black mb-1 break-all">
+                {po.id.toUpperCase()}
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
@@ -358,18 +360,18 @@ function DetailDrawer({
                     const item = mockReplenishmentItems.find(x => x.id === line.productId);
                     return (
                       <tr key={line.id} className={`border-b border-[#e5e7eb] ${i % 2 === 0 ? 'bg-white' : 'bg-[#f4f7f7]'}`}>
-                        <td className="px-3 py-3 text-sm text-[#374151] font-medium">{item?.name || `Product #${line.productId}`}</td>
-                        <td className="px-3 py-3 text-sm text-[#374151]">{line.quantity}</td>
-                        <td className="px-3 py-3 text-sm text-[#9ca3af]">{item?.unit || 'pcs'}</td>
-                        <td className="px-3 py-3 text-sm text-[#374151]">{formatPhp(line.unitPrice)}</td>
-                        <td className="px-3 py-3 text-sm font-bold text-[#0b5858]">{formatPhp(line.quantity * line.unitPrice)}</td>
+                        <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{item?.name || `Product #${line.productId}`}</td>
+                        <td className="px-3 py-3 text-[12.5px] text-[#374151]">{line.quantity}</td>
+                        <td className="px-3 py-3 text-[12px] text-[#9ca3af]">{item?.unit || 'pcs'}</td>
+                        <td className="px-3 py-3 text-[12.5px] text-[#374151]">{formatPhp(line.unitPrice)}</td>
+                        <td className="px-3 py-3 text-[12.5px] font-bold text-[#0b5858]">{formatPhp(line.quantity * line.unitPrice)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={4} className="px-3 py-3.5 text-right text-sm font-bold text-[#9ca3af]">TOTAL ORDER VALUE</td>
+                    <td colSpan={4} className="px-3 py-3.5 text-right text-[12px] font-bold text-[#9ca3af]">TOTAL ORDER VALUE</td>
                     <td className="px-3 py-3.5 text-base font-black text-[#0b5858]">{formatPhp(totalOrdered)}</td>
                   </tr>
                 </tfoot>
@@ -430,17 +432,17 @@ function DetailDrawer({
                         <tbody>
                           {gr.items.map((item, ii) => (
                             <tr key={item.poItemId + ii} className="border-b border-[#e5e7eb]">
-                              <td className="px-4 py-2.5 text-sm text-[#374151]">{item.description}</td>
-                              <td className="px-4 py-2.5 text-sm font-semibold text-[#0b5858]">{item.qtyReceived} {item.unit}</td>
-                              <td className="px-4 py-2.5 text-sm text-[#9ca3af]">{formatPhp(item.unitCost)}</td>
-                              <td className="px-4 py-2.5 text-sm font-bold text-[#0b5858]">{formatPhp(item.qtyReceived * item.unitCost)}</td>
+                              <td className="px-4 py-2.5 text-[12.5px] text-[#374151] whitespace-normal break-words">{item.description}</td>
+                              <td className="px-4 py-2.5 text-[12.5px] font-semibold text-[#0b5858]">{item.qtyReceived} {item.unit}</td>
+                              <td className="px-4 py-2.5 text-[12px] text-[#9ca3af]">{formatPhp(item.unitCost)}</td>
+                              <td className="px-4 py-2.5 text-[12.5px] font-bold text-[#0b5858]">{formatPhp(item.qtyReceived * item.unitCost)}</td>
                             </tr>
                           ))}
                         </tbody>
                         <tfoot>
                           <tr>
                             <td colSpan={3} className="px-4 py-2.5 text-right text-xs text-[#9ca3af] font-bold">RECEIPT TOTAL</td>
-                            <td className="px-4 py-2.5 text-sm font-black text-[#0b5858]">{formatPhp(gr.items.reduce((s, i) => s + i.qtyReceived * i.unitCost, 0))}</td>
+                            <td className="px-4 py-2.5 text-[12.5px] font-black text-[#0b5858]">{formatPhp(gr.items.reduce((s, i) => s + i.qtyReceived * i.unitCost, 0))}</td>
                           </tr>
                         </tfoot>
                       </table>
@@ -560,7 +562,8 @@ function DetailDrawer({
           </div>
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -609,6 +612,7 @@ const PurchaseOrdersSkeleton = () => (
 function PurchaseOrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toasts, removeToast, success, error } = useToast();
   const poIdFromQuery = searchParams.get('poId');
   const supplierIdFromQuery = searchParams.get('supplierId');
   const supplierFromQuery = supplierIdFromQuery
@@ -623,6 +627,8 @@ function PurchaseOrdersPageContent() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [goodsReceiptModalPO, setGoodsReceiptModalPO] = useState<PurchaseOrder | null>(null);
   const [editPOTarget, setEditPOTarget] = useState<PurchaseOrder | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     let isMounted = true;
@@ -737,12 +743,14 @@ function PurchaseOrdersPageContent() {
         setSelectedPO(updated);
       }
 
-      alert('Goods Receipt created successfully.');
+      success('Goods Receipt created successfully.');
     };
 
-    void submit().catch((error) => {
-      const message = error instanceof Error ? error.message : 'Unable to create goods receipt.';
-      alert(message);
+    void submit().catch((err) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Goods receipt submit error:', err);
+      }
+      error('We couldn’t create the goods receipt. Please try again.');
     });
   };
 
@@ -765,12 +773,14 @@ function PurchaseOrdersPageContent() {
         setSelectedPO(updatedPO);
       }
 
-      alert(`Purchase Order ${editPOTarget.id.toUpperCase()} updated successfully.`);
+      success(`Purchase Order ${editPOTarget.id.toUpperCase()} updated successfully.`);
     };
 
-    void run().catch((error) => {
-      const message = error instanceof Error ? error.message : 'Unable to update purchase order.';
-      alert(message);
+    void run().catch((err) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Purchase order update error:', err);
+      }
+      error('We couldn’t update the purchase order. Please try again.');
     });
   };
 
@@ -794,12 +804,14 @@ function PurchaseOrdersPageContent() {
         setSelectedPO(updatedPO);
       }
 
-      alert(`Purchase Order ${po.id.toUpperCase()} has been cancelled.`);
+      success(`Purchase Order ${po.id.toUpperCase()} has been cancelled.`);
     };
 
-    void run().catch((error) => {
-      const message = error instanceof Error ? error.message : 'Unable to cancel purchase order.';
-      alert(message);
+    void run().catch((err) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Purchase order cancel error:', err);
+      }
+      error('We couldn’t cancel the purchase order. Please try again.');
     });
   };
 
@@ -826,6 +838,13 @@ function PurchaseOrdersPageContent() {
         : purchaseOrders,
     [purchaseOrders, selectedSupplierId]
   );
+
+  const totalRecords = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalRecords);
+  const pageOrders = filtered.slice(startIndex, endIndex);
 
   const stats = {
     total: scopedOrders.length,
@@ -929,7 +948,7 @@ function PurchaseOrdersPageContent() {
       )}
 
       {/* Filters */}
-      <div className="flex gap-2 flex-wrap mb-4 inventory-reveal" style={{ animationDelay: '220ms' }}>
+        <div className="flex gap-2 flex-wrap mb-4 inventory-reveal" style={{ animationDelay: '220ms' }}>
         <div className="flex-1 min-w-[200px] relative">
           <input
             value={search}
@@ -944,26 +963,32 @@ function PurchaseOrdersPageContent() {
           </svg>
         </div>
 
-        <InventoryDropdown
-          value={selectedSupplierId}
-          onChange={(value) => {
-            setSelectedSupplierId(value);
-            if (value === 'all') {
-              router.replace('/sales-report/inventory/purchase-orders');
-              return;
-            }
-            router.replace(`/sales-report/inventory/purchase-orders?supplierId=${value}`);
-          }}
-          options={supplierOptions}
-          minWidthClass="min-w-[180px]"
-        />
+        <div className="relative z-[60]">
+          <InventoryDropdown
+            value={selectedSupplierId}
+            onChange={(value) => {
+              setSelectedSupplierId(value);
+              if (value === 'all') {
+                router.replace('/sales-report/inventory/purchase-orders');
+                return;
+              }
+              router.replace(`/sales-report/inventory/purchase-orders?supplierId=${value}`);
+            }}
+            options={supplierOptions}
+            minWidthClass="min-w-[180px]"
+            menuZIndexClass="z-[999]"
+          />
+        </div>
         
-        <InventoryDropdown
-          value={statusFilter}
-          onChange={setStatusFilter}
-          options={statusOptions}
-          minWidthClass="min-w-[180px]"
-        />
+        <div className="relative z-[60]">
+          <InventoryDropdown
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusOptions}
+            minWidthClass="min-w-[180px]"
+            menuZIndexClass="z-[999]"
+          />
+        </div>
       </div>
 
       {/* Table */}
@@ -984,12 +1009,16 @@ function PurchaseOrdersPageContent() {
           {/* Rows */}
           {filtered.length === 0 ? (
             <div className="py-8 px-6 text-center text-gray-500">
-              <div className="text-3xl mb-2">🔎</div>
+              <div className="flex justify-center mb-3">
+                <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
               <div className="font-semibold text-gray-900 mb-1">No purchase orders found</div>
               <div className="text-sm">Try adjusting your search or filters</div>
             </div>
           ) : (
-            filtered.map((po) => {
+            pageOrders.map((po) => {
               const supplier = mockSuppliers.find(s => s.id === po.supplierId);
               const goodsReceipts = mockGoodsReceipts.filter(gr => gr.poId === po.id);
               return (
@@ -1002,24 +1031,30 @@ function PurchaseOrdersPageContent() {
                     gridTemplateColumns: "1fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr 0.8fr",
                   }}
                 >
-                  <div className="text-sm font-semibold text-gray-900">{po.id.toUpperCase()}</div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{supplier?.name || 'Unknown'}</div>
-                    <div className="text-xs text-gray-500">{supplier?.email || ''}</div>
+                  <div
+                    className="text-[11px] text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]"
+                    style={{ fontFamily: "'DM Mono', monospace" }}
+                    title={po.id.toUpperCase()}
+                  >
+                    {po.id.toUpperCase()}
                   </div>
-                  <div className="text-sm text-gray-700">
+                  <div>
+                    <div className="text-[12.5px] font-medium text-gray-900 whitespace-normal break-words">{supplier?.name || 'Unknown'}</div>
+                    <div className="text-[11px] text-gray-500 whitespace-normal break-words">{supplier?.email || ''}</div>
+                  </div>
+                  <div className="text-[12.5px] text-gray-700">
                     {new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
                   </div>
-                  <div className="text-sm text-gray-700">
+                  <div className="text-[12.5px] text-gray-700">
                     {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
                   </div>
-                  <div className="text-sm font-semibold text-gray-900">{formatPhp(po.totalAmount)}</div>
+                  <div className="text-[12.5px] font-semibold text-gray-900">{formatPhp(po.totalAmount)}</div>
                   <div className="flex items-center">
                     <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
                   </div>
                   <div className="flex items-center justify-center">
                     {goodsReceipts.length > 0 && (
-                      <span className="text-xs text-gray-600 bg-gray-100 rounded-md px-2 py-1 font-semibold">{goodsReceipts.length} GR</span>
+                      <span className="text-[11px] text-gray-600 bg-gray-100 rounded-md px-2 py-1 font-semibold">{goodsReceipts.length} GR</span>
                     )}
                   </div>
                 </div>
@@ -1031,8 +1066,14 @@ function PurchaseOrdersPageContent() {
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div>
-                      <div className="text-sm font-bold text-gray-900 mb-0.5">{po.id.toUpperCase()}</div>
-                      <div className="text-xs font-medium text-gray-700">{supplier?.name || 'Unknown'}</div>
+                      <div
+                        className="text-[11px] text-gray-400 mb-0.5 overflow-hidden text-ellipsis whitespace-nowrap max-w-[160px]"
+                        style={{ fontFamily: "'DM Mono', monospace" }}
+                        title={po.id.toUpperCase()}
+                      >
+                        {po.id.toUpperCase()}
+                      </div>
+                      <div className="text-[12px] font-medium text-gray-700 whitespace-normal break-words">{supplier?.name || 'Unknown'}</div>
                     </div>
                     <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
                   </div>
@@ -1071,9 +1112,62 @@ function PurchaseOrdersPageContent() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="mt-3 text-xs text-gray-500">
-        <span className="font-medium text-gray-700">{filtered.length}</span> of <span className="font-medium text-gray-700">{scopedOrders.length}</span> purchase orders
+      {/* Footer: pagination summary & controls (matched to stock movements) */}
+      <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[12px] text-gray-600">
+        <div>
+          Showing{' '}
+          <span className="font-semibold text-[#0b5858]">
+            {totalRecords === 0 ? 0 : startIndex + 1}–{endIndex}
+          </span>{' '}
+          of <span className="font-semibold text-[#0b5858]">{totalRecords}</span> purchase orders
+        </div>
+        <div className="flex items-center gap-2 sm:justify-end">
+          <div className="flex items-center gap-1">
+            <span>Rows per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="border border-gray-200 rounded-md px-1.5 py-0.5 text-[12px] bg-white"
+            >
+              {[10, 25, 50].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-2 py-1 rounded-md border border-gray-200 bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Prev
+            </button>
+            <span className="px-1">
+              Page{' '}
+              <span className="font-semibold text-[#0b5858]">
+                {totalRecords === 0 ? 0 : currentPage}
+              </span>{' '}
+              of{' '}
+              <span className="font-semibold text-[#0b5858]">
+                {totalRecords === 0 ? 0 : totalPages}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages || totalRecords === 0}
+              className="px-2 py-1 rounded-md border border-gray-200 bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Detail drawer */}
@@ -1104,6 +1198,7 @@ function PurchaseOrdersPageContent() {
           onSave={handleEditPO}
         />
       )}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
@@ -131,9 +132,15 @@ const WarehouseFormModal = ({
     </label>
   );
 
-  return (
-    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
-      <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl">
+  return createPortal(
+    <div
+      onClick={onClose}
+      className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4"
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl"
+      >
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center rounded-t-2xl">
           <div>
             <div className="text-[10px] font-bold tracking-widest text-white/50 mb-1" style={{ fontFamily: 'Poppins' }}>
@@ -219,7 +226,8 @@ const WarehouseFormModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -284,9 +292,15 @@ const WarehouseTransferStockModal = ({
     onClose();
   };
 
-  return (
-    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
-      <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[520px] overflow-visible shadow-2xl">
+  return createPortal(
+    <div
+      onClick={onClose}
+      className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4"
+    >
+      <div
+        onClick={(event) => event.stopPropagation()}
+        className="bg-white rounded-2xl w-full max-w-[520px] overflow-visible shadow-2xl"
+      >
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center rounded-t-2xl">
           <h3 className="text-[17px] font-bold text-white" style={{ fontFamily: 'Poppins' }}>Transfer Stock</h3>
           <button onClick={onClose} className="bg-white/15 hover:bg-white/25 rounded-lg w-8 h-8 flex items-center justify-center transition-colors">
@@ -364,7 +378,8 @@ const WarehouseTransferStockModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -406,8 +421,6 @@ const WarehouseDetailModal = ({
 
     const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
     document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
-
     window.addEventListener('keydown', fn);
     document.body.style.overflow = 'hidden';
 
@@ -418,14 +431,13 @@ const WarehouseDetailModal = ({
       const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
       if (nextModalCount === 0) {
         delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
       } else {
         document.body.dataset.modalCount = String(nextModalCount);
       }
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
       <div onClick={(event) => event.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[900px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl">
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-start">
@@ -635,7 +647,8 @@ const WarehouseDetailModal = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -1018,12 +1031,15 @@ export default function WarehousesPage() {
             ))}
           </div>
 
-          <InventoryDropdown
-            value={sortKey}
-            onChange={setSortKey}
-            options={sortOptions}
-            minWidthClass="min-w-[220px]"
-          />
+          <div className="relative z-[60]">
+            <InventoryDropdown
+              value={sortKey}
+              onChange={setSortKey}
+              options={sortOptions}
+              minWidthClass="min-w-[220px]"
+              menuZIndexClass="z-[999]"
+            />
+          </div>
         </div>
       </div>
 
@@ -1045,8 +1061,14 @@ export default function WarehousesPage() {
           </div>
 
           {filtered.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 text-sm" style={{ fontFamily: 'Poppins' }}>
-            No warehouse found. Add a warehouse to start tracking inventory locations.
+          <div className="py-12 px-6 text-center text-gray-400 text-sm" style={{ fontFamily: 'Poppins' }}>
+            <div className="flex justify-center mb-3">
+              <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            </div>
+            <div className="font-semibold text-gray-900 mb-1">No warehouse found</div>
+            <p className="text-sm">Add a warehouse to start tracking inventory locations</p>
           </div>
         ) : (
           <div>
@@ -1062,27 +1084,25 @@ export default function WarehousesPage() {
                   } ${warehouse.isActive ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
                 >
                   <div className="min-w-0">
-                    <div
-                      className="text-[13.5px] font-semibold text-gray-900 overflow-hidden"
-                      style={{
-                        fontFamily: 'Poppins',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                      }}
-                    >
-                      {warehouse.name}
-                    </div>
-                    <div
-                      className="text-[11px] text-gray-400 mt-0.5 overflow-hidden"
-                      style={{
-                        fontFamily: 'Poppins',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                      }}
-                    >
-                      {warehouse.description || 'No description'}
+                    <div className="flex items-start justify-between lg:block">
+                      <div>
+                        <div
+                          className="text-[13.5px] font-semibold text-gray-900 whitespace-normal break-words"
+                          style={{ fontFamily: 'Poppins' }}
+                        >
+                          {warehouse.name}
+                        </div>
+                        <div
+                          className="text-[11px] text-gray-400 mt-0.5 whitespace-normal break-words"
+                          style={{ fontFamily: 'Poppins' }}
+                        >
+                          {warehouse.description || 'No description'}
+                        </div>
+                      </div>
+                      {/* Mobile status badge in top-right */}
+                      <div className="ml-3 lg:hidden">
+                        <StatusBadge active={warehouse.isActive} />
+                      </div>
                     </div>
                   </div>
 
@@ -1148,7 +1168,6 @@ export default function WarehousesPage() {
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Low Stock</div>
                       <div className="text-[15px] font-bold text-amber-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</div>
                     </div>
-                    <div className="col-span-3"><StatusBadge active={warehouse.isActive} /></div>
                   </div>
                 </div>
               );

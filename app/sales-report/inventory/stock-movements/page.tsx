@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
@@ -11,6 +11,8 @@ import {
   mockUnitStockMovements,
   mockWarehouseDirectoryData,
 } from '../lib/mockData';
+import type { EnhancedMovement } from '../helpers/types';
+import { exportStockMovementsToCsv, exportStockMovementsToPdf } from '../helpers/exportHelpers';
 
 type MovementView = 'warehouse' | 'unit';
 type MovementType = 'in' | 'out';
@@ -76,6 +78,8 @@ const OptionalValueBadge = () => (
   </span>
 );
 
+type SortKey = 'date' | 'product' | 'location' | 'qty';
+
 export default function StockMovementsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [view, setView] = useState<MovementView>(() => {
@@ -92,6 +96,11 @@ export default function StockMovementsPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [datasetTick, setDatasetTick] = useState(0);
+  const [sortKey, setSortKey] = useState<SortKey>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const tableRef = useRef<HTMLDivElement | null>(null);
 
   const warehouseRows = useMemo<WarehouseMovementRow[]>(() => {
     const byWarehouseId = new Map(mockWarehouseDirectoryData.map((warehouse) => [warehouse.id, warehouse.name]));
@@ -225,6 +234,7 @@ export default function StockMovementsPage() {
     setReferenceFilter('all');
     setDateFrom('');
     setDateTo('');
+    setPage(1);
   };
 
   useEffect(() => {
@@ -242,9 +252,182 @@ export default function StockMovementsPage() {
     };
   }, []);
 
+  // Reset to first page when view or filters change
+  useEffect(() => {
+    setPage(1);
+  }, [view, search, warehouseFilter, unitFilter, typeFilter, referenceFilter, dateFrom, dateTo]);
+
+  const sortWarehouseRows = (rows: WarehouseMovementRow[]): WarehouseMovementRow[] => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      let aValue: string | number = '';
+      let bValue: string | number = '';
+
+      if (sortKey === 'date') {
+        const aDate = parseDateTime(a.recordedDate, a.recordedTime);
+        const bDate = parseDateTime(b.recordedDate, b.recordedTime);
+        return direction * (aDate.getTime() - bDate.getTime());
+      }
+
+      if (sortKey === 'product') {
+        aValue = a.productName ?? '';
+        bValue = b.productName ?? '';
+      } else if (sortKey === 'location') {
+        aValue = a.warehouseName;
+        bValue = b.warehouseName;
+      } else if (sortKey === 'qty') {
+        aValue = a.quantity ?? 0;
+        bValue = b.quantity ?? 0;
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return direction * aValue.localeCompare(bValue);
+      }
+
+      return direction * (Number(aValue) - Number(bValue));
+    });
+  };
+
+  const sortedWarehouseRows = useMemo(
+    () => sortWarehouseRows(filteredWarehouseRows),
+    [filteredWarehouseRows, sortKey, sortDirection]
+  );
+
+  const sortUnitRows = (rows: UnitMovementRow[]): UnitMovementRow[] => {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      let aValue: string | number = '';
+      let bValue: string | number = '';
+
+      if (sortKey === 'date') {
+        const aDate = parseDateTime(a.recordedDate, a.recordedTime);
+        const bDate = parseDateTime(b.recordedDate, b.recordedTime);
+        return direction * (aDate.getTime() - bDate.getTime());
+      }
+
+      if (sortKey === 'product') {
+        aValue = a.productName ?? '';
+        bValue = b.productName ?? '';
+      } else if (sortKey === 'location') {
+        aValue = a.unitName ?? '';
+        bValue = b.unitName ?? '';
+      } else if (sortKey === 'qty') {
+        aValue = a.quantity ?? 0;
+        bValue = b.quantity ?? 0;
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return direction * aValue.localeCompare(bValue);
+      }
+
+      return direction * (Number(aValue) - Number(bValue));
+    });
+  };
+
+  const sortedUnitRows = useMemo(
+    () => sortUnitRows(filteredUnitRows),
+    [filteredUnitRows, sortKey, sortDirection]
+  );
+
+  const buildExportRows = (): EnhancedMovement[] => {
+    if (view === 'warehouse') {
+      return sortedWarehouseRows.map(
+        (row): EnhancedMovement => ({
+          id: row.id,
+          productId: '',
+          type: row.type,
+          quantity: row.quantity,
+          warehouseId: '',
+          unitId: undefined,
+          unitName: row.unitName,
+          reason: row.reason,
+          referenceType: row.referenceType,
+          beforeQuantity: row.beforeQuantity,
+          afterQuantity: row.afterQuantity,
+          movementDateTime: `${row.recordedDate} ${row.recordedTime || ''}`.trim(),
+          notes: '',
+          referenceId: row.referenceId,
+          createdAt: `${row.recordedDate}T${row.recordedTime || '00:00'}`,
+          createdBy: row.createdBy,
+          productName: row.productName,
+          productSku: '',
+          productCategory: '',
+          warehouseName: row.warehouseName,
+          recordedDate: row.recordedDate,
+          recordedTime: row.recordedTime,
+        })
+      );
+    }
+
+    return sortedUnitRows.map(
+      (row): EnhancedMovement => ({
+        id: row.id,
+        productId: row.productId,
+        type: 'out',
+        quantity: row.quantity,
+        warehouseId: row.sourceWarehouseId,
+        unitId: row.unitId,
+        unitName: row.unitName,
+        reason: row.reason,
+        referenceType: row.referenceType,
+        beforeQuantity: row.beforeQuantity,
+        afterQuantity: row.afterQuantity,
+        movementDateTime: `${row.recordedDate} ${row.recordedTime || ''}`.trim(),
+        notes: '',
+        referenceId: row.referenceId,
+        createdAt: row.recordedAt,
+        createdBy: row.createdBy,
+        productName: row.productName,
+        productSku: '',
+        productCategory: '',
+        warehouseName: row.sourceWarehouseName,
+        recordedDate: row.recordedDate,
+        recordedTime: row.recordedTime,
+      })
+    );
+  };
+
+  const totalWarehouseRecords = sortedWarehouseRows.length;
+  const totalUnitRecords = sortedUnitRows.length;
+  const totalRecords = view === 'warehouse' ? totalWarehouseRecords : totalUnitRecords;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalRecords);
+  const pageWarehouseRows = sortedWarehouseRows.slice(startIndex, endIndex);
+  const pageUnitRows = sortedUnitRows.slice(startIndex, endIndex);
+
+  const handleSortChange = (key: SortKey) => {
+    setSortKey((prevKey) => {
+      if (prevKey === key) {
+        setSortDirection((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
+        return prevKey;
+      }
+      setSortDirection('desc');
+      return key;
+    });
+  };
+
   useEffect(() => {
     window.localStorage.setItem(MOVEMENT_VIEW_STORAGE_KEY, view);
   }, [view]);
+
+  useEffect(() => {
+    if (!tableRef.current) return;
+    tableRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [currentPage, view]);
+
+  const handleExportCsv = () => {
+    const rows = buildExportRows();
+    if (!rows.length) return;
+    exportStockMovementsToCsv(rows);
+  };
+
+  const handleExportPdf = async () => {
+    const rows = buildExportRows();
+    if (!rows.length) return;
+    await exportStockMovementsToPdf(rows);
+  };
 
   useEffect(() => {
     const refresh = () => {
@@ -308,7 +491,9 @@ export default function StockMovementsPage() {
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 inventory-reveal">
           <div>
             <nav className="flex items-center gap-2 text-sm text-gray-600 mb-2" style={{ fontFamily: 'Poppins' }}>
-              <Link href="/sales-report/inventory" className="text-[#0B5858] hover:underline">Dashboard</Link>
+              <Link href="/sales-report/inventory" className="text-[#0B5858] hover:underline">
+                Dashboard
+              </Link>
               <span>/</span>
               <span className="text-gray-900 font-medium">Stock Movements</span>
             </nav>
@@ -317,21 +502,63 @@ export default function StockMovementsPage() {
             <p className="text-sm text-gray-600">Comprehensive audit trail for warehouse and unit inventory movements.</p>
           </div>
 
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
-            <button
-              type="button"
-              onClick={() => setView('warehouse')}
-              className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${view === 'warehouse' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Warehouse Records
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('unit')}
-              className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${view === 'unit' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-              Unit Records
-            </button>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: 10,
+                  borderWidth: 1.5,
+                  borderColor: '#cbd5e1',
+                  background: '#ffffff',
+                  color: '#0b5858',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: 'Poppins',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f8fafc';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                }}
+                onClick={handleExportCsv}
+              >
+                <span style={{ fontSize: 13 }}>⬇</span>
+                CSV
+              </button>
+              <button
+                type="button"
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: 'linear-gradient(135deg,#0b5858,#05807e)',
+                  color: '#ffffff',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: 'Poppins',
+                  boxShadow: '0 4px 14px rgba(5,128,126,0.35)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.filter = 'brightness(1.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.filter = 'none';
+                }}
+                onClick={handleExportPdf}
+              >
+                <span style={{ fontSize: 13 }}>⬇</span>
+                PDF
+              </button>
+            </div>
           </div>
         </div>
 
@@ -349,8 +576,8 @@ export default function StockMovementsPage() {
 
         <div className="mb-4 inventory-reveal flex flex-col gap-2.5">
           <div className="bg-[#f3f4f6] border border-gray-200 rounded-xl p-2.5">
-            <div className={`grid grid-cols-1 sm:grid-cols-2 ${view === 'warehouse' ? 'lg:grid-cols-[minmax(260px,1fr)_170px_190px_190px_150px_150px]' : 'lg:grid-cols-[minmax(260px,1fr)_190px_190px_190px_150px_150px]'} gap-2.5 items-center`}>
-              <div className="relative">
+            <div className={`relative z-[60] grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 ${view === 'warehouse' ? 'xl:grid-cols-[minmax(220px,1fr)_150px_160px_160px_140px_140px]' : 'xl:grid-cols-[minmax(220px,1fr)_160px_160px_160px_140px_140px]'} gap-2.5 items-center`}>
+              <div className="relative sm:col-span-2 md:col-span-3 xl:col-span-1">
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
                   <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.4" />
                   <path d="M9.5 9.5l2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -364,99 +591,511 @@ export default function StockMovementsPage() {
               </div>
 
               {view === 'warehouse' ? (
-                <InventoryDropdown value={typeFilter} onChange={setTypeFilter} options={typeOptions} fullWidth minWidthClass="min-w-[0]" />
+                <InventoryDropdown
+                  value={typeFilter}
+                  onChange={setTypeFilter}
+                  options={typeOptions}
+                  fullWidth
+                  minWidthClass="min-w-[0]"
+                  menuZIndexClass="z-[999]"
+                />
               ) : (
-                <InventoryDropdown value={unitFilter} onChange={setUnitFilter} options={unitOptions} fullWidth minWidthClass="min-w-[0]" />
+                <InventoryDropdown
+                  value={unitFilter}
+                  onChange={setUnitFilter}
+                  options={unitOptions}
+                  fullWidth
+                  minWidthClass="min-w-[0]"
+                  menuZIndexClass="z-[999]"
+                />
               )}
 
-              <InventoryDropdown value={warehouseFilter} onChange={setWarehouseFilter} options={warehouseOptions} fullWidth minWidthClass="min-w-[0]" />
-              <InventoryDropdown value={referenceFilter} onChange={setReferenceFilter} options={referenceOptions} fullWidth minWidthClass="min-w-[0]" />
+              <InventoryDropdown
+                value={warehouseFilter}
+                onChange={setWarehouseFilter}
+                options={warehouseOptions}
+                fullWidth
+                minWidthClass="min-w-[0]"
+                menuZIndexClass="z-[999]"
+              />
+              <InventoryDropdown
+                value={referenceFilter}
+                onChange={setReferenceFilter}
+                options={referenceOptions}
+                fullWidth
+                minWidthClass="min-w-[0]"
+                menuZIndexClass="z-[999]"
+              />
               <SingleDatePicker value={dateFrom} onChange={setDateFrom} placeholder="From date" className="w-full" />
               <SingleDatePicker value={dateTo} onChange={setDateTo} placeholder="To date" className="w-full" />
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-[13px] text-gray-600">
-              Showing <strong style={{ color: '#0b5858' }}>{view === 'warehouse' ? filteredWarehouseRows.length : filteredUnitRows.length}</strong> records
+              Showing{' '}
+              <strong style={{ color: '#0b5858' }}>
+                {totalRecords === 0 ? 0 : startIndex + 1}–{endIndex}
+              </strong>{' '}
+              of <strong style={{ color: '#0b5858' }}>{totalRecords}</strong> records
             </div>
-            <button type="button" onClick={clearFilters} className="px-3.5 py-2 rounded-lg border-[1.5px] border-gray-200 bg-white text-gray-600 text-[12px] font-semibold hover:bg-gray-50 transition-colors">
-              Clear Filters
-            </button>
+            <div className="flex items-center justify-between sm:justify-end gap-3">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="px-3.5 py-2 rounded-lg border-[1.5px] border-gray-200 bg-white text-gray-600 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
+              >
+                Clear Filters
+              </button>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setView('warehouse')}
+                  className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
+                    view === 'warehouse' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Warehouse Records
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setView('unit')}
+                  className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
+                    view === 'unit' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Unit Records
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="inventory-reveal mt-5 bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {/* Desktop table */}
+        <div
+          ref={tableRef}
+          className="inventory-reveal mt-5 bg-white rounded-lg border border-gray-200 overflow-hidden hidden md:block"
+        >
+          {/* Horizontal scroll wrapper so columns keep comfortable spacing on smaller screens */}
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse min-w-[1200px]">
+            <table className="w-full border-collapse min-w-[1100px]">
               <thead className="bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white">
                 <tr>
                   {(view === 'warehouse'
-                    ? ['ID', 'PRODUCT', 'WAREHOUSE', 'UNIT', 'TYPE', 'QTY', 'DONE BY', 'REASON', 'REFERENCE', 'BEFORE QTY', 'AFTER QTY', 'DATE', 'TIME']
-                    : ['ID', 'PRODUCT', 'UNIT', 'SOURCE WAREHOUSE', 'TYPE', 'QTY', 'DONE BY', 'REASON', 'REFERENCE', 'BEFORE QTY', 'AFTER QTY', 'DATE', 'TIME']
-                  ).map((header) => (
-                    <th key={header} className="px-4 py-3 text-left text-xs font-bold tracking-wide text-white/75">{header}</th>
-                  ))}
+                    ? ['ID', 'DATE / TIME', 'PRODUCT', 'WAREHOUSE', 'UNIT', 'TYPE', 'QTY', 'STOCK', 'REFERENCE', 'REASON', 'BY']
+                    : ['ID', 'DATE / TIME', 'PRODUCT', 'UNIT', 'SOURCE WAREHOUSE', 'TYPE', 'QTY', 'STOCK', 'REFERENCE', 'REASON', 'BY']
+                  ).map((header) => {
+                    const isSortable =
+                      header === 'PRODUCT' ||
+                      header === 'DATE / TIME' ||
+                      header === 'WAREHOUSE' ||
+                      header === 'UNIT' ||
+                      header === 'SOURCE WAREHOUSE' ||
+                      header === 'QTY';
+
+                    let key: SortKey | null = null;
+                    if (header === 'PRODUCT') key = 'product';
+                    if (header === 'WAREHOUSE' || header === 'UNIT' || header === 'SOURCE WAREHOUSE') key = 'location';
+                    if (header === 'QTY') key = 'qty';
+                    if (header === 'DATE / TIME') key = 'date';
+
+                    const isActive = key && sortKey === key;
+
+                    return (
+                      <th
+                        key={header}
+                        className={`px-4 py-3 text-left text-xs font-bold tracking-wide text-white/75 ${
+                          isSortable ? 'cursor-pointer select-none' : ''
+                        }`}
+                        onClick={key ? () => handleSortChange(key!) : undefined}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {header}
+                          {isActive && (
+                            <span className="text-[9px]">
+                              {sortDirection === 'asc' ? '▲' : '▼'}
+                            </span>
+                          )}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, idx) => (
                     <tr key={`s-${idx}`} className="border-b border-gray-200 last:border-b-0 animate-pulse">
-                      {Array.from({ length: view === 'warehouse' ? 13 : 13 }).map((__, cIdx) => (
-                        <td key={`c-${idx}-${cIdx}`} className="px-4 py-3"><div className="h-3 w-20 rounded bg-slate-200" /></td>
+                      {Array.from({ length: 11 }).map((__, cIdx) => (
+                        <td key={`c-${idx}-${cIdx}`} className="px-4 py-3">
+                          <div className="h-3 w-20 rounded bg-slate-200" />
+                        </td>
                       ))}
                     </tr>
                   ))
                 ) : view === 'warehouse' ? (
-                  filteredWarehouseRows.length === 0 ? (
+                  sortedWarehouseRows.length === 0 ? (
                     <tr>
-                      <td colSpan={13} className="p-10 text-center text-sm text-gray-400">No warehouse movement records found</td>
+                      <td colSpan={11} className="p-10 text-center text-sm text-gray-400">
+                        <div className="flex flex-col items-center gap-2">
+                          <svg className="w-10 h-10 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                          </svg>
+                          <span>No warehouse movement records found</span>
+                        </div>
+                      </td>
                     </tr>
                   ) : (
-                    filteredWarehouseRows.map((row) => (
+                    pageWarehouseRows.map((row) => (
                       <tr key={row.id} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-700">{row.id}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{row.productName}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.warehouseName}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.unitName ? row.unitName : <OptionalValueBadge />}</td>
-                        <td className="px-4 py-3"><Tag label={row.type === 'in' ? 'In' : 'Out'} className={getTypeBadgeClasses(row.type)} /></td>
-                        <td className={`px-4 py-3 text-sm font-bold ${row.type === 'in' ? 'text-green-600' : 'text-red-600'}`}>{row.type === 'in' ? '+' : '-'}{row.quantity}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.createdBy}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.reason ? row.reason : <OptionalValueBadge />}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.referenceId ? row.referenceId : <OptionalValueBadge />}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.beforeQuantity !== undefined ? row.beforeQuantity : <OptionalValueBadge />}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.afterQuantity !== undefined ? row.afterQuantity : <OptionalValueBadge />}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.recordedDate || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{row.recordedTime || '-'}</td>
+                        <td className="px-4 py-3 align-top">
+                          <div className="text-[11px] text-gray-400 break-all" style={{ fontFamily: "'DM Mono', monospace" }}>
+                            {row.id}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-700 whitespace-normal break-words align-top">
+                          <div>{row.recordedDate || '-'}</div>
+                          <div className="text-[11px] text-gray-500">{row.recordedTime || '-'}</div>
+                        </td>
+                        <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">{row.productName}</td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">{row.warehouseName}</td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
+                          {row.unitName ? row.unitName : <OptionalValueBadge />}
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
+                          <Tag label={row.type === 'in' ? 'In' : 'Out'} className={getTypeBadgeClasses(row.type)} />
+                        </td>
+                        <td
+                          className={`px-4 py-3 align-top text-right text-[12.5px] font-bold ${
+                            row.type === 'in' ? 'text-green-600' : 'text-red-600'
+                          }`}
+                        >
+                          {row.type === 'in' ? '+' : '-'}
+                          {row.quantity}
+                        </td>
+                        <td className="px-4 py-3 text-right text-[12px] text-gray-700 whitespace-normal break-words align-top">
+                          {row.beforeQuantity !== undefined ? (
+                            <span className="text-gray-500">{row.beforeQuantity}</span>
+                          ) : (
+                            <OptionalValueBadge />
+                          )}
+                          <span className="mx-1 text-[11px] text-gray-400">→</span>
+                          {row.afterQuantity !== undefined ? (
+                            <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
+                          ) : (
+                            <OptionalValueBadge />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
+                          {row.referenceId ? (
+                            <div
+                              className="text-[11px] text-gray-500 break-all"
+                              style={{ fontFamily: "'DM Mono', monospace" }}
+                            >
+                              {row.referenceId}
+                            </div>
+                          ) : (
+                            <OptionalValueBadge />
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
+                          {row.reason ? row.reason : <OptionalValueBadge />}
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">{row.createdBy}</td>
                       </tr>
                     ))
                   )
-                ) : filteredUnitRows.length === 0 ? (
+                ) : sortedUnitRows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="p-10 text-center text-sm text-gray-400">No unit movement records found</td>
+                    <td colSpan={11} className="p-10 text-center text-sm text-gray-400">
+                      <div className="flex flex-col items-center gap-2">
+                        <svg className="w-10 h-10 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        <span>No unit movement records found</span>
+                      </div>
+                    </td>
                   </tr>
                 ) : (
-                  filteredUnitRows.map((row) => (
+                  pageUnitRows.map((row) => (
                     <tr key={row.id} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-700">{row.id}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{row.productName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{row.unitName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.sourceWarehouseName}</td>
-                      <td className="px-4 py-3"><Tag label="Out" className={getTypeBadgeClasses('out')} /></td>
-                      <td className="px-4 py-3 text-sm font-bold text-red-600">-{row.quantity}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.createdBy}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.reason ? row.reason : <OptionalValueBadge />}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.referenceId ? row.referenceId : <OptionalValueBadge />}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.beforeQuantity !== undefined ? row.beforeQuantity : <OptionalValueBadge />}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.afterQuantity !== undefined ? row.afterQuantity : <OptionalValueBadge />}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.recordedDate}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{row.recordedTime}</td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="text-[11px] text-gray-400 break-all" style={{ fontFamily: "'DM Mono', monospace" }}>
+                          {row.id}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-700 whitespace-normal break-words align-top">
+                        <div>{row.recordedDate}</div>
+                        <div className="text-[11px] text-gray-500">{row.recordedTime}</div>
+                      </td>
+                      <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">
+                        {row.productName}
+                      </td>
+                      <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">{row.unitName}</td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
+                        {row.sourceWarehouseName}
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
+                        <Tag label="Out" className={getTypeBadgeClasses('out')} />
+                      </td>
+                      <td className="px-4 py-3 align-top text-right text-[12.5px] font-bold text-red-600">
+                        -{row.quantity}
+                      </td>
+                      <td className="px-4 py-3 text-right text-[12px] text-gray-700 whitespace-normal break-words align-top">
+                        {row.beforeQuantity !== undefined ? (
+                          <span className="text-gray-500">{row.beforeQuantity}</span>
+                        ) : (
+                          <OptionalValueBadge />
+                        )}
+                        <span className="mx-1 text-[11px] text-gray-400">→</span>
+                        {row.afterQuantity !== undefined ? (
+                          <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
+                        ) : (
+                          <OptionalValueBadge />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
+                        {row.referenceId ? (
+                          <div
+                            className="text-[11px] text-gray-500 break-all"
+                            style={{ fontFamily: "'DM Mono', monospace" }}
+                          >
+                            {row.referenceId}
+                          </div>
+                        ) : (
+                          <OptionalValueBadge />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
+                        {row.reason ? row.reason : <OptionalValueBadge />}
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">{row.createdBy}</td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Mobile cards (no drawer, sample-inspired layout) */}
+        <div className="mt-5 space-y-3 md:hidden">
+          {isLoading ? (
+            Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={`m-s-${idx}`}
+                className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm animate-pulse"
+              >
+                <div className="h-4 w-32 bg-slate-200 rounded mb-2" />
+                <div className="h-3 w-48 bg-slate-200 rounded mb-2" />
+                <div className="h-3 w-full bg-slate-200 rounded" />
+              </div>
+            ))
+          ) : view === 'warehouse' ? (
+            sortedWarehouseRows.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-sm text-gray-500">
+                No warehouse movement records found
+              </div>
+            ) : (
+              pageWarehouseRows.map((row) => (
+                <div
+                  key={row.id}
+                  className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex flex-col gap-2"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-gray-900 truncate">
+                        {row.productName}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-gray-400 break-all">
+                        {row.id}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-gray-500">
+                        {row.recordedDate || '-'} {row.recordedTime || ''}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Tag
+                        label={row.type === 'in' ? 'In' : 'Out'}
+                        className={getTypeBadgeClasses(row.type)}
+                      />
+                      <div
+                        className={`text-[13px] font-bold ${
+                          row.type === 'in' ? 'text-green-600' : 'text-red-600'
+                        }`}
+                      >
+                        {row.type === 'in' ? '+' : '-'}
+                        {row.quantity}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="font-semibold text-gray-500">WH:</span>
+                      <span className="break-words">{row.warehouseName}</span>
+                    </div>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="font-semibold text-gray-500">Unit:</span>
+                      <span className="break-words">
+                        {row.unitName ? row.unitName : <OptionalValueBadge />}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold text-gray-500">Stock:</span>
+                      {row.beforeQuantity !== undefined ? (
+                        <span className="text-gray-500">{row.beforeQuantity}</span>
+                      ) : (
+                        <OptionalValueBadge />
+                      )}
+                      <span className="mx-1 text-[11px] text-gray-400">→</span>
+                      {row.afterQuantity !== undefined ? (
+                        <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
+                      ) : (
+                        <OptionalValueBadge />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-semibold text-gray-500">Ref:</span>
+                      <span className="break-words">
+                        {row.referenceId ? row.referenceId : <OptionalValueBadge />}
+                      </span>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="font-semibold text-gray-500">By:</span>
+                      <span>{row.createdBy}</span>
+                    </span>
+                  </div>
+
+                  {row.reason && (
+                    <div className="text-[11px] text-gray-500 mt-1 break-words">
+                      {row.reason}
+                    </div>
+                  )}
+                </div>
+              ))
+            )
+          ) : sortedUnitRows.length === 0 ? (
+            <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-sm text-gray-500">
+              No unit movement records found
+            </div>
+          ) : (
+            pageUnitRows.map((row) => (
+              <div
+                key={row.id}
+                className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex flex-col gap-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold text-gray-900 truncate">
+                      {row.productName}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-gray-400 break-all">
+                      {row.id}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-gray-500">
+                      {row.recordedDate} {row.recordedTime}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Tag label="Out" className={getTypeBadgeClasses('out')} />
+                    <div className="text-[13px] font-bold text-red-600">-{row.quantity}</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="font-semibold text-gray-500">Unit:</span>
+                    <span className="break-words">{row.unitName}</span>
+                  </div>
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="font-semibold text-gray-500">From:</span>
+                    <span className="break-words">{row.sourceWarehouseName}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-semibold text-gray-500">Stock:</span>
+                    {row.beforeQuantity !== undefined ? (
+                      <span className="text-gray-500">{row.beforeQuantity}</span>
+                    ) : (
+                      <OptionalValueBadge />
+                    )}
+                    <span className="mx-1 text-[11px] text-gray-400">→</span>
+                    {row.afterQuantity !== undefined ? (
+                      <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
+                    ) : (
+                      <OptionalValueBadge />
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-semibold text-gray-500">Ref:</span>
+                    <span className="break-words">
+                      {row.referenceId ? row.referenceId : <OptionalValueBadge />}
+                    </span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-semibold text-gray-500">By:</span>
+                    <span>{row.createdBy}</span>
+                  </span>
+                </div>
+
+                {row.reason && (
+                  <div className="text-[11px] text-gray-500 mt-1 break-words">
+                    {row.reason}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Pagination (bottom of table, like sample UI) */}
+        <div className="mt-3 flex items-center justify-between text-[12px] text-gray-600">
+          <div>
+            Page <span className="font-semibold text-[#0b5858]">{currentPage}</span> of{' '}
+            <span className="font-semibold text-[#0b5858]">{totalPages}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1">
+              <span>Rows per page</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="border border-gray-200 rounded-md px-1.5 py-0.5 text-[12px] bg-white"
+              >
+                {[10, 25, 50].map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1 rounded-md border border-gray-200 bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { PurchaseOrder, PurchaseOrderLine } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import ToastContainer from './ToastContainer';
+import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 import { mockPurchaseOrderLines, mockWarehouseDirectoryData, mockReplenishmentItems } from '../lib/mockData';
 
@@ -149,9 +151,11 @@ export default function GoodsReceiptModal({
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  const { toasts, removeToast, error, success } = useToast();
+
   const handleSubmit = () => {
     if (!warehouseId || !receivedBy || !receiptDate) {
-      alert('Please fill in all required fields');
+      error('Please fill in all required fields');
       return;
     }
 
@@ -170,6 +174,7 @@ export default function GoodsReceiptModal({
   }
 
   return createPortal(
+    <>
     <div
       onClick={handleClose}
       style={{
@@ -260,6 +265,8 @@ export default function GoodsReceiptModal({
                 hideIcon={true}
                 fullWidth={true}
                 align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
           </div>
@@ -513,7 +520,9 @@ export default function GoodsReceiptModal({
           </button>
         </div>
       </div>
-    </div>,
+    </div>
+    <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>,
     document.body
   );
 }

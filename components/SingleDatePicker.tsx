@@ -16,6 +16,8 @@ export interface SingleDatePickerProps {
   placeholder?: string;
   /** Optional className for the trigger wrapper */
   className?: string;
+  /** z-index for the calendar portal (default 10000) */
+  calendarZIndex?: number;
 }
 
 const MONTH_NAMES = [
@@ -70,6 +72,7 @@ export default function SingleDatePicker({
   onChange,
   placeholder = 'Select date',
   className = '',
+  calendarZIndex = 10000,
 }: SingleDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -165,7 +168,7 @@ export default function SingleDatePicker({
           ref={dropdownRef}
           className="fixed bg-white rounded-lg shadow-lg border border-gray-200 p-2.5 flex flex-col"
           onClick={(e) => e.stopPropagation()}
-          style={{ width: 'min(90vw, 280px)', zIndex: 10000 }}
+          style={{ width: 'min(90vw, 280px)', zIndex: calendarZIndex }}
         >
           <div className="flex items-center justify-between mb-1.5 px-1">
             <button
