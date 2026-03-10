@@ -6,8 +6,9 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
-import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
-import { mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
+import { apiClient } from '@/lib/api/client';
+import { type InventoryDropdownOption } from '../../components/InventoryDropdown';
+import { loadInventoryDataset, mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
 
 interface POLineItem {
   id: string;
@@ -18,10 +19,13 @@ interface POLineItem {
   unit: string;
 }
 
+const getLineItemId = (productId: string) => `line-${productId}`;
+
 function CreatePurchaseOrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prePopItemId = searchParams.get('itemId');
+  const [, setRefreshTick] = useState(0);
 
   const [form, setForm] = useState({
     supplierId: '',
@@ -31,17 +35,55 @@ function CreatePurchaseOrderPageContent() {
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAddItemDropdown, setShowAddItemDropdown] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const addItemButtonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const supplierButtonRef = useRef<HTMLButtonElement>(null);
-  const [supplierDropdownPosition, setSupplierDropdownPosition] = useState({ top: 0, left: 0 });
+  const [supplierDropdownPosition, setSupplierDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
+  const hasPrepopulatedRef = useRef(false);
+  const isClient = typeof window !== 'undefined';
 
-  // Client-side mount flag
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    void loadInventoryDataset()
+      .finally(() => {
+        if (prePopItemId && !hasPrepopulatedRef.current) {
+          const item = mockReplenishmentItems.find((candidate) => candidate.id === prePopItemId);
+          if (item) {
+            setForm((prev) => ({
+              ...prev,
+              supplierId: item.currentsupplierId || '',
+            }));
+
+            setLineItems([
+              {
+                id: getLineItemId(item.id),
+                productId: item.id,
+                productName: item.name,
+                quantity: item.shortfall || item.minStock,
+                unitPrice: item.unitCost,
+                unit: item.unit,
+              },
+            ]);
+
+            hasPrepopulatedRef.current = true;
+          }
+        }
+
+        setRefreshTick((tick) => tick + 1);
+      });
+
+    const refresh = () => {
+      setRefreshTick((tick) => tick + 1);
+    };
+
+    window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [prePopItemId]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -51,31 +93,6 @@ function CreatePurchaseOrderPageContent() {
       return () => document.removeEventListener('click', handleClick);
     }
   }, [showAddItemDropdown]);
-
-  // Pre-populate if itemId is in query params
-  useEffect(() => {
-    if (prePopItemId) {
-      const item = mockReplenishmentItems.find((i) => i.id === prePopItemId);
-      if (item) {
-        // Pre-select supplier if available
-        setForm((prev) => ({
-          ...prev,
-          supplierId: item.currentsupplierId || '',
-        }));
-        
-        // Add item to line items with suggested quantity (shortfall)
-        const newLine: POLineItem = {
-          id: `line-${Date.now()}`,
-          productId: item.id,
-          productName: item.name,
-          quantity: item.shortfall || item.minStock,
-          unitPrice: item.unitCost,
-          unit: item.unit,
-        };
-        setLineItems([newLine]);
-      }
-    }
-  }, [prePopItemId]);
 
   const supplierOptions: InventoryDropdownOption<string>[] = [
     { value: '', label: 'Select supplier', disabled: true },
@@ -94,7 +111,7 @@ function CreatePurchaseOrderPageContent() {
     if (!product) return;
 
     const newLine: POLineItem = {
-      id: `line-${Date.now()}`,
+      id: getLineItemId(product.id),
       productId: product.id,
       productName: product.name,
       quantity: product.shortfall || 1,
@@ -137,22 +154,25 @@ function CreatePurchaseOrderPageContent() {
     return nextErrors;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const nextErrors = validate();
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
     }
 
-    // In real implementation, this would make an API call
-    console.log('Creating PO:', {
-      ...form,
-      lineItems,
-      totalAmount,
-      status: 'pending',
+    await apiClient.post('/api/purchase-orders', {
+      supplierId: form.supplierId,
+      notes: `Ordered: ${form.orderDate} | Expected: ${form.expectedDelivery}`,
+      items: lineItems.map((line) => ({
+        productId: line.productId,
+        quantityOrdered: line.quantity,
+        unitCost: line.unitPrice,
+      })),
     });
 
-    // Redirect to PO directory
+    await loadInventoryDataset(true);
+
     router.push('/sales-report/inventory/purchase-orders');
   };
 
@@ -227,6 +247,7 @@ function CreatePurchaseOrderPageContent() {
                   setSupplierDropdownPosition({
                     top: rect.bottom + window.scrollY,
                     left: rect.left + window.scrollX,
+                    width: rect.width,
                   });
                 }
                 setShowSupplierDropdown(!showSupplierDropdown);
@@ -246,13 +267,13 @@ function CreatePurchaseOrderPageContent() {
               </svg>
             </button>
 
-            {mounted && showSupplierDropdown && createPortal(
+            {isClient && showSupplierDropdown && createPortal(
               <div
                 className="fixed bg-white border-[1.5px] border-gray-200 rounded-xl shadow-xl z-[10000] max-h-[260px] overflow-y-auto"
                 style={{
                   top: supplierDropdownPosition.top + 8,
                   left: supplierDropdownPosition.left,
-                  width: supplierButtonRef.current?.offsetWidth || 'auto',
+                  width: supplierDropdownPosition.width || 'auto',
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -369,7 +390,7 @@ function CreatePurchaseOrderPageContent() {
               + Add Item
             </button>
 
-            {mounted && showAddItemDropdown && createPortal(
+            {isClient && showAddItemDropdown && createPortal(
               <div
                 className="fixed bg-white border-[1.5px] border-gray-200 rounded-lg shadow-lg z-[10000] max-h-64 overflow-y-auto w-80"
                 style={{
@@ -423,7 +444,7 @@ function CreatePurchaseOrderPageContent() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
             <p className="text-sm" style={{ fontFamily: 'Poppins' }}>
-              No items added yet. Click "Add Item" to start building your order.
+              No items added yet. Click &quot;Add Item&quot; to start building your order.
             </p>
           </div>
         ) : (

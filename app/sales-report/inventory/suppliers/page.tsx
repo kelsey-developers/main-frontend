@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { mockSupplierDirectoryData } from "../lib/mockData";
+import { apiClient } from '@/lib/api/client';
+import { loadInventoryDataset, mockSupplierDirectoryData } from "../lib/mockData";
 import InventoryDropdown, { type InventoryDropdownOption } from "../components/InventoryDropdown";
-import StatusBadge from "../components/StatusBadge";
 import ActiveStatusToggle from "../components/ActiveStatusToggle";
 import { avatarPalette, initials } from "../helpers/supplierHelpers";
 
@@ -80,7 +80,7 @@ const SupplierFormModal = ({
     };
   }, [onClose]);
 
-  const Field = ({
+  const renderField = ({
     label, fieldKey, type = "text", placeholder = "",
   }: { label: string; fieldKey: keyof typeof form; type?: string; placeholder?: string }) => (
     <div className="flex flex-col gap-1.5">
@@ -123,13 +123,13 @@ const SupplierFormModal = ({
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-3.5">
-            <Field label="Supplier Name" fieldKey="name" placeholder="e.g. Clean & Co" />
+            {renderField({ label: 'Supplier Name', fieldKey: 'name', placeholder: 'e.g. Clean & Co' })}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Contact Person" fieldKey="contactName" placeholder="Full name" />
-              <Field label="Phone" fieldKey="phone" type="tel" placeholder="+63 9XX XXX XXXX" />
+              {renderField({ label: 'Contact Person', fieldKey: 'contactName', placeholder: 'Full name' })}
+              {renderField({ label: 'Phone', fieldKey: 'phone', type: 'tel', placeholder: '+63 9XX XXX XXXX' })}
             </div>
-            <Field label="Email" fieldKey="email" type="email" placeholder="contact@supplier.com" />
-            <Field label="Address" fieldKey="address" placeholder="Street, City" />
+            {renderField({ label: 'Email', fieldKey: 'email', type: 'email', placeholder: 'contact@supplier.com' })}
+            {renderField({ label: 'Address', fieldKey: 'address', placeholder: 'Street, City' })}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold tracking-wider text-gray-500 uppercase" style={{ fontFamily: 'Poppins' }}>
@@ -220,8 +220,7 @@ const SuppliersSkeleton = () => (
 export default function SuppliersPage() {
   const router = useRouter();
 
-  // TODO: replace with backend fetch (e.g., useSupplierDirectoryQuery) once API is available.
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSupplierDirectoryData);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | "Active" | "Inactive">("All");
@@ -230,9 +229,26 @@ export default function SuppliersPage() {
   const [editTarget, setEditTarget] = useState<Supplier | null>(null);
 
   useEffect(() => {
-    // Simulate data loading
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    let isMounted = true;
+    void loadInventoryDataset()
+      .finally(() => {
+        if (!isMounted) return;
+        setSuppliers([...mockSupplierDirectoryData]);
+        setIsLoading(false);
+      });
+
+    const onRefresh = () => {
+      setSuppliers([...mockSupplierDirectoryData]);
+    };
+
+    window.addEventListener('inventory:movement-updated', onRefresh);
+    window.addEventListener('focus', onRefresh);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('inventory:movement-updated', onRefresh);
+      window.removeEventListener('focus', onRefresh);
+    };
   }, []);
 
   const sortOptions: InventoryDropdownOption<"name" | "lastOrder" | "activePOs">[] = [
@@ -258,13 +274,29 @@ export default function SuppliersPage() {
     });
 
   const handleSave = (data: Omit<Supplier, "id" | "activePOs" | "lastOrderDate" | "createdAt">) => {
-    if (editTarget) {
-      setSuppliers(ss => ss.map(s => s.id === editTarget.id ? { ...s, ...data } : s));
-    } else {
-      setSuppliers(ss => [{
-        id: `s-${Date.now()}`, activePOs: 0, lastOrderDate: "—", createdAt: "Mar 2025", ...data,
-      }, ...ss]);
-    }
+    const run = async () => {
+      const payload = {
+        name: data.name,
+        contactName: data.contactName,
+        contactEmail: data.email,
+        contactPhone: data.phone,
+        address: data.address,
+      };
+
+      if (editTarget) {
+        await apiClient.patch(`/api/suppliers/${editTarget.id}`, payload);
+      } else {
+        await apiClient.post('/api/suppliers', payload);
+      }
+
+      await loadInventoryDataset(true);
+      setSuppliers([...mockSupplierDirectoryData]);
+    };
+
+    void run().catch((error) => {
+      const message = error instanceof Error ? error.message : 'Unable to save supplier changes.';
+      alert(message);
+    });
   };
 
   const openAdd = () => { setEditTarget(null); setFormOpen(true); };
@@ -550,7 +582,7 @@ export default function SuppliersPage() {
       {/* Footer */}
       <div className="mt-3 text-[12px] text-gray-400 inventory-reveal" style={{ fontFamily: 'Poppins' }}>
         Showing <span className="font-semibold text-[#05807e]">{filtered.length}</span> of {suppliers.length} suppliers
-        {search && <span> — "<em>{search}</em>"</span>}
+        {search && <span> — &quot;<em>{search}</em>&quot;</span>}
       </div>
 
       {/* Modals */}

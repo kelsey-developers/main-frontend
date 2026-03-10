@@ -9,6 +9,7 @@ import ActiveStatusToggle from '../components/ActiveStatusToggle';
 import { getWarehouseStats } from '../helpers/warehouseHelpers';
 import {
   getWarehouseUnitAllocations,
+  loadInventoryDataset,
   mockWarehouseDirectoryData,
   mockReplenishmentItems,
   type WarehouseDirectoryRecord,
@@ -120,7 +121,7 @@ const WarehouseFormModal = ({
     setForm((prev) => ({ ...prev, isActive: newStatus }));
   };
 
-  const FieldLabel = ({ label, fieldKey }: { label: string; fieldKey: keyof typeof form }) => (
+  const renderFieldLabel = (label: string, fieldKey: keyof typeof form) => (
     <label
       className={`text-[12px] font-semibold ${errors[fieldKey] ? 'text-red-600' : 'text-gray-700'}`}
       style={{ fontFamily: 'Poppins' }}
@@ -152,7 +153,7 @@ const WarehouseFormModal = ({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
-              <FieldLabel label="Warehouse Name" fieldKey="name" />
+              {renderFieldLabel('Warehouse Name', 'name')}
               <input
                 value={form.name}
                 onChange={(event) => {
@@ -170,7 +171,7 @@ const WarehouseFormModal = ({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <FieldLabel label="Location" fieldKey="location" />
+              {renderFieldLabel('Location', 'location')}
               <input
                 value={form.location}
                 onChange={(event) => {
@@ -685,8 +686,7 @@ const WarehousesSkeleton = () => (
 
 export default function WarehousesPage() {
   const router = useRouter();
-  // TODO: replace with backend fetch (e.g., useWarehouseDirectoryQuery) once API is available.
-  const [warehouses, setWarehouses] = useState<Warehouse[]>(mockWarehouseDirectoryData);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
@@ -762,9 +762,18 @@ export default function WarehousesPage() {
   };
 
   useEffect(() => {
-    // Simulate data loading
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    let isMounted = true;
+
+    void loadInventoryDataset()
+      .finally(() => {
+        if (!isMounted) return;
+        setWarehouses([...mockWarehouseDirectoryData]);
+        setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -892,9 +901,9 @@ export default function WarehousesPage() {
     }
 
     // Recompute derived values (shortfall, low stock status, etc.)
-    recomputeAllInventoryDerivedValues();
-
-    setWarehouses([...mockWarehouseDirectoryData]);
+    void recomputeAllInventoryDerivedValues().finally(() => {
+      setWarehouses([...mockWarehouseDirectoryData]);
+    });
   };
 
   return (
@@ -1152,7 +1161,7 @@ export default function WarehousesPage() {
 
       <div className="mt-3 text-[12px] text-gray-400" style={{ fontFamily: 'Poppins' }}>
         Showing <span className="font-semibold text-[#05807e]">{filtered.length}</span> of {warehouses.length} warehouses
-        {search && <span> - "<em>{search}</em>"</span>}
+        {search && <span> - &quot;<em>{search}</em>&quot;</span>}
       </div>
 
       {formOpen && (

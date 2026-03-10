@@ -1,16 +1,52 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import InventoryTable from './components/InventoryTable';
 import InventorySummaryCards from './components/InventorySummaryCards';
 import SearchUnits from './components/SearchUnits';
 import UnitAlert from './components/UnitAlert';
 import type { InventoryDashboardSummary } from './types';
-import { mockReplenishmentItems, mockUnits, mockUnitItems } from './lib/mockData';
+import {
+  isInventoryDatasetLoaded,
+  loadInventoryDataset,
+  mockReplenishmentItems,
+  mockUnits,
+  mockUnitItems,
+} from './lib/mockData';
 import InventoryDashboardLinks from './components/InventoryDashboardLinks';
 
 export default function InventoryDashboardPage() {
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [isLoading, setIsLoading] = useState(() => !isInventoryDatasetLoaded());
+
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoading(true);
+    void loadInventoryDataset()
+      .finally(() => {
+        if (isMounted) {
+          setRefreshTick((tick) => tick + 1);
+          setIsLoading(false);
+        }
+      });
+
+    const onUpdate = () => {
+      setIsLoading(true);
+      void loadInventoryDataset(true).finally(() => {
+        if (!isMounted) return;
+        setRefreshTick((tick) => tick + 1);
+        setIsLoading(false);
+      });
+    };
+    window.addEventListener('inventory:movement-updated', onUpdate);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('inventory:movement-updated', onUpdate);
+    };
+  }, []);
+
   const summary = useMemo((): InventoryDashboardSummary => {
     const items = mockReplenishmentItems;
     const totalStocks = items.reduce((sum, item) => sum + item.currentStock, 0);
@@ -21,7 +57,7 @@ export default function InventoryDashboardPage() {
       lowStockCount,
       replenishmentNeeded: lowStockCount,
     };
-  }, []);
+  }, [refreshTick]);
 
   return (
     <>
@@ -60,7 +96,7 @@ export default function InventoryDashboardPage() {
 
         {/* 2. Summary Cards */}
         <div className="inventory-reveal" style={{ animationDelay: '180ms' }}>
-          <InventorySummaryCards summary={summary} />
+          <InventorySummaryCards summary={summary} isLoading={isLoading} />
         </div>
 
         {/* 3. Inventory Table */}
@@ -74,7 +110,12 @@ export default function InventoryDashboardPage() {
             </p>    
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '300ms' }}>
-            <InventoryTable items={mockReplenishmentItems} redirectOnClick={true} hideEditButton={true} />
+            <InventoryTable
+              items={mockReplenishmentItems}
+              redirectOnClick={true}
+              hideEditButton={true}
+              isLoading={isLoading}
+            />
           </div>
         </div>
 
@@ -99,7 +140,7 @@ export default function InventoryDashboardPage() {
         </aside>
         <div className="flex-1 min-w-0 space-y-6">
           <div className="inventory-reveal" style={{ animationDelay: '180ms' }}>
-            <InventorySummaryCards summary={summary} />
+            <InventorySummaryCards summary={summary} isLoading={isLoading} />
           </div>
           <div className="mb-4 inventory-reveal" style={{ animationDelay: '230ms' }}>
             <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
@@ -110,7 +151,12 @@ export default function InventoryDashboardPage() {
             </p>    
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '300ms' }}>
-            <InventoryTable items={mockReplenishmentItems} redirectOnClick={true} hideEditButton={true} />
+            <InventoryTable
+              items={mockReplenishmentItems}
+              redirectOnClick={true}
+              hideEditButton={true}
+              isLoading={isLoading}
+            />
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
             <UnitAlert units={mockUnits} unitItems={mockUnitItems} />

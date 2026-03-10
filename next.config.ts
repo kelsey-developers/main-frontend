@@ -1,7 +1,5 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.API_URL || '';
-
 const nextConfig: NextConfig = {
   // Add this line to satisfy the Turbopack build requirement
   turbopack: {}, 

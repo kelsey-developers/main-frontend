@@ -5,14 +5,14 @@ import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
-  getAgentPointsBalance,
-  getPointsHistory,
+  getRewardsData,
   POINTS_HISTORY_MAX_LIMIT,
 } from '@/services/rewardsService';
 import type { AgentPointsBalance, PointsTransaction, CashPaymentMethod } from '@/types/rewards';
 import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import DateRangePicker from '@/components/DateRangePicker';
 import SingleDatePicker from '@/components/SingleDatePicker';
+import RewardsMaintenance from './components/RewardsMaintenance';
 
 /**
  * Rewards page - Agent point system.
@@ -179,16 +179,12 @@ export default function RewardsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [paymentDropdownOpen]);
 
-  /** Load balance and history from API (or mock when backend not connected) */
+  /** Load balance and history from rewards API (or mock when backend not connected) */
   useEffect(() => {
-    const agentId = 'mock-1'; // Replace with real agent id from auth when backend is connected
-    Promise.all([
-      getAgentPointsBalance(agentId),
-      getPointsHistory(agentId, POINTS_HISTORY_MAX_LIMIT),
-    ])
-      .then(([bal, tx]) => {
-        setBalance(bal);
-        setHistory(tx);
+    getRewardsData()
+      .then(({ balance, transactions }) => {
+        setBalance(balance);
+        setHistory(transactions.slice(0, POINTS_HISTORY_MAX_LIMIT));
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
@@ -207,16 +203,19 @@ export default function RewardsPage() {
 
   if (error) {
     return (
-      // Use navbar offset so error message is never hidden behind fixed Navbar; light gray bg so cards would pop similarly
-      <div className={`min-h-screen ${LAYOUT_NAVBAR_OFFSET} pb-12 bg-gray-50`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 text-center">
-            <p className="text-sm text-gray-600" style={{ fontFamily: 'var(--font-poppins)' }}>
-              {error}
-            </p>
-          </div>
-        </div>
-      </div>
+      <RewardsMaintenance
+        onRetry={() => {
+          setError(null);
+          setLoading(true);
+          getRewardsData()
+            .then(({ balance, transactions }) => {
+              setBalance(balance);
+              setHistory(transactions.slice(0, POINTS_HISTORY_MAX_LIMIT));
+            })
+            .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
+            .finally(() => setLoading(false));
+        }}
+      />
     );
   }
 

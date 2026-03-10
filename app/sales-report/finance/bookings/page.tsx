@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import FinancePageHeader from '../components/FinancePageHeader';
 import HorizontalFilter from '../components/HorizontalFilter';
-import BookingLinkedTable from '../components/BookingLinkedTable';
+import BookingLinkedTable from './components/BookingLinkedTable';
 import { mockBookingLinkedRows } from '../lib/mockData';
 import { filterBookingRows } from '../lib/filters';
 import { defaultSalesReportFilters } from '../types';

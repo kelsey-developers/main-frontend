@@ -1,7 +1,6 @@
 /**
  * Agent Registration & Referral Tree service.
- * When NEXT_PUBLIC_API_URL is not set, uses frontend-only mock data.
- * When set, calls backend for config and agent list.
+ * Uses same-origin `/api/...` endpoints so Next rewrites can proxy to `API_URL`.
  */
 
 import type {
@@ -10,7 +9,7 @@ import type {
   CommissionLevels,
 } from '@/app/admin/agent-registration/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+const API_BASE = '';
 
 const MOCK_CONFIG: AgentRegistrationConfig = {
   registrationFee: 500,
@@ -54,11 +53,8 @@ const MOCK_AGENTS: AgentWithStatus[] = [
  * Fetch agent registration & referral configuration.
  */
 export async function getAgentRegistrationConfig(): Promise<AgentRegistrationConfig> {
-  if (!API_BASE) {
-    return Promise.resolve({ ...MOCK_CONFIG });
-  }
   const res = await fetch(`${API_BASE}/api/admin/agent-registration/config`);
-  if (!res.ok) throw new Error('Failed to fetch agent registration config');
+  if (!res.ok) return Promise.resolve({ ...MOCK_CONFIG });
   return res.json();
 }
 
@@ -68,15 +64,12 @@ export async function getAgentRegistrationConfig(): Promise<AgentRegistrationCon
 export async function saveAgentRegistrationConfig(
   config: AgentRegistrationConfig
 ): Promise<AgentRegistrationConfig> {
-  if (!API_BASE) {
-    return Promise.resolve({ ...config });
-  }
   const res = await fetch(`${API_BASE}/api/admin/agent-registration/config`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
-  if (!res.ok) throw new Error('Failed to save agent registration config');
+  if (!res.ok) return Promise.resolve({ ...config });
   return res.json();
 }
 
@@ -84,11 +77,8 @@ export async function saveAgentRegistrationConfig(
  * Fetch agents list (with status) for admin management.
  */
 export async function getAgentsWithStatus(): Promise<AgentWithStatus[]> {
-  if (!API_BASE) {
-    return Promise.resolve([...MOCK_AGENTS]);
-  }
   const res = await fetch(`${API_BASE}/api/admin/agents`);
-  if (!res.ok) throw new Error('Failed to fetch agents');
+  if (!res.ok) return Promise.resolve([...MOCK_AGENTS]);
   const data = await res.json();
   return data.agents ?? [];
 }
@@ -100,17 +90,16 @@ export async function updateAgentStatus(
   agentId: string,
   status: 'active' | 'inactive'
 ): Promise<AgentWithStatus> {
-  if (!API_BASE) {
-    const agent = MOCK_AGENTS.find((a) => a.id === agentId);
-    if (!agent) throw new Error('Agent not found');
-    return Promise.resolve({ ...agent, status });
-  }
   const res = await fetch(`${API_BASE}/api/admin/agents/${agentId}/status`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error('Failed to update agent status');
+  if (!res.ok) {
+    const agent = MOCK_AGENTS.find((a) => a.id === agentId);
+    if (!agent) throw new Error('Failed to update agent status');
+    return Promise.resolve({ ...agent, status });
+  }
   return res.json();
 }
 

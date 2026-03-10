@@ -65,12 +65,12 @@ export async function getBookings(listingId: string): Promise<BookingListItem[]>
 }
 
 export async function createBooking(input: CreateBookingInput): Promise<{ id: number; [key: string]: unknown }> {
-  return apiClient.post('/api/bookings', input, { credentials: 'include' });
+  return apiClient.post('/api/bookings', input);
 }
 
 export async function getMyBookings(): Promise<MyBookingItem[]> {
   try {
-    const data = await apiClient.get<unknown>(`/api/bookings/my`, { credentials: 'include' });
+    const data = await apiClient.get<unknown>(`/api/bookings/my`);
     if (Array.isArray(data)) return data as MyBookingItem[];
     const payload = data as { data?: unknown[]; bookings?: unknown[] };
     const arr = payload?.data ?? payload?.bookings ?? [];
@@ -82,7 +82,7 @@ export async function getMyBookings(): Promise<MyBookingItem[]> {
 
 export async function getBookingById(id: string): Promise<Record<string, unknown> | null> {
   try {
-    return await apiClient.get<Record<string, unknown>>(`/api/bookings/${id}`, { credentials: 'include' });
+    return await apiClient.get<Record<string, unknown>>(`/api/bookings/${id}`);
   } catch (err) {
     const status = (err as Error & { status?: number }).status;
     if (status === 403 || status === 404) return null;

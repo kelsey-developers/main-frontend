@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import FilterSidebar from './components/FilterSidebar';
 import FinanceDashboardLinks from './components/FinanceDashboardLinks';
 import FinanceSummaryCards from './components/FinanceSummaryCards';
@@ -8,28 +8,28 @@ import SalesTrendChart from './components/SalesTrendChart';
 import RevenueByTypeChart from './components/RevenueByTypeChart';
 
 import {
-  mockDashboardSummary,
-  mockSalesTrend,
-  mockRevenueByProperty,
-  mockRevenueByChannel,
-  mockRevenueByAgent,
-  mockRevenueByType,
-  mockTopUnits,
+  mockBookingLinkedRows,
+  mockDamagePenalty,
 } from './lib/mockData';
-import type { SalesReportFilters } from './types';
-
-const defaultFilters: SalesReportFilters = {
-  searchName: '',
-  propertyType: 'All',
-  location: 'All',
-  filterMethod: 'quick',
-  timePeriod: 'week',
-  timePeriodScope: 'this',
-  timePeriodStart: '',
-  timePeriodStartYear: '',
-  timePeriodEnd: '',
-  timePeriodEndYear: '',
-};
+import { filterBookingRows, filterDamageIncidents } from './lib/filters';
+import {
+  buildSummary,
+  buildSalesTrend,
+  buildRevenueByProperty,
+  buildRevenueByChannel,
+  buildRevenueByAgent,
+  buildRevenueByType,
+} from './lib/dashboardAggregations';
+import type {
+  SalesReportFilters,
+  FinanceDashboardSummary,
+  SalesTrendPoint,
+  RevenueByProperty,
+  RevenueByChannel,
+  RevenueByAgent,
+  RevenueByTypeItem,
+} from './types';
+import { defaultSalesReportFilters } from './types';
 
 function FinanceDashboardSkeleton() {
   return (
@@ -66,7 +66,7 @@ function FinanceDashboardSkeleton() {
 }
 
 export default function SalesReportPage() {
-  const [filters, setFilters] = useState<SalesReportFilters>(defaultFilters);
+  const [filters, setFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -74,6 +74,42 @@ export default function SalesReportPage() {
     const timer = setTimeout(() => setIsLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
+
+  const filteredBookings = useMemo(
+    () => filterBookingRows(mockBookingLinkedRows, filters),
+    [filters],
+  );
+  const filteredDamage = useMemo(
+    () => filterDamageIncidents(mockDamagePenalty, filters),
+    [filters],
+  );
+
+  const summary: FinanceDashboardSummary = useMemo(
+    () => buildSummary(filteredBookings, filteredDamage),
+    [filteredBookings, filteredDamage],
+  );
+
+  const salesTrendData: SalesTrendPoint[] = useMemo(
+    () => buildSalesTrend(filteredBookings, filteredDamage),
+    [filteredBookings, filteredDamage],
+  );
+
+  const revenueByProperty: RevenueByProperty[] = useMemo(
+    () => buildRevenueByProperty(filteredBookings, filteredDamage),
+    [filteredBookings, filteredDamage],
+  );
+  const revenueByChannel: RevenueByChannel[] = useMemo(
+    () => buildRevenueByChannel(filteredBookings),
+    [filteredBookings],
+  );
+  const revenueByAgent: RevenueByAgent[] = useMemo(
+    () => buildRevenueByAgent(filteredBookings),
+    [filteredBookings],
+  );
+  const revenueByType: RevenueByTypeItem[] = useMemo(
+    () => buildRevenueByType(filteredBookings),
+    [filteredBookings],
+  );
 
   if (isLoading) {
     return <FinanceDashboardSkeleton />;
@@ -118,17 +154,17 @@ export default function SalesReportPage() {
           {/* Main content */}
           <div className="flex-1 min-w-0 space-y-6">
             {/* Summary cards */}
-            <FinanceSummaryCards summary={mockDashboardSummary} />
+            <FinanceSummaryCards summary={summary} />
 
             {/* Sales trend row */}
-            <SalesTrendChart data={mockSalesTrend} />
+            <SalesTrendChart data={salesTrendData} />
 
             {/* Revenue breakdown row */}
             <RevenueByTypeChart
-              byProperty={mockRevenueByProperty}
-              byChannel={mockRevenueByChannel}
-              byAgent={mockRevenueByAgent}
-              byType={mockRevenueByType}
+              byProperty={revenueByProperty}
+              byChannel={revenueByChannel}
+              byAgent={revenueByAgent}
+              byType={revenueByType}
             />
 
             {/* Feature links at bottom on mobile; on desktop they stay in the sidebar */}
