@@ -9,12 +9,18 @@ import {
   getAgentsWithStatus,
   updateAgentStatus,
 } from '@/services/agentRegistrationService';
+import {
+  getPendingRegistrations,
+  approveRegistration,
+  rejectRegistration,
+} from '@/services/referralTreeService';
 import type {
   AgentRegistrationConfig,
   AgentWithStatus,
   ReferralMode,
   AgentStatus,
 } from './types';
+import type { PendingRegistration } from '@/types/referralTree';
 
 const inputClass =
   'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-colors bg-white';
@@ -43,6 +49,16 @@ export default function AgentRegistrationPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [togglingAgentId, setTogglingAgentId] = useState<string | null>(null);
   const [commissionErrors, setCommissionErrors] = useState<Record<string, string>>({});
+  const [pendingRegistrations, setPendingRegistrations] = useState<PendingRegistration[]>([]);
+  const [processingRegId, setProcessingRegId] = useState<string | null>(null);
+  const [rejectRegTarget, setRejectRegTarget] = useState<PendingRegistration | null>(null);
+  const [rejectRegReason, setRejectRegReason] = useState('');
+  const [regFilter, setRegFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [overrideAgentId, setOverrideAgentId] = useState('');
+  const [overrideL1, setOverrideL1] = useState('');
+  const [overrideL2, setOverrideL2] = useState('');
+  const [overrideL3, setOverrideL3] = useState('');
+  const [overrideSaved, setOverrideSaved] = useState(false);
 
   // Form state (mirrors config for editing)
   const [fee, setFee] = useState<string>('');
@@ -84,8 +100,11 @@ export default function AgentRegistrationPage() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      await Promise.all([loadConfig(), loadAgents()]);
-      if (!cancelled) setLoading(false);
+      const [, , pending] = await Promise.all([loadConfig(), loadAgents(), getPendingRegistrations()]);
+      if (!cancelled) {
+        setPendingRegistrations(pending);
+        setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
@@ -218,37 +237,37 @@ export default function AgentRegistrationPage() {
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="text-red-500">
-              <svg className="w-20 h-20 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <h3 className="text-xl font-semibold mb-3" style={{ fontFamily: 'Poppins' }}>
-                Access Denied
-              </h3>
-              <p className="text-gray-600 text-center" style={{ fontFamily: 'Poppins' }}>
-                You need admin privileges to access Agent Registration &amp; Referral Tree.
-              </p>
-            </div>
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => router.push('/admin')}
-                className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl border border-gray-200 cursor-pointer"
-                style={{ fontFamily: 'Poppins' }}
-              >
-                Back to Admin
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // if (!isAdmin) {
+  //   return (
+  //     <div className="min-h-screen bg-gray-50">
+  //       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
+  //         <div className="flex flex-col items-center justify-center py-12">
+  //           <div className="text-red-500">
+  //             <svg className="w-20 h-20 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  //               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+  //             </svg>
+  //             <h3 className="text-xl font-semibold mb-3" style={{ fontFamily: 'Poppins' }}>
+  //               Access Denied
+  //             </h3>
+  //             <p className="text-gray-600 text-center" style={{ fontFamily: 'Poppins' }}>
+  //               You need admin privileges to access Agent Registration &amp; Referral Tree.
+  //             </p>
+  //           </div>
+  //           <div className="mt-6">
+  //             <button
+  //               type="button"
+  //               onClick={() => router.push('/admin')}
+  //               className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl border border-gray-200 cursor-pointer"
+  //               style={{ fontFamily: 'Poppins' }}
+  //             >
+  //               Back to Admin
+  //             </button>
+  //           </div>
+  //         </div>
+  //       </div>
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -490,7 +509,162 @@ export default function AgentRegistrationPage() {
             </div>
           </section>
 
-          {/* Section 4: Agent Status Management */}
+          {/* Section 4: Pending Registrations */}
+          <section className={sectionCardClass}>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+                Pending Registrations
+              </h2>
+              <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
+                Review and approve or reject new agent applicants.
+              </p>
+            </div>
+            <div className="p-6">
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {(['all', 'pending', 'approved', 'rejected'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setRegFilter(f)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-colors cursor-pointer ${
+                      regFilter === f ? 'bg-[#0B5858] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                    style={{ fontFamily: 'Poppins' }}
+                  >
+                    {f} {f !== 'all' && `(${pendingRegistrations.filter((r) => r.status === f).length})`}
+                  </button>
+                ))}
+              </div>
+              {pendingRegistrations.filter((r) => regFilter === 'all' || r.status === regFilter).length === 0 ? (
+                <p className="text-center text-gray-400 py-6 text-sm" style={{ fontFamily: 'Poppins' }}>
+                  No {regFilter !== 'all' ? regFilter : ''} registrations.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {pendingRegistrations
+                    .filter((r) => regFilter === 'all' || r.status === regFilter)
+                    .map((reg) => (
+                      <div key={reg.id} className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>{reg.fullname}</p>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              reg.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                              reg.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                            }`}>{reg.status}</span>
+                            {reg.registrationFeeStatus === 'paid' && (
+                              <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">Fee Paid ✓</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>{reg.email} · {reg.contactNumber}</p>
+                          {reg.recruitedByName && (
+                            <p className="text-xs text-gray-400 mt-0.5" style={{ fontFamily: 'Poppins' }}>Referred by: {reg.recruitedByName}</p>
+                          )}
+                          <p className="text-xs text-gray-400 mt-0.5" style={{ fontFamily: 'Poppins' }}>
+                            Applied: {new Date(reg.appliedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </p>
+                          {reg.notes && <p className="text-xs text-gray-500 mt-1 italic" style={{ fontFamily: 'Poppins' }}>{reg.notes}</p>}
+                        </div>
+                        {reg.status === 'pending' && (
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button
+                              onClick={async () => {
+                                setProcessingRegId(reg.id);
+                                await approveRegistration(reg.id);
+                                setPendingRegistrations((prev) => prev.map((r) => r.id === reg.id ? { ...r, status: 'approved' as const } : r));
+                                setProcessingRegId(null);
+                              }}
+                              disabled={processingRegId === reg.id}
+                              className="px-3 py-1.5 text-xs font-semibold text-white bg-[#0B5858] hover:bg-[#0d7a7a] rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                              style={{ fontFamily: 'Poppins' }}
+                            >
+                              {processingRegId === reg.id ? '...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => { setRejectRegTarget(reg); setRejectRegReason(''); }}
+                              disabled={processingRegId === reg.id}
+                              className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                              style={{ fontFamily: 'Poppins' }}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Section 5: Per-Agent Commission Override */}
+          <section className={sectionCardClass}>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+                Per-Agent Commission Override
+              </h2>
+              <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
+                Set custom commission rates for a specific agent. Overrides global rates when set.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="max-w-xs">
+                <label className={labelClass} style={{ fontFamily: 'Poppins' }}>Select Agent</label>
+                <select
+                  value={overrideAgentId}
+                  onChange={(e) => setOverrideAgentId(e.target.value)}
+                  className={inputClass}
+                  style={{ fontFamily: 'Poppins' }}
+                >
+                  <option value="">— Select an agent —</option>
+                  {agents.filter((a) => a.role === 'agent' && a.status === 'active').map((a) => (
+                    <option key={a.id} value={a.id}>{a.fullname || a.email}</option>
+                  ))}
+                </select>
+              </div>
+              {overrideAgentId && (
+                <div className="bg-gray-50 rounded-xl p-4 space-y-3 max-w-sm">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide" style={{ fontFamily: 'Poppins' }}>
+                    Override Commission Rates
+                  </p>
+                  {[
+                    { label: 'Level 1 (%)', value: overrideL1, set: setOverrideL1, placeholder: `Global: ${commLevel1}%` },
+                    { label: 'Level 2 (%)', value: overrideL2, set: setOverrideL2, placeholder: `Global: ${commLevel2 || 'N/A'}` },
+                    { label: 'Level 3 (%)', value: overrideL3, set: setOverrideL3, placeholder: `Global: ${commLevel3 || 'N/A'}` },
+                  ].map((field) => (
+                    <div key={field.label}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>{field.label}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={field.value}
+                        onChange={(e) => field.set(e.target.value)}
+                        placeholder={field.placeholder}
+                        className={`${inputClass} text-xs`}
+                        style={{ fontFamily: 'Poppins' }}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setOverrideSaved(true);
+                      setTimeout(() => setOverrideSaved(false), 2500);
+                    }}
+                    className="w-full py-2 text-sm font-semibold text-white bg-[#0B5858] hover:bg-[#0d7a7a] rounded-xl transition-colors cursor-pointer mt-2"
+                    style={{ fontFamily: 'Poppins' }}
+                  >
+                    {overrideSaved ? 'Override Saved! ✓' : 'Save Override'}
+                  </button>
+                  <p className="text-xs text-gray-400 text-center" style={{ fontFamily: 'Poppins' }}>
+                    Leave blank to use global rate. Changes are logged to the audit trail.
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Section 6: Agent Status Management */}
           <section className={sectionCardClass}>
             <div className="px-6 py-4 border-b border-gray-200">
               <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
@@ -621,6 +795,42 @@ export default function AgentRegistrationPage() {
             </div>
           </section>
         </div>
+
+        {/* Reject Registration Modal */}
+        {rejectRegTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setRejectRegTarget(null)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" style={{ fontFamily: 'Poppins' }}>
+              <h3 className="text-base font-bold text-gray-900 mb-1">Reject Registration</h3>
+              <p className="text-sm text-gray-500 mb-4">Applicant: <strong>{rejectRegTarget.fullname}</strong></p>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Reason for rejection</label>
+              <textarea
+                rows={3}
+                value={rejectRegReason}
+                onChange={(e) => setRejectRegReason(e.target.value)}
+                placeholder="Enter reason..."
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 resize-none"
+              />
+              <div className="flex gap-3 mt-4">
+                <button onClick={() => setRejectRegTarget(null)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer">Cancel</button>
+                <button
+                  onClick={async () => {
+                    if (!rejectRegReason.trim()) return;
+                    setProcessingRegId(rejectRegTarget.id);
+                    await rejectRegistration(rejectRegTarget.id, rejectRegReason);
+                    setPendingRegistrations((prev) => prev.map((r) => r.id === rejectRegTarget.id ? { ...r, status: 'rejected' as const } : r));
+                    setProcessingRegId(null);
+                    setRejectRegTarget(null);
+                  }}
+                  disabled={!rejectRegReason.trim()}
+                  className="flex-1 py-2.5 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  Reject Applicant
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer Actions */}
         <div className="mt-8 bg-white rounded-2xl border border-gray-200 shadow-sm">

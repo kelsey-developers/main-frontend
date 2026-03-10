@@ -28,6 +28,7 @@ export default function AgentProfilePage() {
         socialLinks={socialLinks}
         isAgentView={isAgent}
         slug={slug}
+        referralCode={isAgent ? agentProfile.referralCode : undefined}
         onEditClick={() => router.push(`/${slug}/edit`)}
       />
 
@@ -43,7 +44,11 @@ export default function AgentProfilePage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
           {agentProfile.assignedProperties.map((property) => (
-            <AgentPropertyCard key={property.id} property={property} />
+            <AgentPropertyCard
+              key={property.id}
+              property={property}
+              referralCode={isAgent ? agentProfile.referralCode : undefined}
+            />
           ))}
         </div>
       </section>

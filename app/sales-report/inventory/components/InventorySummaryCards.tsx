@@ -3,9 +3,17 @@ import type { InventoryDashboardSummary } from '../types';
 
 interface InventorySummaryCardsProps {
   summary: InventoryDashboardSummary;
+  isLoading?: boolean;
 }
 
-const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary }) => {
+const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary, isLoading = false }) => {
+  const Value = ({ children }: { children: React.ReactNode }) =>
+    isLoading ? (
+      <div className="mt-1 h-8 w-16 rounded bg-white/30 animate-pulse" />
+    ) : (
+      <>{children}</>
+    );
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
       <div className="relative bg-gradient-to-br from-[#0B5858] to-[#0a4a4a] rounded-2xl shadow-xl p-6 hover:shadow-2xl transition-all duration-500 overflow-hidden group">
@@ -19,7 +27,9 @@ const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary }
             </div>
           </div>
           <p className="text-white/80 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total items</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{summary.totalItems}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>
+            <Value>{summary.totalItems}</Value>
+          </p>
           <p className="text-white/70 text-xs mt-0.5" style={{ fontFamily: 'Poppins' }}>Tracked in system</p>
         </div>
       </div>
@@ -34,7 +44,9 @@ const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary }
             </div>
           </div>
           <p className="text-white/80 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Stocks</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{summary.totalStocks}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>
+            <Value>{summary.totalStocks}</Value>
+          </p>
           <p className="text-white/70 text-xs mt-0.5" style={{ fontFamily: 'Poppins' }}>Total stocks in the system</p>
         </div>
       </div>
@@ -49,7 +61,9 @@ const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary }
             </div>
           </div>
           <p className="text-white/90 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Low stock</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{summary.lowStockCount}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>
+            <Value>{summary.lowStockCount}</Value>
+          </p>
           <p className="text-white/80 text-xs mt-0.5" style={{ fontFamily: 'Poppins' }}>Below threshold</p>
         </div>
       </div>

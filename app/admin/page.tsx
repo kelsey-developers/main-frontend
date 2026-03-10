@@ -6,6 +6,8 @@ import AdminSummaryCards from './components/AdminSummaryCards';
 import AdminCharts from './components/AdminCharts';
 import { CalendarView } from '../calendar/page';
 import type { AdminStats, ChartData } from './types';
+import { getAgentAnalytics } from '@/services/agentDashboardService';
+import type { AgentAnalytics } from '@/services/agentDashboardService';
 
 // Generate mock data for admin stats
 const generateMockStats = (): AdminStats => {
@@ -52,14 +54,16 @@ const AdminPage: React.FC = React.memo(() => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [userGrowth, setUserGrowth] = useState<ChartData[]>([]);
   const [bookingGrowth, setBookingGrowth] = useState<ChartData[]>([]);
+  const [agentAnalytics, setAgentAnalytics] = useState<AgentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate loading delay
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       setStats(generateMockStats());
       setUserGrowth(generateWeeklyUserData());
       setBookingGrowth(generateWeeklyBookingData());
+      const analytics = await getAgentAnalytics();
+      setAgentAnalytics(analytics);
       setLoading(false);
     }, 500);
 
@@ -139,6 +143,82 @@ const AdminPage: React.FC = React.memo(() => {
 
         {userGrowth.length > 0 && bookingGrowth.length > 0 && (
           <AdminCharts userGrowth={userGrowth} bookingGrowth={bookingGrowth} />
+        )}
+
+        {/* Agent Analytics Section */}
+        {agentAnalytics && (
+          <div className="mt-8 bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>Agent Analytics</h3>
+                <p className="text-gray-600 mt-1" style={{ fontFamily: 'Poppins' }}>Top performing agents and commission overview</p>
+              </div>
+              <div className="flex gap-2">
+                <Link href="/admin/agents" className="px-4 py-2 text-sm font-semibold text-[#0B5858] border border-[#0B5858]/30 rounded-xl hover:bg-[#0B5858]/5 transition-colors" style={{ fontFamily: 'Poppins' }}>
+                  All Agents
+                </Link>
+                <Link href="/admin/commissions" className="px-4 py-2 text-sm font-semibold text-white bg-[#0B5858] rounded-xl hover:bg-[#0d7a7a] transition-colors" style={{ fontFamily: 'Poppins' }}>
+                  Commission Ledger
+                </Link>
+              </div>
+            </div>
+            <div className="p-6">
+              {/* Summary Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                {[
+                  { label: 'Total Agents', value: agentAnalytics.totalAgents, icon: '👥' },
+                  { label: 'Active Agents', value: agentAnalytics.activeAgents, icon: '✅' },
+                  { label: 'Total Paid (₱)', value: `₱${agentAnalytics.totalCommissionsPaid.toLocaleString()}`, icon: '💰' },
+                  { label: 'Pending (₱)', value: `₱${agentAnalytics.totalCommissionsPending.toLocaleString()}`, icon: '⏳' },
+                ].map((s) => (
+                  <div key={s.label} className="bg-gray-50 rounded-xl p-4 text-center">
+                    <p className="text-lg mb-1">{s.icon}</p>
+                    <p className="text-xs text-gray-500 mb-1" style={{ fontFamily: 'Poppins' }}>{s.label}</p>
+                    <p className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Top Agents Leaderboard */}
+              <h4 className="text-sm font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Poppins' }}>Top Agents by Commission</h4>
+              <div className="space-y-2">
+                {agentAnalytics.topAgents.map((agent, idx) => (
+                  <div key={agent.agentId} className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                      idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-gray-300 text-gray-700' : idx === 2 ? 'bg-orange-400 text-orange-900' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate" style={{ fontFamily: 'Poppins' }}>{agent.agentName}</p>
+                      <p className="text-xs text-gray-400" style={{ fontFamily: 'Poppins' }}>
+                        {agent.totalBookings} bookings · {agent.activeSubAgents} sub-agents · <code className="bg-gray-200 px-1 rounded text-xs">{agent.referralCode}</code>
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold text-[#0B5858]" style={{ fontFamily: 'Poppins' }}>₱{agent.totalCommissions.toLocaleString()}</p>
+                    </div>
+                    <Link
+                      href={`/admin/agents/${agent.agentId}`}
+                      className="px-3 py-1 text-xs font-semibold text-[#0B5858] bg-[#0B5858]/8 hover:bg-[#0B5858]/15 rounded-lg transition-colors whitespace-nowrap"
+                      style={{ fontFamily: 'Poppins' }}
+                    >
+                      View
+                    </Link>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex gap-3">
+                <Link href="/admin/payouts" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0B5858] rounded-xl hover:bg-[#0d7a7a] transition-colors" style={{ fontFamily: 'Poppins' }}>
+                  Manage Payouts
+                </Link>
+                <Link href="/admin/agent-registration" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#0B5858] border border-[#0B5858]/30 rounded-xl hover:bg-[#0B5858]/5 transition-colors" style={{ fontFamily: 'Poppins' }}>
+                  Registration Config
+                </Link>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Calendar View Section */}

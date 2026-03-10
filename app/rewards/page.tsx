@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
+import Link from 'next/link';
 import {
   getRewardsData,
   POINTS_HISTORY_MAX_LIMIT,
@@ -249,6 +250,22 @@ export default function RewardsPage() {
               >
                 Book. Earn. Redeem. Track your points from every confirmed booking and claim your rewards!
               </p>
+              {/* Agent Hub cross-link */}
+              <div className="mt-4">
+                <Link
+                  href="/agent"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/15 hover:bg-white/25 border border-white/30 text-white text-xs font-medium transition-colors"
+                  style={{ fontFamily: 'var(--font-poppins)' }}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  View Commission Wallet &amp; Payouts — Agent Hub
+                  <svg className="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
               {/* Tabs inside hero — visually grouped under the title/description; extra space so layout can breathe; baseline spans half the tab width with soft fade to the right */}
               <div className="mt-10">
                 <div ref={tabContainerRef} className="relative inline-flex gap-6 -mb-px pb-[1px] w-full max-w-md">

@@ -29,4 +29,8 @@ export interface AgentProfile {
   location: string;
   socialLinks: AgentSocialLinks;
   assignedProperties: AgentProperty[];
+  // Agent hub fields
+  referralCode: string; // unique code e.g. "JUAN2025" — used in booking attribution
+  referredById?: string; // parent agent id (undefined for top-level agents)
+  referralLevel: 1 | 2 | 3; // position in the referral tree
 }
