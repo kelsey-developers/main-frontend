@@ -15,6 +15,7 @@ interface ReplenishmentTableProps {
   redirectOnClick?: boolean;
   hideEditButton?: boolean;
   isUnitView?: boolean;
+  isLoading?: boolean;
 }
 
 type StockStatus = 'out' | 'critical' | 'low' | 'ok';
@@ -315,19 +316,13 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
   redirectOnClick = false,
   hideEditButton = false,
   isUnitView = false,
+  isLoading = false,
 }) => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<SortKey>('');
   const [selectedAuditItem, setSelectedAuditItem] = useState<ReplenishmentItem | null>(null);
   const [editItem, setEditItem] = useState<ReplenishmentItem | null>(null);
-  const [isTableLoading, setIsTableLoading] = useState(true);
-
-  useEffect(() => {
-    // TODO(backend): Replace timeout with real loading state from inventory API request.
-    const timer = setTimeout(() => setIsTableLoading(false), 650);
-    return () => clearTimeout(timer);
-  }, []);
 
   const filtered: ReplenishmentItem[] = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -427,7 +422,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
             </div>
 
             {/* Rows container with optional vertical scroll */}
-            {isTableLoading ? (
+            {isLoading ? (
               <InventoryTableSkeleton />
             ) : filtered.length === 0 ? (
               <div className="px-6 py-14 text-center text-gray-400 text-sm" style={{ fontFamily: 'Poppins' }}>
