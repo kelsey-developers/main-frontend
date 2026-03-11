@@ -6,11 +6,11 @@ import SingleDatePicker from '@/components/SingleDatePicker';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import {
   loadInventoryDataset,
-  mockReplenishmentItems,
-  mockStockMovements,
-  mockUnitStockMovements,
-  mockWarehouseDirectoryData,
-} from '../lib/mockData';
+  inventoryItems,
+  inventoryStockMovements,
+  inventoryUnitStockMovements,
+  inventoryWarehouseDirectory,
+} from '../lib/inventoryDataStore';
 import type { EnhancedMovement } from '../helpers/types';
 import { exportStockMovementsToCsv, exportStockMovementsToPdf } from '../helpers/exportHelpers';
 
@@ -37,7 +37,7 @@ type WarehouseMovementRow = {
   recordedTime: string;
 };
 
-type UnitMovementRow = (typeof mockUnitStockMovements)[number];
+type UnitMovementRow = (typeof inventoryUnitStockMovements)[number];
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 const parseDateTime = (date: string, time: string) => new Date(`${date}T${time || '00:00'}`);
@@ -103,10 +103,10 @@ export default function StockMovementsPage() {
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   const warehouseRows = useMemo<WarehouseMovementRow[]>(() => {
-    const byWarehouseId = new Map(mockWarehouseDirectoryData.map((warehouse) => [warehouse.id, warehouse.name]));
-    const byProductId = new Map(mockReplenishmentItems.map((item) => [item.id, item.name]));
+    const byWarehouseId = new Map(inventoryWarehouseDirectory.map((warehouse) => [warehouse.id, warehouse.name]));
+    const byProductId = new Map(inventoryItems.map((item) => [item.id, item.name]));
 
-    return mockStockMovements.map((movement) => {
+    return inventoryStockMovements.map((movement) => {
       const dateTime = normalizeDateTime(movement.movementDateTime || movement.createdAt);
       return {
         id: movement.id,
@@ -127,7 +127,7 @@ export default function StockMovementsPage() {
     });
   }, [refreshTick, datasetTick]);
 
-  const unitRows = useMemo<UnitMovementRow[]>(() => [...mockUnitStockMovements], [refreshTick, datasetTick]);
+  const unitRows = useMemo<UnitMovementRow[]>(() => [...inventoryUnitStockMovements], [refreshTick, datasetTick]);
 
   const warehouseOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
     const source = view === 'warehouse'

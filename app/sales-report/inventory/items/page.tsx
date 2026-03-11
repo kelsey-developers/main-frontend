@@ -8,7 +8,7 @@ import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
-import { mockReplenishmentItems, mockWarehouseDirectoryData, getWarehouseUnitAllocations } from '../lib/mockData';
+import { inventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations } from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 function InventoryItemsPageContent() {
@@ -22,8 +22,8 @@ function InventoryItemsPageContent() {
   const [unitFilter, setUnitFilter] = useState<'all' | string>('all');
 
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(warehouseIdFromQuery);
-  const [selectedItem, setSelectedItem] = useState<typeof mockReplenishmentItems[number] | null>(
-    itemIdFromQuery ? mockReplenishmentItems.find((item) => item.id === itemIdFromQuery) || null : null
+  const [selectedItem, setSelectedItem] = useState<typeof inventoryItems[number] | null>(
+    itemIdFromQuery ? inventoryItems.find((item) => item.id === itemIdFromQuery) || null : null
   );
 
   useEffect(() => {
@@ -31,7 +31,7 @@ function InventoryItemsPageContent() {
       void recomputeAllInventoryDerivedValues()
         .finally(() => {
           if (itemIdFromQuery) {
-            setSelectedItem(mockReplenishmentItems.find((item) => item.id === itemIdFromQuery) || null);
+            setSelectedItem(inventoryItems.find((item) => item.id === itemIdFromQuery) || null);
           }
           setRefreshTick((tick) => tick + 1);
         });
@@ -49,15 +49,15 @@ function InventoryItemsPageContent() {
 
   // Combine query param with local state (query param takes precedence)
   const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId;
-  const activeWarehouse = mockWarehouseDirectoryData.find((wh) => wh.id === activeWarehouseId);
+  const activeWarehouse = inventoryWarehouseDirectory.find((wh) => wh.id === activeWarehouseId);
   const activeWarehouseName = warehouseNameFromQuery || activeWarehouse?.name;
 
   const filteredItems = useMemo(() => {
-    return filterItemsByWarehouse(mockReplenishmentItems, activeWarehouseId);
+    return filterItemsByWarehouse(inventoryItems, activeWarehouseId);
   }, [activeWarehouseId]);
 
   const warehouseOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
-    return buildWarehouseOptions(mockWarehouseDirectoryData);
+    return buildWarehouseOptions(inventoryWarehouseDirectory);
   }, []);
 
   const unitAllocations = useMemo(() => {

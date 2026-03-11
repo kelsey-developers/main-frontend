@@ -4,7 +4,6 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/suppliers',
   '/api/purchase-orders',
   '/api/product-categories',
-  '/api/units',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -39,8 +38,7 @@ function hasExistingAuthHeaders(headers: Record<string, string>): boolean {
 /** Client: same-origin by default, with backend fallback for inventory stack. */
 function getBaseUrl(endpoint: string): string {
   if (typeof window !== 'undefined') {
-    // Always prefer same-origin in the browser so Next rewrites can proxy without CORS,
-    // and so we don't need to expose backend URLs via NEXT_PUBLIC_* env vars.
+    // Keep browser requests same-origin.
     return '';
   }
 
@@ -101,8 +99,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   };
 
+  const runtimeEndpoint =
+    typeof window !== 'undefined' && shouldUseBackendFallback(endpoint)
+      ? `/market-api/${(endpoint.startsWith('/') ? endpoint : `/${endpoint}`)
+          .replace(/^\/api\/?/, '')
+          .replace(/^\/+/, '')}`
+      : endpoint;
+
   const base = baseUrl.replace(/\/+$/, '');
-  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const path = runtimeEndpoint.startsWith('/') ? runtimeEndpoint : `/${runtimeEndpoint}`;
   const requestUrl = base ? `${base}${path}` : path;
   const canRetrySameOrigin =
     typeof window !== 'undefined' &&
@@ -114,6 +119,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const timeout = typeof timeoutMs === 'number' ? timeoutMs : 15000;
   const timer = setTimeout(() => controller.abort(), Math.max(0, timeout));
   const requestInitWithSignal: RequestInit = { ...requestInit, signal: controller.signal };
+
 
   try {
     res = await fetch(requestUrl, requestInitWithSignal);

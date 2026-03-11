@@ -11,12 +11,12 @@ import { getWarehouseStats } from '../helpers/warehouseHelpers';
 import {
   getWarehouseUnitAllocations,
   loadInventoryDataset,
-  mockWarehouseDirectoryData,
-  mockReplenishmentItems,
+  inventoryWarehouseDirectory,
+  inventoryItems,
   type WarehouseDirectoryRecord,
   type WarehouseInventoryBalanceRow,
   type WarehouseMovementRow,
-} from '../lib/mockData';
+} from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 type Warehouse = WarehouseDirectoryRecord;
@@ -780,7 +780,7 @@ export default function WarehousesPage() {
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setWarehouses([...mockWarehouseDirectoryData]);
+        setWarehouses([...inventoryWarehouseDirectory]);
         setIsLoading(false);
       });
 
@@ -792,7 +792,7 @@ export default function WarehousesPage() {
   useEffect(() => {
     const refresh = () => {
       // Create a new top-level array reference so React re-renders updated warehouse movement history.
-      setWarehouses([...mockWarehouseDirectoryData]);
+      setWarehouses([...inventoryWarehouseDirectory]);
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -901,21 +901,21 @@ export default function WarehousesPage() {
     const safeValue = Math.max(0, reorderLevel);
 
     // Update warehouse threshold
-    const sourceWarehouse = mockWarehouseDirectoryData.find((warehouse) => warehouse.id === warehouseId);
+    const sourceWarehouse = inventoryWarehouseDirectory.find((warehouse) => warehouse.id === warehouseId);
     const sourceBalance = sourceWarehouse?.inventoryBalances.find((row) => row.productId === productId);
     if (sourceBalance) {
       sourceBalance.reorderLevel = safeValue;
     }
 
     // Update corresponding item's minStock in inventory
-    const item = mockReplenishmentItems.find((i) => i.id === productId);
+    const item = inventoryItems.find((i) => i.id === productId);
     if (item) {
       item.minStock = safeValue;
     }
 
     // Recompute derived values (shortfall, low stock status, etc.)
     void recomputeAllInventoryDerivedValues().finally(() => {
-      setWarehouses([...mockWarehouseDirectoryData]);
+      setWarehouses([...inventoryWarehouseDirectory]);
     });
   };
 

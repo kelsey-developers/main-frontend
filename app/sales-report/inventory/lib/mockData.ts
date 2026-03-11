@@ -122,6 +122,15 @@ interface InventoryDatasetResponse {
   unitStockMovements?: UnitStockMovementRow[];
 }
 
+interface ExternalUnitListing {
+  id: string;
+  title: string;
+  property_type?: string;
+  location?: string;
+  city?: string;
+  main_image_url?: string;
+}
+
 const replaceArray = <T>(target: T[], next: T[] | undefined) => {
   target.splice(0, target.length, ...(next ?? []));
 };
@@ -211,7 +220,7 @@ export const mockGoodsReceipts: GoodsReceipt[] = [];
 export const mockSupplierDirectoryData: SupplierDirectoryRecord[] = [];
 export const mockReplenishmentItems: ReplenishmentItem[] = [];
 export const mockUnitItems: InventoryItem[] = [];
-export const mockUnits: InventoryUnit[] = [];
+export const inventoryUnitsState: InventoryUnit[] = [];
 export const mockUnitStockMovements: UnitStockMovementRow[] = [];
 
 let isDatasetLoaded = false;
@@ -237,7 +246,6 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockStockMovements, dataset.stockMovements);
   replaceArray(mockDamageAdjustments, dataset.damageAdjustments);
   replaceArray(mockReplenishmentItems, dataset.replenishmentItems);
-  replaceArray(mockUnits, dataset.units);
   replaceArray(mockUnitItems, dataset.unitItems);
   replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
 
@@ -265,19 +273,72 @@ const fetchInventoryDataset = async (): Promise<InventoryDatasetResponse> => {
     return await apiClient.get<InventoryDatasetResponse>('/api/inventory/dataset');
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') {
-      console.warn('Inventory dataset request failed, using local fallback data.', error);
+      console.warn('Inventory dataset request failed, keeping last available inventory snapshot.', error);
     }
     return {};
   }
 };
 
+const fetchExternalUnits = async (): Promise<ExternalUnitListing[] | null> => {
+  try {
+    return await apiClient.get<ExternalUnitListing[]>('/api/units?limit=200&offset=0');
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('External units request failed; inventory units list will stay empty.', error);
+    }
+    return null;
+  }
+};
+
+const syncUnitsFromExternalSource = (externalUnits: ExternalUnitListing[]) => {
+  if (!Array.isArray(externalUnits) || externalUnits.length === 0) {
+    replaceArray(inventoryUnitsState, []);
+    return;
+  }
+
+  const itemCountByUnitId = new Map<string, number>();
+  mockUnitItems.forEach((item) => {
+    if (!item.assignedToUnit) return;
+    const current = itemCountByUnitId.get(item.assignedToUnit) ?? 0;
+    itemCountByUnitId.set(item.assignedToUnit, current + 1);
+  });
+
+  const mappedUnits: InventoryUnit[] = externalUnits
+    .filter((listing) => Boolean(listing.id) && Boolean(listing.title))
+    .map((listing) => ({
+      id: listing.id,
+      name: listing.title,
+      type: listing.property_type || 'unit',
+      location: listing.location || listing.city || '',
+      itemCount: itemCountByUnitId.get(listing.id) ?? 0,
+      imageUrl: listing.main_image_url || '/heroimage.png',
+    }));
+
+  replaceArray(inventoryUnitsState, mappedUnits);
+};
+
 export const loadInventoryDataset = async (force = false): Promise<void> => {
-  if (isDatasetLoaded && !force) return;
+  if (isDatasetLoaded && !force) {
+    const externalUnits = await fetchExternalUnits();
+    if (externalUnits) {
+      syncUnitsFromExternalSource(externalUnits);
+    } else {
+      replaceArray(inventoryUnitsState, []);
+    }
+    emitInventoryDatasetUpdated();
+    return;
+  }
   if (datasetLoadPromise && !force) return datasetLoadPromise;
 
   datasetLoadPromise = (async () => {
     const dataset = await fetchInventoryDataset();
     applyDataset(dataset);
+    const externalUnits = await fetchExternalUnits();
+    if (externalUnits) {
+      syncUnitsFromExternalSource(externalUnits);
+    } else {
+      replaceArray(inventoryUnitsState, []);
+    }
     // Only mark as loaded if the API returned something meaningful.
     // This prevents "empty fallback" responses from blocking future fetches,
     // which can make the dashboard appear blank until another page forces refresh.
@@ -327,7 +388,7 @@ const buildWarehouseUnitAllocationMap = (): Record<string, WarehouseUnitAllocati
     const replenishmentItem = replenishmentByName.get(normalizeInventoryName(unitItem.name));
     if (!replenishmentItem) return;
 
-    const unit = mockUnits.find((entry) => entry.id === unitItem.assignedToUnit);
+    const unit = inventoryUnitsState.find((entry) => entry.id === unitItem.assignedToUnit);
     if (!unit) return;
 
     if (!byWarehouse.has(replenishmentItem.warehouseId)) {

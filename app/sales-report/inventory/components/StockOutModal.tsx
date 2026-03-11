@@ -12,10 +12,10 @@ import { useMockAuth } from '@/contexts/MockAuthContext';
 import { processStockOut } from '../lib/inventoryLedger';
 import { 
   loadInventoryDataset,
-  mockReplenishmentItems, 
-  mockWarehouseDirectoryData,
-  mockUnits,
-} from '../lib/mockData';
+  inventoryItems, 
+  inventoryWarehouseDirectory,
+  inventoryUnits,
+} from '../lib/inventoryDataStore';
 
 // ─── Date utility ─────────────────────────────────────────────────
 const getTodayISO = () => {
@@ -58,7 +58,7 @@ const C = {
   unBookingText: '#0b5858',
 };
 
-// ─── Mock data ───────────────────────────────────────────────────
+// ─── Static form options ─────────────────────────────────────────
 const REASONS_WH = [
   'General Use',
   'Disposal / Expired',
@@ -203,7 +203,7 @@ function LineItemRow({
   onRemove: (i: number) => void;
   sourceWarehouse?: string;
 }) {
-  const product = mockReplenishmentItems.find((p) => p.id === item.productId);
+  const product = inventoryItems.find((p) => p.id === item.productId);
   const avail = product ? product.currentStock : 0;
   const over = !!(product && item.quantity && parseInt(item.quantity) > avail);
 
@@ -232,7 +232,7 @@ function LineItemRow({
           onChange={(value) => onUpdate(index, 'productId', value)}
           options={[
             { value: '', label: 'Select item…' },
-            ...mockReplenishmentItems.map((p) => ({
+            ...inventoryItems.map((p) => ({
               value: p.id,
               label: `${p.sku} — ${p.name}`,
             })),
@@ -338,9 +338,9 @@ interface WarehouseDraft {
 }
 
 function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
-  const mockAuth = useMockAuth();
-  const [confirmedBy, setConfirmedBy] = useState(mockAuth.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(mockAuth.user?.id || '');
+  const authState = useMockAuth();
+  const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(authState.user?.id || '');
   const [warehouse, setWarehouse] = useState('');
   const [reason, setReason] = useState('');
   const [toWarehouse, setToWarehouse] = useState('');
@@ -367,7 +367,7 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
     });
   }, [confirmedBy, idNumber, warehouse, reason, toWarehouse, date, reference, notes, items, onDraftChange]);
 
-  const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
   const isTransfer = reason === 'Inter-warehouse Transfer';
 
   return (
@@ -577,9 +577,9 @@ interface UnitDraft {
 }
 
 function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
-  const mockAuth = useMockAuth();
-  const [confirmedBy, setConfirmedBy] = useState(mockAuth.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(mockAuth.user?.id || '');
+  const authState = useMockAuth();
+  const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(authState.user?.id || '');
   const [unit, setUnit] = useState(prefill?.unitId || '');
   const [booking, setBooking] = useState('');
   const [reason, setReason] = useState('');
@@ -608,7 +608,7 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
     });
   }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, notes, items, onDraftChange]);
 
-  const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
 
   return (
     <>
@@ -655,7 +655,7 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             onChange={(value) => setUnit(value)}
             options={[
               { value: '', label: 'Select unit…' },
-              ...mockUnits.map((u) => ({ value: u.id, label: u.name })),
+              ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
             ]}
             placeholder="Select unit…"
             placeholderWhen=""
@@ -846,7 +846,6 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
   const [mounted, setMounted] = useState(false);
   const [, setRefreshTick] = useState(0);
   const { toasts, removeToast, success, error } = useToast();
-  const mockAuth = useMockAuth();
   const [warehouseDraft, setWarehouseDraft] = useState<WarehouseDraft | null>(null);
   const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
 

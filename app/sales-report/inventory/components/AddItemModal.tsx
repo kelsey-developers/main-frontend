@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiClient } from '@/lib/api/client';
 import type { ItemType, ItemCategory } from '../types';
-import { ITEM_CATEGORIES, loadInventoryDataset } from '../lib/mockData';
+import { ITEM_CATEGORIES, loadInventoryDataset } from '../lib/inventoryDataStore';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
 
 const inputClass = 'w-full px-3 py-2 rounded-lg border border-gray-200 text-gray-700 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] outline-none bg-white';

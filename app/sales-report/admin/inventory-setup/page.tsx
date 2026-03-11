@@ -3,11 +3,11 @@
 import React, { useState } from 'react';
 import {
   ITEM_CATEGORIES,
-  mockReplenishmentItems,
-  mockSupplierDirectoryData,
-  mockWarehouseDirectoryData,
-  mockUnits,
-} from '../../inventory/lib/mockData';
+  inventoryItems,
+  inventorySupplierDirectory,
+  inventoryWarehouseDirectory,
+  inventoryUnits,
+} from '../../inventory/lib/inventoryDataStore';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
 const STOCK_OUT_REASONS = [
@@ -20,7 +20,7 @@ const STOCK_OUT_REASONS = [
 ];
 
 export default function AdminInventorySetupPage() {
-  const activeWarehouses = mockWarehouseDirectoryData.filter((entry) => entry.isActive);
+  const activeWarehouses = inventoryWarehouseDirectory.filter((entry) => entry.isActive);
   const fallbackWarehouseId = activeWarehouses[0]?.id ?? '';
 
   const [allowedReasons, setAllowedReasons] = useState<Record<string, boolean>>(() => {
@@ -33,7 +33,7 @@ export default function AdminInventorySetupPage() {
 
   const [sourceWarehouseByUnit, setSourceWarehouseByUnit] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    mockUnits.forEach((unit) => {
+    inventoryUnits.forEach((unit) => {
       initial[unit.id] = fallbackWarehouseId;
     });
     return initial;
@@ -43,7 +43,7 @@ export default function AdminInventorySetupPage() {
     setAllowedReasons((prev) => ({ ...prev, [reason]: !prev[reason] }));
   };
 
-  const lowStockItems = mockReplenishmentItems.filter((item) => item.currentStock < item.minStock);
+  const lowStockItems = inventoryItems.filter((item) => item.currentStock < item.minStock);
 
   return (
     <div style={{ fontFamily: 'Poppins' }}>
@@ -53,7 +53,7 @@ export default function AdminInventorySetupPage() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <AdminStatCard label="Items with Reorder Rule" value={mockReplenishmentItems.length} accent="teal" />
+        <AdminStatCard label="Items with Reorder Rule" value={inventoryItems.length} accent="teal" />
         <AdminStatCard label="Low Stock Right Now" value={lowStockItems.length} accent="amber" />
         <AdminStatCard label="Active Warehouses" value={activeWarehouses.length} accent="teal" />
       </div>
@@ -67,15 +67,15 @@ export default function AdminInventorySetupPage() {
             </div>
             <div className="rounded-lg border border-gray-200 p-3">
               <div className="font-semibold text-gray-900 mb-1">Suppliers</div>
-              <div className="text-gray-600">{mockSupplierDirectoryData.length} suppliers configured</div>
+              <div className="text-gray-600">{inventorySupplierDirectory.length} suppliers configured</div>
             </div>
             <div className="rounded-lg border border-gray-200 p-3">
               <div className="font-semibold text-gray-900 mb-1">Warehouses</div>
-              <div className="text-gray-600">{mockWarehouseDirectoryData.length} storage locations</div>
+              <div className="text-gray-600">{inventoryWarehouseDirectory.length} storage locations</div>
             </div>
             <div className="rounded-lg border border-gray-200 p-3">
               <div className="font-semibold text-gray-900 mb-1">Units</div>
-              <div className="text-gray-600">{mockUnits.length} units mapped to inventory usage</div>
+              <div className="text-gray-600">{inventoryUnits.length} units mapped to inventory usage</div>
             </div>
           </div>
         </AdminSection>
@@ -112,7 +112,7 @@ export default function AdminInventorySetupPage() {
               </tr>
             </thead>
             <tbody>
-              {mockUnits.slice(0, 10).map((unit) => (
+              {inventoryUnits.slice(0, 10).map((unit) => (
                 <tr key={unit.id} className="border-b border-gray-100 last:border-b-0">
                   <td className="px-4 py-3 text-gray-800 font-medium">{unit.name}</td>
                   <td className="px-4 py-3 text-gray-600">{unit.location ?? 'N/A'}</td>
@@ -153,7 +153,7 @@ export default function AdminInventorySetupPage() {
               </tr>
             </thead>
             <tbody>
-              {mockReplenishmentItems.slice(0, 10).map((item) => (
+              {inventoryItems.slice(0, 10).map((item) => (
                 <tr key={item.id} className="border-b border-gray-100 last:border-b-0">
                   <td className="px-4 py-3 text-gray-800 font-medium">{item.name}</td>
                   <td className="px-4 py-3 text-gray-600">{item.currentStock} {item.unit}</td>

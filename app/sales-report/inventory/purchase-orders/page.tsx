@@ -14,12 +14,12 @@ import { useToast } from '../hooks/useToast';
 import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
   loadInventoryDataset,
-  mockPurchaseOrders, 
-  mockPurchaseOrderLines, 
-  mockGoodsReceipts,
-  mockSuppliers,
-  mockReplenishmentItems,
-} from '../lib/mockData';
+  inventoryPurchaseOrders, 
+  inventoryPurchaseOrderLines, 
+  inventoryGoodsReceipts,
+  inventorySuppliers,
+  inventoryItems,
+} from '../lib/inventoryDataStore';
 import type { PurchaseOrder } from '../types';
 
 type GoodsReceiptSubmitData = {
@@ -131,7 +131,7 @@ function EditPOModal({
                   setForm((prev) => ({ ...prev, supplierId: value }));
                   setErrors((prev) => ({ ...prev, supplierId: '' }));
                 }}
-                options={mockSuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
+                options={inventorySuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
@@ -202,9 +202,9 @@ function DetailDrawer({
   const [activeTab, setActiveTab] = useState<"items" | "receipts">("items");
   const [evidencePreview, setEvidencePreview] = useState<{ path: string; label: string } | null>(null);
 
-  const supplier = mockSuppliers.find(s => s.id === po.supplierId);
-  const poLines = mockPurchaseOrderLines.filter(line => line.poId === po.id);
-  const goodsReceipts = mockGoodsReceipts.filter(gr => gr.poId === po.id);
+  const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
+  const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
+  const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
 
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
   useEffect(() => {
@@ -357,7 +357,7 @@ function DetailDrawer({
                 </thead>
                 <tbody>
                   {poLines.map((line, i) => {
-                    const item = mockReplenishmentItems.find(x => x.id === line.productId);
+                    const item = inventoryItems.find(x => x.id === line.productId);
                     return (
                       <tr key={line.id} className={`border-b border-[#e5e7eb] ${i % 2 === 0 ? 'bg-white' : 'bg-[#f4f7f7]'}`}>
                         <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{item?.name || `Product #${line.productId}`}</td>
@@ -616,7 +616,7 @@ function PurchaseOrdersPageContent() {
   const poIdFromQuery = searchParams.get('poId');
   const supplierIdFromQuery = searchParams.get('supplierId');
   const supplierFromQuery = supplierIdFromQuery
-    ? mockSuppliers.find((supplier) => supplier.id === supplierIdFromQuery) ?? null
+    ? inventorySuppliers.find((supplier) => supplier.id === supplierIdFromQuery) ?? null
     : null;
 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -636,12 +636,12 @@ function PurchaseOrdersPageContent() {
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setPurchaseOrders([...mockPurchaseOrders]);
+        setPurchaseOrders([...inventoryPurchaseOrders]);
         setIsLoading(false);
       });
 
     const refresh = () => {
-      setPurchaseOrders([...mockPurchaseOrders]);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -685,7 +685,7 @@ function PurchaseOrdersPageContent() {
 
   const supplierOptions: InventoryDropdownOption<'all' | string>[] = [
     { value: 'all', label: 'All Suppliers' },
-    ...mockSuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
+    ...inventorySuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
   ];
 
   const selectedPOFromQuery = useMemo(() => {
@@ -712,7 +712,7 @@ function PurchaseOrdersPageContent() {
     if (!goodsReceiptModalPO) return;
 
     const submit = async () => {
-      const poLines = mockPurchaseOrderLines.filter((line) => line.poId === goodsReceiptModalPO.id);
+      const poLines = inventoryPurchaseOrderLines.filter((line) => line.poId === goodsReceiptModalPO.id);
       const items = poLines.map((line) => ({
         productId: line.productId,
         quantityReceived: Math.max(0, Number(line.quantity - line.receivedQuantity)),
@@ -733,10 +733,10 @@ function PurchaseOrdersPageContent() {
       );
 
       await loadInventoryDataset(true);
-      setPurchaseOrders([...mockPurchaseOrders]);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updated = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === response.purchaseOrder.id)
-        ?? mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
+      const updated = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === response.purchaseOrder.id)
+        ?? inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
         ?? null;
 
       if (updated) {
@@ -766,9 +766,9 @@ function PurchaseOrdersPageContent() {
       });
 
       await loadInventoryDataset(true);
-      setPurchaseOrders([...mockPurchaseOrders]);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updatedPO = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === editPOTarget.id);
+      const updatedPO = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === editPOTarget.id);
       if (selectedPO?.id === editPOTarget.id && updatedPO) {
         setSelectedPO(updatedPO);
       }
@@ -797,9 +797,9 @@ function PurchaseOrdersPageContent() {
       });
 
       await loadInventoryDataset(true);
-      setPurchaseOrders([...mockPurchaseOrders]);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updatedPO = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === po.id);
+      const updatedPO = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === po.id);
       if (updatedPO) {
         setSelectedPO(updatedPO);
       }
@@ -822,7 +822,7 @@ function PurchaseOrdersPageContent() {
         return false;
       }
       
-      const supplier = mockSuppliers.find(s => s.id === po.supplierId);
+      const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
       const matchesSearch = 
         po.id.toLowerCase().includes(search.toLowerCase()) ||
         (supplier?.name.toLowerCase() || '').includes(search.toLowerCase());
@@ -1019,8 +1019,8 @@ function PurchaseOrdersPageContent() {
             </div>
           ) : (
             pageOrders.map((po) => {
-              const supplier = mockSuppliers.find(s => s.id === po.supplierId);
-              const goodsReceipts = mockGoodsReceipts.filter(gr => gr.poId === po.id);
+              const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
+              const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
               return (
                 <Fragment key={po.id}>
                   {/* Desktop Row */}

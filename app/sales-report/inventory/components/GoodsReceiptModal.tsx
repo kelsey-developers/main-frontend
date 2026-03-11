@@ -7,7 +7,7 @@ import InventoryDropdown from './InventoryDropdown';
 import ToastContainer from './ToastContainer';
 import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
-import { mockPurchaseOrderLines, mockWarehouseDirectoryData, mockReplenishmentItems } from '../lib/mockData';
+import { inventoryPurchaseOrderLines, inventoryWarehouseDirectory, inventoryItems } from '../lib/inventoryDataStore';
 
 const getTodayISO = () => {
   const date = new Date();
@@ -86,11 +86,11 @@ export default function GoodsReceiptModal({
   onClose: () => void;
   onSubmit: (data: any) => void;
 }) {
-  const mockAuth = useMockAuth();
+  const authState = useMockAuth();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
-  const [receivedBy, setReceivedBy] = useState(mockAuth.userProfile?.fullname || '');
+  const [receivedBy, setReceivedBy] = useState(authState.userProfile?.fullname || '');
   const [receiptDate, setReceiptDate] = useState(getTodayISO());
   const [notes, setNotes] = useState('');
 
@@ -106,7 +106,7 @@ export default function GoodsReceiptModal({
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const poLines = mockPurchaseOrderLines.filter(line => line.poId === po.id);
+  const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -256,7 +256,7 @@ export default function GoodsReceiptModal({
                 onChange={setWarehouseId}
                 options={[
                   { value: '', label: 'Select warehouse...' },
-                  ...mockWarehouseDirectoryData
+                  ...inventoryWarehouseDirectory
                     .filter(w => w.isActive)
                     .map(w => ({ value: w.id, label: w.name }))
                 ]}
@@ -315,7 +315,7 @@ export default function GoodsReceiptModal({
                 </thead>
                 <tbody>
                   {poLines.map((line, idx) => {
-                    const product = mockReplenishmentItems.find(p => p.id === line.productId);
+                    const product = inventoryItems.find(p => p.id === line.productId);
                     return (
                       <tr key={idx} style={{ borderTop: `1px solid ${C.lightGray}` }}>
                         <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, fontFamily: 'Poppins' }}>

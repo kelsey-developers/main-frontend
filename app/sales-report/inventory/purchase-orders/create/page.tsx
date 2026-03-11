@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { apiClient } from '@/lib/api/client';
 import { type InventoryDropdownOption } from '../../components/InventoryDropdown';
-import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems } from '../../lib/inventoryDataStore';
 
 interface POLineItem {
   id: string;
@@ -78,7 +78,7 @@ function CreatePurchaseOrderPageContent() {
     void loadInventoryDataset()
       .finally(() => {
         if (prePopItemId && !hasPrepopulatedRef.current) {
-          const item = mockReplenishmentItems.find((candidate) => candidate.id === prePopItemId);
+          const item = inventoryItems.find((candidate) => candidate.id === prePopItemId);
           if (item) {
             setForm((prev) => ({
               ...prev,
@@ -168,7 +168,7 @@ function CreatePurchaseOrderPageContent() {
 
   const supplierOptions: InventoryDropdownOption<string>[] = [
     { value: '', label: 'Select supplier', disabled: true },
-    ...mockSuppliers.map((s) => ({
+    ...inventorySuppliers.map((s) => ({
       value: s.id,
       label: s.name,
     })),
@@ -257,7 +257,7 @@ function CreatePurchaseOrderPageContent() {
   };
 
   const handleSelectProductForLine = (lineId: string, productId: string) => {
-    const product = mockReplenishmentItems.find((entry) => entry.id === productId);
+    const product = inventoryItems.find((entry) => entry.id === productId);
     if (!product) return;
 
     setLineItems((prev) => {
@@ -987,7 +987,7 @@ function CreatePurchaseOrderPageContent() {
               const activeLine = lineItems.find((l) => l.id === activeItemPickerLineId);
               const activeProductId = activeLine?.productId || '';
 
-              const candidates = mockReplenishmentItems
+              const candidates = inventoryItems
                 .filter((item) => {
                   if (!query) return true;
                   const hay = normalizeSearch(`${item.name} ${item.sku}`);

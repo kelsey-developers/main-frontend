@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 import type { ReplenishmentItem } from '../types';
-import { loadInventoryDataset, mockDashboardSummary, mockReplenishmentItems } from './mockData';
+import { loadInventoryDataset, inventoryDashboardSummary, inventoryItems } from './inventoryDataStore';
 
 type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
 
@@ -59,7 +59,7 @@ const emitInventoryMovementUpdated = (detail: {
 };
 
 const buildLedgerResult = (productId: string, movementIds: string[]): LedgerResult => {
-  const item = mockReplenishmentItems.find((entry) => entry.id === productId);
+  const item = inventoryItems.find((entry) => entry.id === productId);
   if (!item) {
     throw new Error('Item not found after refreshing inventory dataset.');
   }
@@ -140,15 +140,15 @@ export const recomputeAllInventoryDerivedValues = async () => {
   await loadInventoryDataset(true);
 
   // Keep summary aligned in case other parts mutate the arrays client-side.
-  mockDashboardSummary.totalItems = mockReplenishmentItems.length;
-  mockDashboardSummary.totalStocks = mockReplenishmentItems.reduce(
+  inventoryDashboardSummary.totalItems = inventoryItems.length;
+  inventoryDashboardSummary.totalStocks = inventoryItems.reduce(
     (sum, item) => sum + item.currentStock,
     0
   );
-  mockDashboardSummary.lowStockCount = mockReplenishmentItems.filter(
+  inventoryDashboardSummary.lowStockCount = inventoryItems.filter(
     (item) => item.currentStock < item.minStock
   ).length;
-  mockDashboardSummary.replenishmentNeeded = mockReplenishmentItems.reduce(
+  inventoryDashboardSummary.replenishmentNeeded = inventoryItems.reduce(
     (sum, item) => sum + Math.max(0, item.minStock - item.currentStock),
     0
   );

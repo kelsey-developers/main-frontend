@@ -7,11 +7,11 @@ import InventoryDropdown from './InventoryDropdown';
 import ToastContainer from './ToastContainer';
 import { useToast } from '../hooks/useToast';
 import { 
-  mockWarehouseDirectoryData,
+  inventoryWarehouseDirectory,
   ITEM_CATEGORIES,
   ITEM_TYPES,
   ITEM_UNITS,
-} from '../lib/mockData';
+} from '../lib/inventoryDataStore';
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -479,7 +479,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 onChange={(value) => setForm({ ...form, warehouseId: value })}
                 options={[
                   { value: '', label: 'Select warehouse...' },
-                  ...mockWarehouseDirectoryData.map((wh) => ({
+                  ...inventoryWarehouseDirectory.map((wh) => ({
                     value: wh.id,
                     label: `${wh.name} - ${wh.location}`,
                   })),
