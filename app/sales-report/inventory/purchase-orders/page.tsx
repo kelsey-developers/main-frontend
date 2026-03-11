@@ -723,7 +723,8 @@ function PurchaseOrdersPageContent() {
         return;
       }
 
-      const response = await apiClient.post<{ purchaseOrder: PurchaseOrder }>(
+      const response = await apiClient.post<{ purchaseOrder: PurchaseOrder; goodsReceipt?: { id: string } }>(
+        // create goods receipt first, then upload receipt photos to that receipt
         `/api/purchase-orders/${goodsReceiptModalPO.id}/receive`,
         {
           warehouseId: data.warehouseId,
@@ -731,6 +732,23 @@ function PurchaseOrdersPageContent() {
           items,
         }
       );
+
+      const receiptId = response.goodsReceipt?.id;
+      let attachmentUploadFailed = false;
+      if (receiptId && data.receiptImages && data.receiptImages.length > 0) {
+        const formData = new FormData();
+        data.receiptImages.forEach((file) => {
+          formData.append('files', file);
+        });
+        try {
+          await apiClient.post(`/api/goods-receipts/${receiptId}/attachments`, formData);
+        } catch (uploadError) {
+          attachmentUploadFailed = true;
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('Goods receipt attachment upload error:', uploadError);
+          }
+        }
+      }
 
       await loadInventoryDataset(true);
       setPurchaseOrders([...inventoryPurchaseOrders]);
@@ -743,7 +761,11 @@ function PurchaseOrdersPageContent() {
         setSelectedPO(updated);
       }
 
-      success('Goods Receipt created successfully.');
+      if (attachmentUploadFailed) {
+        error('Goods receipt was created, but photo upload failed. You can re-upload photos later.');
+      } else {
+        success('Goods Receipt created successfully.');
+      }
     };
 
     void submit().catch((err) => {

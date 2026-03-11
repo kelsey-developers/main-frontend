@@ -268,15 +268,9 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   mockDashboardSummary.replenishmentNeeded = summary.replenishmentNeeded;
 };
 
+/** Fetches dataset from API. Throws on network/4xx/5xx so caller can avoid applying empty data. */
 const fetchInventoryDataset = async (): Promise<InventoryDatasetResponse> => {
-  try {
-    return await apiClient.get<InventoryDatasetResponse>('/api/inventory/dataset');
-  } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('Inventory dataset request failed, keeping last available inventory snapshot.', error);
-    }
-    return {};
-  }
+  return await apiClient.get<InventoryDatasetResponse>('/api/inventory/dataset');
 };
 
 const fetchExternalUnits = async (): Promise<ExternalUnitListing[] | null> => {
@@ -331,7 +325,19 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
   if (datasetLoadPromise && !force) return datasetLoadPromise;
 
   datasetLoadPromise = (async () => {
-    const dataset = await fetchInventoryDataset();
+    let dataset: InventoryDatasetResponse;
+    try {
+      dataset = await fetchInventoryDataset();
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Failed to load inventory dataset', error);
+      }
+      // Do NOT apply empty dataset — that wipes all items and breaks the UI.
+      // Leave existing data as-is and mark not loaded so UI can show error/retry.
+      isDatasetLoaded = false;
+      emitInventoryDatasetUpdated();
+      throw error;
+    }
     applyDataset(dataset);
     const externalUnits = await fetchExternalUnits();
     if (externalUnits) {
@@ -339,25 +345,9 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
     } else {
       replaceArray(inventoryUnitsState, []);
     }
-    // Only mark as loaded if the API returned something meaningful.
-    // This prevents "empty fallback" responses from blocking future fetches,
-    // which can make the dashboard appear blank until another page forces refresh.
     isDatasetLoaded = hasMeaningfulDataset(dataset);
     emitInventoryDatasetUpdated();
   })()
-    .catch((error) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Failed to load inventory dataset', error);
-      }
-      // Keep the inventory UI interactive even when API is temporarily unreachable.
-      if (!isDatasetLoaded) {
-        const fallbackSummary = deriveDashboardSummary();
-        mockDashboardSummary.totalItems = fallbackSummary.totalItems;
-        mockDashboardSummary.totalStocks = fallbackSummary.totalStocks;
-        mockDashboardSummary.lowStockCount = fallbackSummary.lowStockCount;
-        mockDashboardSummary.replenishmentNeeded = fallbackSummary.replenishmentNeeded;
-      }
-    })
     .finally(() => {
       datasetLoadPromise = null;
     });

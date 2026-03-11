@@ -3,6 +3,7 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/products',
   '/api/suppliers',
   '/api/purchase-orders',
+  '/api/goods-receipts',
   '/api/product-categories',
 ];
 
@@ -73,12 +74,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const { body, token, headers, credentials, timeoutMs, ...rest } = options;
   const baseUrl = getBaseUrl(endpoint);
   const requestMethod = String(rest.method ?? 'GET').toUpperCase();
+  const isFormDataBody = typeof FormData !== 'undefined' && body instanceof FormData;
 
   const mergedHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(typeof headers === 'object' ? headers as Record<string, string> : {}),
   };
+  if (!isFormDataBody) {
+    mergedHeaders['Content-Type'] = 'application/json';
+  }
 
   if (
     typeof window !== 'undefined' &&
@@ -96,7 +100,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     // Use same-origin by default so cross-origin API calls do not require CORS credential headers.
     credentials: credentials ?? (token ? 'omit' : 'same-origin'),
     headers: mergedHeaders,
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    ...(body !== undefined
+      ? { body: isFormDataBody ? (body as FormData) : JSON.stringify(body) }
+      : {}),
   };
 
   const runtimeEndpoint =
