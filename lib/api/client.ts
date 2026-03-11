@@ -61,6 +61,8 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
   token?: string;
   /** Override credentials policy when needed. */
   credentials?: RequestCredentials;
+  /** Abort the request after this many ms (default 15000). */
+  timeoutMs?: number;
 };
 
 function isLikelyNetworkFetchError(error: unknown): boolean {
@@ -70,7 +72,7 @@ function isLikelyNetworkFetchError(error: unknown): boolean {
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { body, token, headers, credentials, ...rest } = options;
+  const { body, token, headers, credentials, timeoutMs, ...rest } = options;
   const baseUrl = getBaseUrl(endpoint);
   const requestMethod = String(rest.method ?? 'GET').toUpperCase();
 
@@ -108,15 +110,21 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     baseUrl !== '';
 
   let res: Response;
+  const controller = new AbortController();
+  const timeout = typeof timeoutMs === 'number' ? timeoutMs : 15000;
+  const timer = setTimeout(() => controller.abort(), Math.max(0, timeout));
+  const requestInitWithSignal: RequestInit = { ...requestInit, signal: controller.signal };
 
   try {
-    res = await fetch(requestUrl, requestInit);
+    res = await fetch(requestUrl, requestInitWithSignal);
   } catch (error) {
     if (canRetrySameOrigin && isLikelyNetworkFetchError(error)) {
-      res = await fetch(endpoint, requestInit);
+      res = await fetch(endpoint, requestInitWithSignal);
     } else {
       throw error;
     }
+  } finally {
+    clearTimeout(timer);
   }
 
   const raw = await res.text();

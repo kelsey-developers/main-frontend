@@ -15,6 +15,15 @@ function looksLikeNgrokErrorPage(text: string): boolean {
   return haystack.includes('ngrok') && (haystack.includes('err_ngrok_') || looksLikeHtml(text));
 }
 
+function isNgrokUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.endsWith('.ngrok-free.dev') || host.endsWith('.ngrok.io') || host.endsWith('.ngrok.app');
+  } catch {
+    return false;
+  }
+}
+
 async function forwardToUpstream(
   request: NextRequest,
   upstreamUrl: string
@@ -34,6 +43,11 @@ async function forwardToUpstream(
     const value = request.headers.get(key);
     if (value) headers.set(key, value);
   });
+
+  // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
+  if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
+  }
 
   // Ensure JSON content-type for requests with body.
   if (method !== 'GET' && method !== 'HEAD') {
