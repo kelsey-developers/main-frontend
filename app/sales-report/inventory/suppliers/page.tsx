@@ -8,7 +8,6 @@ import { apiClient } from '@/lib/api/client';
 import { loadInventoryDataset, inventorySupplierDirectory } from "../lib/inventoryDataStore";
 import InventoryDropdown, { type InventoryDropdownOption } from "../components/InventoryDropdown";
 import ActiveStatusToggle from "../components/ActiveStatusToggle";
-import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import { avatarPalette, initials } from "../helpers/supplierHelpers";
 
@@ -238,7 +237,7 @@ const SuppliersSkeleton = () => (
 
 export default function SuppliersPage() {
   const router = useRouter();
-  const { toasts, removeToast, success, error } = useToast();
+  const { success, error } = useToast();
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -258,7 +257,9 @@ export default function SuppliersPage() {
       });
 
     const onRefresh = () => {
-      setSuppliers([...inventorySupplierDirectory]);
+      void loadInventoryDataset(true).finally(() => {
+        if (isMounted) setSuppliers([...inventorySupplierDirectory]);
+      });
     };
 
     window.addEventListener('inventory:movement-updated', onRefresh);
@@ -688,7 +689,6 @@ export default function SuppliersPage() {
           onSave={handleSave}
         />
       )}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }

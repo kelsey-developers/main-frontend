@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { mockPurchaseOrders, mockReplenishmentItems, mockSuppliers } from '../../inventory/lib/mockData';
+import { mockPurchaseOrders, mockReplenishmentItems, mockSuppliers } from '../../inventory/lib/inventoryData';
 import type { PurchaseOrder } from '../../inventory/types';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 

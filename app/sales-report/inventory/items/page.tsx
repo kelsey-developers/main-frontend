@@ -8,7 +8,7 @@ import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
-import { inventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations } from '../lib/inventoryDataStore';
+import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations } from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 function InventoryItemsPageContent() {
@@ -32,6 +32,8 @@ function InventoryItemsPageContent() {
         .finally(() => {
           if (itemIdFromQuery) {
             setSelectedItem(inventoryItems.find((item) => item.id === itemIdFromQuery) || null);
+          } else {
+            setSelectedItem(null);
           }
           setRefreshTick((tick) => tick + 1);
         });
@@ -45,6 +47,15 @@ function InventoryItemsPageContent() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
+  }, [itemIdFromQuery]);
+
+  useEffect(() => {
+    const onMovementUpdated = () => {
+      // Data is already updated by the emitter (stock-out, recompute, etc.); just re-render.
+      setRefreshTick((t) => t + 1);
+    };
+    window.addEventListener('inventory:movement-updated', onMovementUpdated);
+    return () => window.removeEventListener('inventory:movement-updated', onMovementUpdated);
   }, []);
 
   // Combine query param with local state (query param takes precedence)
@@ -53,8 +64,8 @@ function InventoryItemsPageContent() {
   const activeWarehouseName = warehouseNameFromQuery || activeWarehouse?.name;
 
   const filteredItems = useMemo(() => {
-    return filterItemsByWarehouse(inventoryItems, activeWarehouseId);
-  }, [activeWarehouseId]);
+    return filterItemsByWarehouse(getDisplayableInventoryItems(), activeWarehouseId);
+  }, [activeWarehouseId, refreshTick]);
 
   const warehouseOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
     return buildWarehouseOptions(inventoryWarehouseDirectory);
@@ -142,7 +153,11 @@ function InventoryItemsPageContent() {
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
             type="button"
-            onClick={() => router.push('/sales-report/inventory/StockOut')}
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (activeWarehouseId) params.set('warehouseId', activeWarehouseId);
+              router.push(`/sales-report/inventory/StockOut${params.toString() ? `?${params.toString()}` : ''}`);
+            }}
             className="stock-btn stock-out-primary"
             style={{
               padding: '10px 18px',

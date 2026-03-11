@@ -29,7 +29,28 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
 
 export const ITEM_TYPES: ItemType[] = ['consumable', 'reusable'];
 
+/**
+ * Canonical product units. Backend may return aliases (e.g. "piece"); we normalize to these.
+ * If the backend exposes a units enum (e.g. GET /api/product-units or GET /api/inventory/product-units),
+ * consider fetching it on load and merging with this list for consistency.
+ */
 export const ITEM_UNITS = ['pcs', 'bars', 'btl', 'rolls', 'boxes', 'kg', 'L', 'packs'];
+
+/** Map backend unit aliases to canonical form for consistency (e.g. piece -> pcs). */
+const UNIT_ALIASES: Record<string, string> = {
+  piece: 'pcs',
+  pieces: 'pcs',
+  pc: 'pcs',
+  each: 'pcs',
+  ea: 'pcs',
+};
+
+/** Normalize unit string to canonical form. Returns canonical or original if no alias. */
+export const normalizeUnit = (unit: string | undefined): string => {
+  if (!unit || typeof unit !== 'string') return 'pcs';
+  const trimmed = unit.trim().toLowerCase();
+  return UNIT_ALIASES[trimmed] ?? trimmed;
+};
 
 export interface WarehouseInventoryBalanceRow {
   productId: string;
@@ -271,8 +292,28 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockGoodsReceipts, dataset.goodsReceipts);
   replaceArray(mockStockMovements, dataset.stockMovements);
   replaceArray(mockDamageAdjustments, dataset.damageAdjustments);
-  replaceArray(mockReplenishmentItems, dataset.replenishmentItems);
-  replaceArray(mockUnitItems, dataset.unitItems);
+  const replenishmentItems = Array.isArray(dataset.replenishmentItems) ? dataset.replenishmentItems : [];
+  const normalizedItems = replenishmentItems.map((item) => {
+    if (item && typeof item === 'object' && 'unit' in item) {
+      const canonical = normalizeUnit((item as { unit?: string }).unit);
+      if (canonical !== (item as { unit?: string }).unit) {
+        return { ...item, unit: canonical };
+      }
+    }
+    return item;
+  });
+  replaceArray(mockReplenishmentItems, normalizedItems);
+  const unitItems = Array.isArray(dataset.unitItems) ? dataset.unitItems : [];
+  const normalizedUnitItems = unitItems.map((item) => {
+    if (item && typeof item === 'object' && 'unit' in item) {
+      const canonical = normalizeUnit((item as { unit?: string }).unit);
+      if (canonical !== (item as { unit?: string }).unit) {
+        return { ...item, unit: canonical };
+      }
+    }
+    return item;
+  });
+  replaceArray(mockUnitItems, normalizedUnitItems);
   replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
 
   // Warehouses reflect backend first, then include locally persisted additions
@@ -362,9 +403,8 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
     const externalUnits = await fetchExternalUnits();
     if (externalUnits) {
       syncUnitsFromExternalSource(externalUnits);
-    } else {
-      replaceArray(inventoryUnitsState, []);
     }
+    // Do not clear units when fetch fails — preserve existing data so users don't see "no items"
     emitInventoryDatasetUpdated();
     return;
   }
@@ -381,9 +421,8 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
     const externalUnits = await fetchExternalUnits();
     if (externalUnits) {
       syncUnitsFromExternalSource(externalUnits);
-    } else {
-      replaceArray(inventoryUnitsState, []);
     }
+    // Do not clear units when fetch fails — preserve existing data
     isDatasetLoaded = hasMeaningfulDataset(dataset);
     emitInventoryDatasetUpdated();
   })()
@@ -457,5 +496,98 @@ const buildWarehouseUnitAllocationMap = (): Record<string, WarehouseUnitAllocati
 export const getWarehouseUnitAllocations = (warehouseId: string): WarehouseUnitAllocationSummary[] => {
   const map = buildWarehouseUnitAllocationMap();
   return map[warehouseId] ?? [];
+};
+
+/**
+ * Returns inventory items that should appear in the list.
+ * PO-ordered items do not reflect until a goods receipt exists (or they have stock).
+ */
+export const getDisplayableInventoryItems = (): ReplenishmentItem[] => {
+  const receivedProductIds = new Set<string>();
+  for (const gr of mockGoodsReceipts) {
+    for (const gi of gr.items) {
+      const line = mockPurchaseOrderLines.find((l) => l.id === gi.poItemId);
+      if (line) receivedProductIds.add(line.productId);
+    }
+  }
+  return mockReplenishmentItems.filter(
+    (item) => item.currentStock > 0 || receivedProductIds.has(item.id)
+  );
+};
+
+/**
+ * Updates an inventory item in the mock store and syncs warehouse directory balances.
+ * Dispatches inventory:movement-updated so listeners refresh.
+ */
+export const updateInventoryItem = (
+  itemId: string,
+  updates: Partial<ReplenishmentItem>
+): boolean => {
+  const idx = mockReplenishmentItems.findIndex((i) => i.id === itemId);
+  if (idx < 0) return false;
+
+  const existing = mockReplenishmentItems[idx];
+  const warehouseId = updates.warehouseId ?? existing.warehouseId;
+  const warehouse = mockWarehouseDirectoryData.find((wh) => wh.id === warehouseId);
+  const supplierId = updates.currentsupplierId ?? existing.currentsupplierId;
+  const supplier = mockSuppliers.find((s) => s.id === supplierId);
+  const unit = updates.unit !== undefined ? normalizeUnit(updates.unit) : existing.unit;
+  const merged: ReplenishmentItem = {
+    ...existing,
+    ...updates,
+    id: itemId,
+    unit,
+    warehouseName: warehouse?.name ?? existing.warehouseName,
+    supplierName: supplier?.name ?? existing.supplierName,
+    totalValue: (updates.currentStock ?? existing.currentStock) * (updates.unitCost ?? existing.unitCost),
+    shortfall: Math.max(0, (updates.minStock ?? existing.minStock) - (updates.currentStock ?? existing.currentStock)),
+    updatedAt: new Date().toISOString(),
+  };
+  mockReplenishmentItems[idx] = merged;
+
+  // Sync warehouse directory inventoryBalances for this product
+  const productId = itemId;
+  const quantity = merged.currentStock;
+  const productName = merged.name;
+  const reorderLevel = merged.minStock;
+  const targetWarehouseId = merged.warehouseId;
+
+  for (const wh of mockWarehouseDirectoryData) {
+    const balanceIdx = wh.inventoryBalances.findIndex((b) => b.productId === productId);
+    if (balanceIdx >= 0) {
+      wh.inventoryBalances[balanceIdx] = {
+        ...wh.inventoryBalances[balanceIdx],
+        quantity,
+        productName,
+        reorderLevel,
+      };
+    } else if (wh.id === targetWarehouseId && quantity > 0) {
+      wh.inventoryBalances.push({
+        productId,
+        productName,
+        quantity,
+        reorderLevel,
+      });
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('inventory:movement-updated', { detail: { source: 'edit-item', itemId } }));
+    // Persist supplier/warehouse to backend so dataset refetch returns updated data
+    const payload: Record<string, unknown> = {};
+    if (updates.currentsupplierId !== undefined) {
+      payload.supplierId = merged.currentsupplierId;
+      payload.currentSupplierId = merged.currentsupplierId; // some backends use this
+    }
+    if (updates.warehouseId !== undefined) payload.warehouseId = merged.warehouseId;
+    if (updates.minStock !== undefined) payload.reorderLevel = merged.minStock;
+    if (updates.unit !== undefined) payload.unit = merged.unit;
+    if (Object.keys(payload).length > 0) {
+      apiClient.patch(`/api/products/${itemId}`, payload).catch(() => {
+        // Backend may not support PATCH; in-memory update is already applied
+      });
+    }
+  }
+  return true;
 };
 

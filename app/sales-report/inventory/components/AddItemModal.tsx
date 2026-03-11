@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiClient } from '@/lib/api/client';
 import type { ItemType, ItemCategory } from '../types';
-import { ITEM_CATEGORIES, loadInventoryDataset } from '../lib/inventoryDataStore';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset } from '../lib/inventoryDataStore';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
+import { useToast } from '../hooks/useToast';
 
 const inputClass = 'w-full px-3 py-2 rounded-lg border border-gray-200 text-gray-700 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] outline-none bg-white';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
@@ -22,6 +23,7 @@ interface AddItemModalProps {
 }
 
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
+  const { success } = useToast();
   const [mounted, setMounted] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState('');
@@ -70,6 +72,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
         setType('');
         setCategory('');
         setReorderLevel('');
+        success('Item created successfully.');
         onClose();
       } finally {
         setIsSaving(false);
@@ -93,8 +96,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen || !mounted) return null;
 
   return createPortal(
-    <div
-      className="fixed inset-0 flex items-center justify-center z-[9999] p-4"
+    <>
+      <div
+        className="fixed inset-0 flex items-center justify-center z-[9999] p-4"
       style={{
         backgroundColor: 'rgba(17, 24, 39, 0.38)',
       }}
@@ -164,6 +168,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
               placeholderWhen=""
               fullWidth={true}
               minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
             />
           </div>
           <div>
@@ -181,19 +188,24 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
               placeholderWhen=""
               fullWidth={true}
               minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
             />
           </div>
           <div>
             <label htmlFor="add-item-unit" className={labelClass}>
               Unit of measure
             </label>
-            <input
-              id="add-item-unit"
-              type="text"
+            <InventoryDropdown
               value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              placeholder="pcs"
-              className={inputClass}
+              onChange={(value) => setUnit(value)}
+              options={ITEM_UNITS.map((u) => ({ value: u, label: u }))}
+              fullWidth={true}
+              minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
             />
           </div>
           <div>
@@ -223,7 +235,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
           </div>
         </form>
       </div>
-    </div>,
+    </div>
+    </>,
     document.body
   );
 };

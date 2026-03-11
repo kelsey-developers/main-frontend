@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   turbopack: {},
+  experimental: {
+    proxyClientMaxBodySize: '20mb',
+  },
 
   webpack: (config, { dev }) => {
     if (dev) {

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useToastContext } from '../context/ToastContext';
+import React, { createContext, useCallback, useContext, useState } from 'react';
+import ToastContainer from '../components/ToastContainer';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -12,14 +12,19 @@ interface ToastMessage {
   duration?: number;
 }
 
-export function useToast() {
-  const context = useToastContext();
+interface ToastContextValue {
+  toasts: ToastMessage[];
+  addToast: (message: string, type?: ToastType, duration?: number) => string;
+  removeToast: (id: string) => void;
+  success: (message: string) => void;
+  error: (message: string) => void;
+  warning: (message: string) => void;
+  info: (message: string) => void;
+}
 
-  if (context) {
-    return context;
-  }
+const ToastContext = createContext<ToastContextValue | null>(null);
 
-  // Fallback when outside ToastProvider (local state - ToastContainer must be rendered by caller)
+export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const addToast = useCallback(
@@ -40,7 +45,7 @@ export function useToast() {
   const warning = useCallback((message: string) => addToast(message, 'warning'), [addToast]);
   const info = useCallback((message: string) => addToast(message, 'info'), [addToast]);
 
-  return {
+  const value: ToastContextValue = {
     toasts,
     addToast,
     removeToast,
@@ -49,4 +54,16 @@ export function useToast() {
     warning,
     info,
   };
+
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </ToastContext.Provider>
+  );
+}
+
+export function useToastContext() {
+  const ctx = useContext(ToastContext);
+  return ctx;
 }

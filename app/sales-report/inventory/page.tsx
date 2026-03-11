@@ -10,20 +10,20 @@ import type { InventoryDashboardSummary } from './types';
 import {
   isInventoryDatasetLoaded,
   loadInventoryDataset,
+  getDisplayableInventoryItems,
   inventoryItems,
   inventoryUnits,
   inventoryUnitItems,
 } from './lib/inventoryDataStore';
 import InventoryDashboardLinks from './components/InventoryDashboardLinks';
-import ToastContainer from './components/ToastContainer';
 import { useToast } from './hooks/useToast';
 
 export default function InventoryDashboardPage() {
-  const { toasts, removeToast, error: showError } = useToast();
+  const { error: showError } = useToast();
   const [refreshTick, setRefreshTick] = useState(0);
   const [isLoading, setIsLoading] = useState(() => !isInventoryDatasetLoaded());
   const [initialLoadDone, setInitialLoadDone] = useState(() => isInventoryDatasetLoaded());
-  const itemsSnapshot = useMemo(() => [...inventoryItems], [refreshTick]);
+  const itemsSnapshot = useMemo(() => [...getDisplayableInventoryItems()], [refreshTick]);
   const unitsSnapshot = useMemo(() => [...inventoryUnits], [refreshTick]);
   const unitItemsSnapshot = useMemo(() => [...inventoryUnitItems], [refreshTick]);
 
@@ -209,7 +209,6 @@ export default function InventoryDashboardPage() {
           </div>
         </div>
       </div>
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }

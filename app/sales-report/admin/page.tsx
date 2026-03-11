@@ -6,7 +6,7 @@ import {
   mockPurchaseOrders,
   mockStockMovements,
   mockDamageAdjustments,
-} from '../inventory/lib/mockData';
+} from '../inventory/lib/inventoryData';
 import { AdminPageHeader, AdminStatCard, AdminSection } from './components';
 
 const cards = [

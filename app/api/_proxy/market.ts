@@ -34,6 +34,7 @@ async function forwardToUpstream(
   // Preserve auth/dev-auth headers if present.
   const passthroughHeaders = [
     'authorization',
+    'content-type',
     'x-user-id',
     'x-user-email',
     'x-user-role',
@@ -49,15 +50,21 @@ async function forwardToUpstream(
     headers.set('ngrok-skip-browser-warning', 'true');
   }
 
-  // Ensure JSON content-type for requests with body.
-  if (method !== 'GET' && method !== 'HEAD') {
-    if (!headers.get('content-type')) headers.set('content-type', 'application/json');
+  // Ensure JSON content-type only when not set (multipart uploads need their boundary).
+  if (method !== 'GET' && method !== 'HEAD' && !headers.get('content-type')) {
+    headers.set('content-type', 'application/json');
   }
 
-  let body: string | undefined;
+  let body: string | Uint8Array | undefined;
   if (method !== 'GET' && method !== 'HEAD') {
-    const raw = await request.text();
-    body = raw || undefined;
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      const arrayBuffer = await request.arrayBuffer();
+      body = new Uint8Array(arrayBuffer);
+    } else {
+      const raw = await request.text();
+      body = raw || undefined;
+    }
   }
 
   const res = await fetch(upstreamUrl, {

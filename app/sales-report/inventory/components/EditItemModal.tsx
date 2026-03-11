@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
-import ToastContainer from './ToastContainer';
 import { useToast } from '../hooks/useToast';
 import { 
   inventoryWarehouseDirectory,
+  inventorySuppliers,
   ITEM_CATEGORIES,
   ITEM_TYPES,
   ITEM_UNITS,
@@ -47,12 +47,14 @@ function Field({
   label,
   required,
   hint,
+  hintBelow,
   children,
   style,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
+  hintBelow?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
 }) {
@@ -76,6 +78,11 @@ function Field({
         )}
       </label>
       {children}
+      {hintBelow && (
+        <span style={{ fontWeight: 400, color: C.midGray, fontSize: 11, fontFamily: 'Poppins' }}>
+          {hintBelow}
+        </span>
+      )}
     </div>
   );
 }
@@ -157,6 +164,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
     minStock: 0,
     unitCost: 0,
     warehouseId: '',
+    currentsupplierId: '',
     isActive: true,
   });
 
@@ -175,6 +183,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
         minStock: item.minStock || 0,
         unitCost: item.unitCost || 0,
         warehouseId: item.warehouseId || '',
+        currentsupplierId: item.currentsupplierId || '',
         isActive: item.isActive ?? true,
       });
     }
@@ -420,6 +429,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 onChange={(value) => setForm({ ...form, unit: value })}
                 options={[
                   { value: '', label: 'Select...' },
+                  ...(form.unit && !ITEM_UNITS.includes(form.unit)
+                    ? [{ value: form.unit, label: form.unit }]
+                    : []),
                   ...ITEM_UNITS.map((unit) => ({ value: unit, label: unit })),
                 ]}
                 placeholder="Select..."
@@ -437,19 +449,13 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
           <SectionLabel label="INVENTORY" />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            <Field label="Current Stock" required>
+            <Field label="Current Stock" required hint="Use Stock In or Stock Out to change">
               <input
                 type="number"
                 value={form.currentStock}
-                onChange={(e) => setForm({ ...form, currentStock: parseInt(e.target.value) || 0 })}
+                readOnly
                 min="0"
-                style={inputStyle}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = C.teal;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = C.lightGray;
-                }}
+                style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </Field>
 
@@ -470,10 +476,10 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
             </Field>
           </div>
 
-          <SectionLabel label="WAREHOUSE & PRICING" />
+          <SectionLabel label="DEFAULT WAREHOUSE, SUPPLIER & PRICING" />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 20 }}>
-            <Field label="Warehouse" required>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <Field label="Default Warehouse" required hintBelow="Used for PO receipt & stock out">
               <InventoryDropdown
                 value={form.warehouseId}
                 onChange={(value) => setForm({ ...form, warehouseId: value })}
@@ -485,6 +491,27 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                   })),
                 ]}
                 placeholder="Select warehouse..."
+                placeholderWhen=""
+                fullWidth={true}
+                minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
+              />
+            </Field>
+
+            <Field label="Default Supplier" hintBelow="Used for PO creation">
+              <InventoryDropdown
+                value={form.currentsupplierId}
+                onChange={(value) => setForm({ ...form, currentsupplierId: value })}
+                options={[
+                  { value: '', label: 'None' },
+                  ...inventorySuppliers.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                  })),
+                ]}
+                placeholder="None"
                 placeholderWhen=""
                 fullWidth={true}
                 minWidthClass="min-w-0"
@@ -636,7 +663,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
           }
         }
       `}</style>
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>,
     document.body
   );

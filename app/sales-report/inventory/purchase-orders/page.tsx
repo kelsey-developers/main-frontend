@@ -9,7 +9,7 @@ import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
 import GoodsReceiptModal from '../components/GoodsReceiptModal';
-import ToastContainer from '../components/ToastContainer';
+import GoodsReceiptEvidenceImages from '../components/GoodsReceiptEvidenceImages';
 import { useToast } from '../hooks/useToast';
 import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
@@ -28,6 +28,7 @@ type GoodsReceiptSubmitData = {
   receivedBy?: string;
   receiptDate?: string;
   receiptImages?: File[];
+  items?: { productId: string; quantityReceived: number }[];
 };
 
 // ─── Edit PO Modal ────────────────────────────────────────────────────
@@ -455,33 +456,11 @@ function DetailDrawer({
                         </div>
                       )}
 
-                      {/* GR evidence images */}
-                      {gr.evidenceImages && gr.evidenceImages.length > 0 && (
-                        <div className="px-5 py-3.5 border-t border-[#e5e7eb] bg-white">
-                          <div className="text-[10px] font-bold tracking-wider uppercase text-[#9ca3af] mb-2.5">Receipt Evidence</div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                            {gr.evidenceImages.map((imagePath, imageIndex) => (
-                              <button
-                                type="button"
-                                key={`${gr.id}-evidence-${imageIndex}`}
-                                onClick={() =>
-                                  setEvidencePreview({
-                                    path: imagePath,
-                                    label: `${gr.receiptNo} evidence ${imageIndex + 1}`,
-                                  })
-                                }
-                                className="group block rounded-lg overflow-hidden border border-[#e5e7eb] bg-[#f9fafb]"
-                              >
-                                <img
-                                  src={imagePath}
-                                  alt={`${gr.receiptNo} evidence ${imageIndex + 1}`}
-                                  className="w-full h-28 object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                                />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      {/* GR evidence images — fetches from API when not in dataset */}
+                      <GoodsReceiptEvidenceImages
+                        gr={gr}
+                        onPreview={(path, label) => setEvidencePreview({ path, label })}
+                      />
                     </div>
                   ))}
 
@@ -612,7 +591,7 @@ const PurchaseOrdersSkeleton = () => (
 function PurchaseOrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { toasts, removeToast, success, error } = useToast();
+  const { success, error } = useToast();
   const poIdFromQuery = searchParams.get('poId');
   const supplierIdFromQuery = searchParams.get('supplierId');
   const supplierFromQuery = supplierIdFromQuery
@@ -641,7 +620,9 @@ function PurchaseOrdersPageContent() {
       });
 
     const refresh = () => {
-      setPurchaseOrders([...inventoryPurchaseOrders]);
+      void loadInventoryDataset(true).finally(() => {
+        if (isMounted) setPurchaseOrders([...inventoryPurchaseOrders]);
+      });
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -713,10 +694,15 @@ function PurchaseOrdersPageContent() {
 
     const submit = async () => {
       const poLines = inventoryPurchaseOrderLines.filter((line) => line.poId === goodsReceiptModalPO.id);
-      const items = poLines.map((line) => ({
-        productId: line.productId,
-        quantityReceived: Math.max(0, Number(line.quantity - line.receivedQuantity)),
-      })).filter((line) => line.quantityReceived > 0);
+      const items =
+        data.items && data.items.length > 0
+          ? data.items.filter((i) => i.quantityReceived > 0)
+          : poLines
+              .map((line) => ({
+                productId: line.productId,
+                quantityReceived: Math.max(0, Number(line.quantity - line.receivedQuantity)),
+              }))
+              .filter((line) => line.quantityReceived > 0);
 
       if (items.length === 0) {
         alert('All PO line items are already fully received.');
@@ -748,8 +734,13 @@ function PurchaseOrdersPageContent() {
           await apiClient.post(`/api/goods-receipts/${receiptId}/attachments`, formData);
         } catch (uploadError) {
           attachmentUploadFailed = true;
+          const err = uploadError as Error & { status?: number };
+          const is413 = err.status === 413 || (err.message?.toLowerCase().includes('entity too large') ?? false);
           if (process.env.NODE_ENV !== 'production') {
             console.error('Goods receipt attachment upload error:', uploadError);
+          }
+          if (is413) {
+            error('Receipt images are too large. Use smaller images (max 2MB each) or fewer files.');
           }
         }
       }
@@ -776,7 +767,11 @@ function PurchaseOrdersPageContent() {
       if (process.env.NODE_ENV !== 'production') {
         console.error('Goods receipt submit error:', err);
       }
-      const message = err instanceof Error ? err.message : 'We couldn’t create the goods receipt. Please try again.';
+      const e = err as Error & { status?: number };
+      const is413 = e.status === 413 || (e.message?.toLowerCase().includes('entity too large') ?? false);
+      const message = is413
+        ? 'Request too large. Use smaller receipt images (max 2MB each) or fewer files.'
+        : (err instanceof Error ? err.message : 'We couldn’t create the goods receipt. Please try again.');
       error(message);
     });
   };
@@ -788,8 +783,6 @@ function PurchaseOrdersPageContent() {
       await apiClient.patch(`/api/purchase-orders/${editPOTarget.id}`, {
         supplierId: updatedData.supplierId,
         expectedDelivery: updatedData.expectedDelivery,
-      }).catch(() => {
-        // Keep UX non-blocking when endpoint is unavailable.
       });
 
       await loadInventoryDataset(true);
@@ -819,8 +812,6 @@ function PurchaseOrdersPageContent() {
     const run = async () => {
       await apiClient.patch(`/api/purchase-orders/${po.id}`, {
         status: 'CANCELLED',
-      }).catch(() => {
-        // Keep UX non-blocking when endpoint is unavailable.
       });
 
       await loadInventoryDataset(true);
@@ -1225,7 +1216,6 @@ function PurchaseOrdersPageContent() {
           onSave={handleEditPO}
         />
       )}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

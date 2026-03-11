@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { mockDamageAdjustments, mockReplenishmentItems, mockStockMovements } from '../../inventory/lib/mockData';
+import { mockDamageAdjustments, mockReplenishmentItems, mockStockMovements } from '../../inventory/lib/inventoryData';
 import type { StockMovementType } from '../../inventory/types';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
