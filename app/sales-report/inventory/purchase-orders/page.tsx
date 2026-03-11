@@ -736,6 +736,7 @@ function PurchaseOrdersPageContent() {
         throw new Error('Invalid response: missing purchase order');
       }
 
+      const updatedPO = response.purchaseOrder;
       const receiptId = response.goodsReceipt?.id;
       let attachmentUploadFailed = false;
       if (receiptId && data.receiptImages && data.receiptImages.length > 0) {
@@ -756,7 +757,7 @@ function PurchaseOrdersPageContent() {
       await loadInventoryDataset(true);
       setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updated = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === response.purchaseOrder.id)
+      const updated = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === updatedPO.id)
         ?? inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
         ?? null;
 

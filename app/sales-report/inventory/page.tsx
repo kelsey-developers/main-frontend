@@ -54,11 +54,19 @@ export default function InventoryDashboardPage() {
     const onUpdate = () => {
       void loadDashboardData(false);
     };
+    const onLoadFailed = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (isMounted && detail?.message) {
+        showError(detail.message);
+      }
+    };
     window.addEventListener('inventory:movement-updated', onUpdate);
+    window.addEventListener('inventory:dataset-load-failed', onLoadFailed);
 
     return () => {
       isMounted = false;
       window.removeEventListener('inventory:movement-updated', onUpdate);
+      window.removeEventListener('inventory:dataset-load-failed', onLoadFailed);
     };
   }, []);
 

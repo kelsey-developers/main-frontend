@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,11 +17,30 @@ import {
   type WarehouseInventoryBalanceRow,
   type WarehouseMovementRow,
 } from '../lib/inventoryDataStore';
-import { apiClient } from '@/lib/api/client';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
+import { apiClient } from '@/lib/api/client';
 
 type Warehouse = WarehouseDirectoryRecord;
 type SortKey = 'name' | 'mostStock' | 'mostLowStock';
+const LOCAL_WAREHOUSES_KEY = 'inventory.localWarehouses.v1';
+
+const readLocalWarehouses = (): Warehouse[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_WAREHOUSES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Warehouse[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((row) => row && typeof row.id === 'string' && typeof row.name === 'string');
+  } catch {
+    return [];
+  }
+};
+
+const writeLocalWarehouses = (rows: Warehouse[]) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(LOCAL_WAREHOUSES_KEY, JSON.stringify(rows));
+};
 
 const formatRecordedDateTime = (value?: string) => {
   const base = value ? new Date(value) : new Date();
@@ -702,6 +721,7 @@ export default function WarehousesPage() {
   const router = useRouter();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const sessionOnlyWarehouses = useRef<Warehouse[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -752,47 +772,75 @@ export default function WarehousesPage() {
     return { totalWarehouses, activeCount, inactiveCount, lowStockTotal };
   }, [warehouses]);
 
-  const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
-    const run = async () => {
-      if (editTarget) {
-        // For now, keep edits local; a full backend PATCH can be added later.
-        setWarehouses((prev) =>
-          prev.map((warehouse) =>
-            warehouse.id === editTarget.id
-              ? { ...warehouse, ...data }
-              : warehouse
-          )
-        );
-        return;
-      }
+  const applyWarehouseList = () => {
+    const backendIds = new Set(inventoryWarehouseDirectory.map((row) => row.id));
+    const localOnly = sessionOnlyWarehouses.current.filter((row) => !backendIds.has(row.id));
+    setWarehouses([...localOnly, ...inventoryWarehouseDirectory]);
+  };
 
-      // Create warehouse in backend so it persists and is reflected in the inventory dataset.
+  const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
+    if (editTarget) {
+      setWarehouses((prev) =>
+        prev.map((warehouse) =>
+          warehouse.id === editTarget.id
+            ? { ...warehouse, ...data }
+            : warehouse
+        )
+      );
+      if (editTarget.id.startsWith('wd-')) {
+        sessionOnlyWarehouses.current = sessionOnlyWarehouses.current.map((warehouse) =>
+          warehouse.id === editTarget.id
+            ? { ...warehouse, ...data }
+            : warehouse
+        );
+        writeLocalWarehouses(sessionOnlyWarehouses.current);
+      }
+      return;
+    }
+
+    const run = async () => {
       const response = await apiClient.post<{
         warehouse: { id: string; name: string; location: string; createdAt: string };
       }>('/api/inventory/warehouses', {
         name: data.name,
-        location: data.location,
+        location: data.location ?? '',
       });
 
       await loadInventoryDataset(true);
-      setWarehouses([...inventoryWarehouseDirectory]);
+      applyWarehouseList();
       setSelectedWarehouseId(response.warehouse.id);
     };
 
-    void run().catch((error) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Failed to save warehouse', error);
+    run().catch((err) => {
+      const status = (err as { status?: number }).status;
+      const msg = err instanceof Error ? err.message : '';
+      const routeMissing = status === 404 || msg.toLowerCase().includes('route not found');
+      const localWarehouse: Warehouse = {
+        id: `wd-${Date.now()}`,
+        name: data.name,
+        location: data.location ?? '',
+        description: data.description ?? '',
+        isActive: data.isActive ?? true,
+        inventoryBalances: [],
+        stockMovements: [],
+      };
+      if (routeMissing) {
+        sessionOnlyWarehouses.current = [localWarehouse, ...sessionOnlyWarehouses.current];
+        writeLocalWarehouses(sessionOnlyWarehouses.current);
+        setWarehouses((prev) => [localWarehouse, ...prev]);
+        setSelectedWarehouseId(localWarehouse.id);
       }
     });
   };
 
   useEffect(() => {
     let isMounted = true;
+    sessionOnlyWarehouses.current = readLocalWarehouses();
 
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setWarehouses([...inventoryWarehouseDirectory]);
+        applyWarehouseList();
         setIsLoading(false);
       });
 
@@ -803,8 +851,7 @@ export default function WarehousesPage() {
 
   useEffect(() => {
     const refresh = () => {
-      // Create a new top-level array reference so React re-renders updated warehouse movement history.
-      setWarehouses([...inventoryWarehouseDirectory]);
+      applyWarehouseList();
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -927,7 +974,7 @@ export default function WarehousesPage() {
 
     // Recompute derived values (shortfall, low stock status, etc.)
     void recomputeAllInventoryDerivedValues().finally(() => {
-      setWarehouses([...inventoryWarehouseDirectory]);
+      applyWarehouseList();
     });
   };
 
