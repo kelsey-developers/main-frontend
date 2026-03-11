@@ -230,7 +230,6 @@ export default function SingleDatePicker({
                     onChange(formatDate(day));
                     setIsOpen(false);
                   }}
-                  disabled={disabled}
                   className={`
                     h-6 w-6 rounded-lg text-xs transition-all
                     ${!currentMonth ? 'text-gray-300' : 'text-gray-900'}

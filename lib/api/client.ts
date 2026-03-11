@@ -162,7 +162,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   const raw = await res.text();
-  const isHtmlErrorPage =
+  const rawLooksLikeHtml =
     typeof raw === 'string' &&
     raw.length > 0 &&
     (raw.trimStart().toLowerCase().startsWith('<!doctype') ||
@@ -190,7 +190,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
           ? rawMessage
           : getUserFriendlyErrorMessage(res.status, raw));
 
-    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && isHtmlErrorPage(raw)) {
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && rawLooksLikeHtml) {
       console.warn(`[apiClient] ${res.status} HTML error page received (${raw.length} chars). Backend may be down.`);
     }
 

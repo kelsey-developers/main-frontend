@@ -55,12 +55,11 @@ async function forwardToUpstream(
     headers.set('content-type', 'application/json');
   }
 
-  let body: string | Uint8Array | undefined;
+  let body: string | ArrayBuffer | undefined;
   if (method !== 'GET' && method !== 'HEAD') {
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
-      const arrayBuffer = await request.arrayBuffer();
-      body = new Uint8Array(arrayBuffer);
+      body = await request.arrayBuffer();
     } else {
       const raw = await request.text();
       body = raw || undefined;
