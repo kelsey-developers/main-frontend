@@ -168,15 +168,6 @@ const deriveSupplierDirectory = (): SupplierDirectoryRecord[] => {
   });
 };
 
-const deriveWarehousesFromDirectory = (): Warehouse[] => {
-  return mockWarehouseDirectoryData.map((warehouse) => ({
-    id: warehouse.id,
-    name: warehouse.name,
-    location: warehouse.location,
-    createdAt: warehouse.stockMovements[0]?.date || new Date().toISOString().slice(0, 10),
-  }));
-};
-
 const deriveDashboardSummary = (): InventoryDashboardSummary => {
   const totalStocks = mockReplenishmentItems.reduce((sum, item) => sum + item.currentStock, 0);
   const lowStockCount = mockReplenishmentItems.filter((item) => item.currentStock < item.minStock).length;
@@ -249,11 +240,8 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockUnitItems, dataset.unitItems);
   replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
 
-  if (dataset.warehouses && dataset.warehouses.length > 0) {
-    replaceArray(mockWarehouses, dataset.warehouses);
-  } else {
-    replaceArray(mockWarehouses, deriveWarehousesFromDirectory());
-  }
+  // Warehouses must always reflect exactly what the backend sends.
+  replaceArray(mockWarehouses, dataset.warehouses ?? []);
 
   if (dataset.supplierDirectoryData && dataset.supplierDirectoryData.length > 0) {
     replaceArray(mockSupplierDirectoryData, dataset.supplierDirectoryData);

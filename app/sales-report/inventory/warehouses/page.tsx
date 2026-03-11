@@ -17,6 +17,7 @@ import {
   type WarehouseInventoryBalanceRow,
   type WarehouseMovementRow,
 } from '../lib/inventoryDataStore';
+import { apiClient } from '@/lib/api/client';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 type Warehouse = WarehouseDirectoryRecord;
@@ -752,26 +753,37 @@ export default function WarehousesPage() {
   }, [warehouses]);
 
   const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
-    if (editTarget) {
-      setWarehouses((prev) =>
-        prev.map((warehouse) =>
-          warehouse.id === editTarget.id
-            ? { ...warehouse, ...data }
-            : warehouse
-        )
-      );
-      return;
-    }
+    const run = async () => {
+      if (editTarget) {
+        // For now, keep edits local; a full backend PATCH can be added later.
+        setWarehouses((prev) =>
+          prev.map((warehouse) =>
+            warehouse.id === editTarget.id
+              ? { ...warehouse, ...data }
+              : warehouse
+          )
+        );
+        return;
+      }
 
-    const newWarehouse: Warehouse = {
-      id: `wd-${Date.now()}`,
-      ...data,
-      inventoryBalances: [],
-      stockMovements: [],
+      // Create warehouse in backend so it persists and is reflected in the inventory dataset.
+      const response = await apiClient.post<{
+        warehouse: { id: string; name: string; location: string; createdAt: string };
+      }>('/api/inventory/warehouses', {
+        name: data.name,
+        location: data.location,
+      });
+
+      await loadInventoryDataset(true);
+      setWarehouses([...inventoryWarehouseDirectory]);
+      setSelectedWarehouseId(response.warehouse.id);
     };
 
-    setWarehouses((prev) => [newWarehouse, ...prev]);
-    setSelectedWarehouseId(newWarehouse.id);
+    void run().catch((error) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Failed to save warehouse', error);
+      }
+    });
   };
 
   useEffect(() => {

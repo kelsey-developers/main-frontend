@@ -140,8 +140,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   const raw = await res.text();
-  let data: unknown = {};
+  const isHtmlErrorPage =
+    typeof raw === 'string' &&
+    raw.length > 0 &&
+    (raw.trimStart().toLowerCase().startsWith('<!doctype') ||
+      raw.trimStart().toLowerCase().startsWith('<html'));
 
+  let data: unknown = {};
   if (raw) {
     try {
       data = JSON.parse(raw);
@@ -152,10 +157,18 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   if (!res.ok) {
     const payload = (typeof data === 'object' && data !== null) ? data as Record<string, unknown> : {};
-    const message =
-      (typeof payload.error === 'string' && payload.error.trim()) ||
-      (typeof payload.message === 'string' && payload.message.trim()) ||
-      `Request failed with status ${res.status}`;
+    let message: string;
+    if (isHtmlErrorPage) {
+      message =
+        res.status >= 500
+          ? 'Server or tunnel error. The backend or Cloudflare Tunnel may be down — try again in a few minutes.'
+          : `Request failed (${res.status}). The server returned an error page instead of data.`;
+    } else {
+      message =
+        (typeof payload.error === 'string' && payload.error.trim()) ||
+        (typeof payload.message === 'string' && payload.message.trim()) ||
+        `Request failed with status ${res.status}`;
+    }
 
     const err = new Error(message) as Error & { status?: number; overlapping?: boolean };
     err.status = res.status;

@@ -723,8 +723,7 @@ function PurchaseOrdersPageContent() {
         return;
       }
 
-      const response = await apiClient.post<{ purchaseOrder: PurchaseOrder; goodsReceipt?: { id: string } }>(
-        // create goods receipt first, then upload receipt photos to that receipt
+      const response = await apiClient.post<{ purchaseOrder?: PurchaseOrder; goodsReceipt?: { id: string } }>(
         `/api/purchase-orders/${goodsReceiptModalPO.id}/receive`,
         {
           warehouseId: data.warehouseId,
@@ -732,6 +731,10 @@ function PurchaseOrdersPageContent() {
           items,
         }
       );
+
+      if (!response?.purchaseOrder) {
+        throw new Error('Invalid response: missing purchase order');
+      }
 
       const receiptId = response.goodsReceipt?.id;
       let attachmentUploadFailed = false;
@@ -772,7 +775,8 @@ function PurchaseOrdersPageContent() {
       if (process.env.NODE_ENV !== 'production') {
         console.error('Goods receipt submit error:', err);
       }
-      error('We couldn’t create the goods receipt. Please try again.');
+      const message = err instanceof Error ? err.message : 'We couldn’t create the goods receipt. Please try again.';
+      error(message);
     });
   };
 

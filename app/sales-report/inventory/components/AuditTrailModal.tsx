@@ -96,10 +96,10 @@ function useModalNavbarHide() {
 // TODO(backend): Replace this mock object with API response data once endpoint is ready.
 // -----------------------------------------------------------------------------
 const SAMPLE_ITEM: AuditItem = {
-  name: 'Towels',
-  sku: 'TWL-001',
-  warehouse: 'Main Warehouse',
-  supplier: 'Clean & Co',
+  name: 'Sample Item',
+  sku: 'SAMPLE-001',
+  warehouse: 'Warehouse',
+  supplier: 'Sample Supplier',
   unitCost: 150,
   totalValue: 1200,
   status: 'Active',

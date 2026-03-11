@@ -90,7 +90,7 @@ export default function GoodsReceiptModal({
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [warehouseId, setWarehouseId] = useState('');
-  const [receivedBy, setReceivedBy] = useState(authState.userProfile?.fullname || '');
+  const [receivedBy, setReceivedBy] = useState(authState.userProfile?.fullname || 'Staff');
   const [receiptDate, setReceiptDate] = useState(getTodayISO());
   const [notes, setNotes] = useState('');
 
@@ -154,14 +154,14 @@ export default function GoodsReceiptModal({
   const { toasts, removeToast, error, success } = useToast();
 
   const handleSubmit = () => {
-    if (!warehouseId || !receivedBy || !receiptDate) {
-      error('Please fill in all required fields');
+    if (!warehouseId || !receiptDate) {
+      error('Please select a warehouse and receipt date.');
       return;
     }
 
     onSubmit({
       warehouseId,
-      receivedBy,
+      receivedBy: (receivedBy || 'Staff').trim(),
       receiptDate,
       notes,
       receiptImages,
@@ -280,13 +280,13 @@ export default function GoodsReceiptModal({
               gap: 12,
             }}
           >
-            <Field label="Received By" required>
+            <Field label="Received By" hint="Optional until login is enabled. Default: Staff">
               <input
                 type="text"
                 value={receivedBy}
-                readOnly
-                placeholder="Receiver name"
-                style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+                onChange={e => setReceivedBy(e.target.value)}
+                placeholder="e.g. Staff or your name"
+                style={inputStyle}
               />
             </Field>
             <Field label="Receipt Date" required>
