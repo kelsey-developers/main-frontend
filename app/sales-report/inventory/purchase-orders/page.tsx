@@ -723,7 +723,7 @@ function PurchaseOrdersPageContent() {
         return;
       }
 
-      const response = await apiClient.post<{ purchaseOrder: PurchaseOrder }>(
+      const response = await apiClient.post<{ purchaseOrder?: PurchaseOrder; goodsReceipt?: { id: string } }>(
         `/api/purchase-orders/${goodsReceiptModalPO.id}/receive`,
         {
           warehouseId: data.warehouseId,
@@ -732,10 +732,32 @@ function PurchaseOrdersPageContent() {
         }
       );
 
+      if (!response?.purchaseOrder) {
+        throw new Error('Invalid response: missing purchase order');
+      }
+
+      const updatedPO = response.purchaseOrder;
+      const receiptId = response.goodsReceipt?.id;
+      let attachmentUploadFailed = false;
+      if (receiptId && data.receiptImages && data.receiptImages.length > 0) {
+        const formData = new FormData();
+        data.receiptImages.forEach((file) => {
+          formData.append('files', file);
+        });
+        try {
+          await apiClient.post(`/api/goods-receipts/${receiptId}/attachments`, formData);
+        } catch (uploadError) {
+          attachmentUploadFailed = true;
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('Goods receipt attachment upload error:', uploadError);
+          }
+        }
+      }
+
       await loadInventoryDataset(true);
       setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updated = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === response.purchaseOrder.id)
+      const updated = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === updatedPO.id)
         ?? inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
         ?? null;
 
@@ -743,14 +765,19 @@ function PurchaseOrdersPageContent() {
         setSelectedPO(updated);
       }
 
-      success('Goods Receipt created successfully.');
+      if (attachmentUploadFailed) {
+        error('Goods receipt was created, but photo upload failed. You can re-upload photos later.');
+      } else {
+        success('Goods Receipt created successfully.');
+      }
     };
 
     void submit().catch((err) => {
       if (process.env.NODE_ENV !== 'production') {
         console.error('Goods receipt submit error:', err);
       }
-      error('We couldn’t create the goods receipt. Please try again.');
+      const message = err instanceof Error ? err.message : 'We couldn’t create the goods receipt. Please try again.';
+      error(message);
     });
   };
 

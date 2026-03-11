@@ -135,6 +135,33 @@ const replaceArray = <T>(target: T[], next: T[] | undefined) => {
   target.splice(0, target.length, ...(next ?? []));
 };
 
+const LOCAL_WAREHOUSES_KEY = 'inventory.localWarehouses.v1';
+
+const readLocalWarehouses = (): WarehouseDirectoryRecord[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_WAREHOUSES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<WarehouseDirectoryRecord>[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((row): row is Partial<WarehouseDirectoryRecord> & { id: string; name: string } =>
+        Boolean(row && typeof row.id === 'string' && typeof row.name === 'string')
+      )
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        location: row.location ?? '',
+        description: row.description ?? '',
+        isActive: row.isActive ?? true,
+        inventoryBalances: Array.isArray(row.inventoryBalances) ? row.inventoryBalances : [],
+        stockMovements: Array.isArray(row.stockMovements) ? row.stockMovements : [],
+      }));
+  } catch {
+    return [];
+  }
+};
+
 const formatDateLabel = (raw: string) => {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
@@ -166,15 +193,6 @@ const deriveSupplierDirectory = (): SupplierDirectoryRecord[] => {
       notes: '',
     };
   });
-};
-
-const deriveWarehousesFromDirectory = (): Warehouse[] => {
-  return mockWarehouseDirectoryData.map((warehouse) => ({
-    id: warehouse.id,
-    name: warehouse.name,
-    location: warehouse.location,
-    createdAt: warehouse.stockMovements[0]?.date || new Date().toISOString().slice(0, 10),
-  }));
 };
 
 const deriveDashboardSummary = (): InventoryDashboardSummary => {
@@ -239,6 +257,14 @@ const hasMeaningfulDataset = (dataset: InventoryDatasetResponse) => {
 
 const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockWarehouseDirectoryData, dataset.warehouseDirectoryData);
+  const localWarehouses = readLocalWarehouses();
+  if (localWarehouses.length > 0) {
+    const backendIds = new Set(mockWarehouseDirectoryData.map((warehouse) => warehouse.id));
+    const localOnly = localWarehouses.filter((warehouse) => !backendIds.has(warehouse.id));
+    if (localOnly.length > 0) {
+      mockWarehouseDirectoryData.splice(0, 0, ...localOnly);
+    }
+  }
   replaceArray(mockSuppliers, dataset.suppliers);
   replaceArray(mockPurchaseOrders, dataset.purchaseOrders);
   replaceArray(mockPurchaseOrderLines, dataset.purchaseOrderLines);
@@ -249,10 +275,22 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockUnitItems, dataset.unitItems);
   replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
 
-  if (dataset.warehouses && dataset.warehouses.length > 0) {
-    replaceArray(mockWarehouses, dataset.warehouses);
-  } else {
-    replaceArray(mockWarehouses, deriveWarehousesFromDirectory());
+  // Warehouses reflect backend first, then include locally persisted additions
+  // when backend create endpoint is not available yet.
+  replaceArray(mockWarehouses, dataset.warehouses ?? []);
+  if (localWarehouses.length > 0) {
+    const knownIds = new Set(mockWarehouses.map((warehouse) => warehouse.id));
+    const localWarehouseRows: Warehouse[] = localWarehouses
+      .filter((warehouse) => !knownIds.has(warehouse.id))
+      .map((warehouse) => ({
+        id: warehouse.id,
+        name: warehouse.name,
+        location: warehouse.location,
+        createdAt: new Date().toISOString().slice(0, 10),
+      }));
+    if (localWarehouseRows.length > 0) {
+      mockWarehouses.splice(0, 0, ...localWarehouseRows);
+    }
   }
 
   if (dataset.supplierDirectoryData && dataset.supplierDirectoryData.length > 0) {
@@ -268,14 +306,16 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   mockDashboardSummary.replenishmentNeeded = summary.replenishmentNeeded;
 };
 
-const fetchInventoryDataset = async (): Promise<InventoryDatasetResponse> => {
+/** Fetches dataset from API. Returns data or a failure marker so we avoid unhandled rejections and console noise. */
+const fetchInventoryDataset = async (): Promise<InventoryDatasetResponse & { _fetchFailed?: boolean; _message?: string }> => {
   try {
     return await apiClient.get<InventoryDatasetResponse>('/api/inventory/dataset');
-  } catch (error) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('Inventory dataset request failed, keeping last available inventory snapshot.', error);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Request failed';
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('inventory:dataset-load-failed', { detail: { message } }));
     }
-    return {};
+    return { _fetchFailed: true, _message: message };
   }
 };
 
@@ -332,32 +372,21 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
 
   datasetLoadPromise = (async () => {
     const dataset = await fetchInventoryDataset();
-    applyDataset(dataset);
+    if ((dataset as { _fetchFailed?: boolean })._fetchFailed) {
+      isDatasetLoaded = false;
+      emitInventoryDatasetUpdated();
+      return;
+    }
+    applyDataset(dataset as InventoryDatasetResponse);
     const externalUnits = await fetchExternalUnits();
     if (externalUnits) {
       syncUnitsFromExternalSource(externalUnits);
     } else {
       replaceArray(inventoryUnitsState, []);
     }
-    // Only mark as loaded if the API returned something meaningful.
-    // This prevents "empty fallback" responses from blocking future fetches,
-    // which can make the dashboard appear blank until another page forces refresh.
     isDatasetLoaded = hasMeaningfulDataset(dataset);
     emitInventoryDatasetUpdated();
   })()
-    .catch((error) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Failed to load inventory dataset', error);
-      }
-      // Keep the inventory UI interactive even when API is temporarily unreachable.
-      if (!isDatasetLoaded) {
-        const fallbackSummary = deriveDashboardSummary();
-        mockDashboardSummary.totalItems = fallbackSummary.totalItems;
-        mockDashboardSummary.totalStocks = fallbackSummary.totalStocks;
-        mockDashboardSummary.lowStockCount = fallbackSummary.lowStockCount;
-        mockDashboardSummary.replenishmentNeeded = fallbackSummary.replenishmentNeeded;
-      }
-    })
     .finally(() => {
       datasetLoadPromise = null;
     });

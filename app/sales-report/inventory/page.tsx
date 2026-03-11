@@ -15,8 +15,11 @@ import {
   inventoryUnitItems,
 } from './lib/inventoryDataStore';
 import InventoryDashboardLinks from './components/InventoryDashboardLinks';
+import ToastContainer from './components/ToastContainer';
+import { useToast } from './hooks/useToast';
 
 export default function InventoryDashboardPage() {
+  const { toasts, removeToast, error: showError } = useToast();
   const [refreshTick, setRefreshTick] = useState(0);
   const [isLoading, setIsLoading] = useState(() => !isInventoryDatasetLoaded());
   const [initialLoadDone, setInitialLoadDone] = useState(() => isInventoryDatasetLoaded());
@@ -28,17 +31,22 @@ export default function InventoryDashboardPage() {
     let isMounted = true;
     const loadDashboardData = async (showBlockingLoader: boolean) => {
       if (showBlockingLoader) setIsLoading(true);
-      await loadInventoryDataset(true);
-
-      // Retry once if first pass returned empty snapshot.
-      if (inventoryItems.length === 0 && inventoryUnits.length === 0) {
+      try {
         await loadInventoryDataset(true);
+        if (isMounted && inventoryItems.length === 0 && inventoryUnits.length === 0) {
+          await loadInventoryDataset(true);
+        }
+      } catch (err) {
+        if (isMounted) {
+          showError('Could not load inventory data. Check that the backend is running and MARKET_API_URL is correct.');
+        }
+      } finally {
+        if (isMounted) {
+          setRefreshTick((tick) => tick + 1);
+          setInitialLoadDone(true);
+          if (showBlockingLoader) setIsLoading(false);
+        }
       }
-
-      if (!isMounted) return;
-      setRefreshTick((tick) => tick + 1);
-      setInitialLoadDone(true);
-      if (showBlockingLoader) setIsLoading(false);
     };
 
     void loadDashboardData(!isInventoryDatasetLoaded());
@@ -46,11 +54,19 @@ export default function InventoryDashboardPage() {
     const onUpdate = () => {
       void loadDashboardData(false);
     };
+    const onLoadFailed = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (isMounted && detail?.message) {
+        showError(detail.message);
+      }
+    };
     window.addEventListener('inventory:movement-updated', onUpdate);
+    window.addEventListener('inventory:dataset-load-failed', onLoadFailed);
 
     return () => {
       isMounted = false;
       window.removeEventListener('inventory:movement-updated', onUpdate);
+      window.removeEventListener('inventory:dataset-load-failed', onLoadFailed);
     };
   }, []);
 
@@ -193,6 +209,7 @@ export default function InventoryDashboardPage() {
           </div>
         </div>
       </div>
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }
