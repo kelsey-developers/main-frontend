@@ -1,35 +1,50 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import {
-  mockReplenishmentItems,
-  mockWarehouseDirectoryData,
-} from '@/app/sales-report/inventory/lib/inventoryData';
-
-const itemSelectOptions = [
-  { value: '', label: 'Select item…' },
-  ...mockReplenishmentItems.map((p) => ({
-    value: p.id,
-    label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
-  })),
-];
+  inventoryItems,
+  inventoryWarehouseDirectory,
+  loadInventoryDataset,
+} from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 /** One line: product (from inventory) */
 type OutOfStockLine = { productId: string };
 
 const emptyLine: OutOfStockLine = { productId: '' };
 
-const warehouseOptions = [
-  { value: '', label: 'Select warehouse…' },
-  ...mockWarehouseDirectoryData
-    .filter((wh) => wh.isActive)
-    .map((w) => ({ value: w.id, label: w.name })),
-];
-
 export default function HousekeepingOutOfStockPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const itemSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Select item…' },
+      ...inventoryItems.map((p) => ({
+        value: p.id,
+        label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
+      })),
+    ],
+    [refreshTick]
+  );
+
+  const warehouseOptions = useMemo(
+    () => [
+      { value: '', label: 'Select warehouse…' },
+      ...inventoryWarehouseDirectory
+        .filter((wh) => wh.isActive)
+        .map((w) => ({ value: w.id, label: w.name })),
+    ],
+    [refreshTick]
+  );
+
+  useEffect(() => {
+    void loadInventoryDataset();
+    const onUpdate = () => setRefreshTick((t) => t + 1);
+    window.addEventListener('inventory:movement-updated', onUpdate);
+    return () => window.removeEventListener('inventory:movement-updated', onUpdate);
+  }, []);
 
   const [warehouseId, setWarehouseId] = useState('');
   const [date, setDate] = useState(todayStr);
@@ -128,7 +143,7 @@ export default function HousekeepingOutOfStockPage() {
           </p>
           <div className="space-y-3">
             {lines.map((line, index) => {
-              const product = mockReplenishmentItems.find((p) => p.id === line.productId);
+              const product = inventoryItems.find((p) => p.id === line.productId);
               return (
                 <div
                   key={index}

@@ -67,24 +67,66 @@ async function forwardToUpstream(
     }
   }
 
-  const res = await fetch(upstreamUrl, {
-    method,
-    headers,
-    ...(body !== undefined ? { body } : {}),
-  });
+  const MAX_RETRIES = 2;
+  const RETRY_DELAY_MS = 500;
 
-  const text = await res.text();
-  const isHtml = looksLikeHtml(text) || looksLikeNgrokErrorPage(text);
-  let data: unknown = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
-    }
+  function isRetryableNetworkError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const code =
+      (err as NodeJS.ErrnoException).code ??
+      (err.cause && typeof err.cause === 'object' && 'code' in err.cause
+        ? (err.cause as { code: string }).code
+        : undefined);
+    const msg = err.message.toLowerCase();
+    const causeMsg =
+      err.cause instanceof Error ? err.cause.message.toLowerCase() : '';
+    return (
+      code === 'ECONNRESET' ||
+      code === 'ECONNREFUSED' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ENOTFOUND' ||
+      msg.includes('fetch failed') ||
+      msg.includes('network') ||
+      causeMsg.includes('socket disconnected') ||
+      causeMsg.includes('connection')
+    );
   }
 
-  return { status: res.status, data, isHtml, rawText: text };
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(upstreamUrl, {
+        method,
+        headers,
+        ...(body !== undefined ? { body } : {}),
+      });
+      const text = await res.text();
+      const isHtml = looksLikeHtml(text) || looksLikeNgrokErrorPage(text);
+      let data: unknown = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+      return { status: res.status, data, isHtml, rawText: text };
+    } catch (err) {
+      lastError = err;
+      if (attempt < MAX_RETRIES && isRetryableNetworkError(err)) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[market proxy] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${upstreamUrl}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export async function proxyMarketApi(

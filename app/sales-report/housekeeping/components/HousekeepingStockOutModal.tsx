@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import {
   inventoryItems,
   inventoryWarehouseDirectory,
   inventoryUnits,
+  loadInventoryDataset,
 } from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 const C = {
@@ -42,14 +43,6 @@ const BOOKINGS = [
   { id: 'b1', code: 'BK-2025-001', guest: 'Juan dela Cruz', checkIn: 'Mar 08', checkOut: 'Mar 12', unit: 'Unit 101' },
   { id: 'b2', code: 'BK-2025-002', guest: 'Maria Santos', checkIn: 'Mar 09', checkOut: 'Mar 11', unit: 'Unit 201' },
   { id: 'b3', code: 'BK-2025-003', guest: 'Robert Kim', checkIn: 'Mar 10', checkOut: 'Mar 14', unit: 'Unit 301' },
-];
-
-const itemSelectOptions = [
-  { value: '', label: 'Select item…' },
-  ...inventoryItems.map((p) => ({
-    value: p.id,
-    label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
-  })),
 ];
 
 const inputStyle: React.CSSProperties = {
@@ -135,12 +128,14 @@ function LineItemRow({
   onUpdate,
   onRemove,
   isFirst,
+  itemSelectOptions,
 }: {
   item: LineItem;
   index: number;
   onUpdate: (i: number, k: keyof LineItem, v: string) => void;
   onRemove: (i: number) => void;
   isFirst: boolean;
+  itemSelectOptions: Array<{ value: string; label: string }>;
 }) {
   const product = inventoryItems.find((p) => p.id === item.productId);
   const over = !!(product && item.quantity && parseInt(item.quantity, 10) > product.currentStock);
@@ -257,6 +252,7 @@ interface HousekeepingStockOutModalProps {
 
 export default function HousekeepingStockOutModal({ onClose }: HousekeepingStockOutModalProps) {
   const [visible, setVisible] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [confirmedBy, setConfirmedBy] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [unit, setUnit] = useState('');
@@ -266,6 +262,42 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
+
+  const itemSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Select item…' },
+      ...inventoryItems.map((p) => ({
+        value: p.id,
+        label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
+      })),
+    ],
+    [refreshTick]
+  );
+
+  const unitOptions = useMemo(
+    () => [
+      { value: '', label: 'Select unit…' },
+      ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
+    ],
+    [refreshTick]
+  );
+
+  const warehouseOptions = useMemo(
+    () => [
+      { value: '', label: 'Select warehouse…' },
+      ...inventoryWarehouseDirectory
+        .filter((wh) => wh.isActive)
+        .map((w) => ({ value: w.id, label: w.name })),
+    ],
+    [refreshTick]
+  );
+
+  useEffect(() => {
+    void loadInventoryDataset();
+    const onUpdate = () => setRefreshTick((t) => t + 1);
+    window.addEventListener('inventory:movement-updated', onUpdate);
+    return () => window.removeEventListener('inventory:movement-updated', onUpdate);
+  }, []);
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -303,7 +335,6 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
   };
 
   const bk = BOOKINGS.find((b) => b.id === booking);
-  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
   const grad = `linear-gradient(135deg, ${C.unGrad1}, ${C.unGrad2})`;
 
   return (
@@ -448,10 +479,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
               <InventoryDropdown
                 value={unit}
                 onChange={setUnit}
-                options={[
-                  { value: '', label: 'Select unit…' },
-                  ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
-                ]}
+                options={unitOptions}
                 placeholder="Select unit…"
                 placeholderWhen=""
                 hideIcon
@@ -550,10 +578,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
               <InventoryDropdown
                 value={warehouse}
                 onChange={setWarehouse}
-                options={[
-                  { value: '', label: 'Select warehouse…' },
-                  ...warehouses.map((w) => ({ value: w.id, label: w.name })),
-                ]}
+                options={warehouseOptions}
                 placeholder="Select warehouse…"
                 placeholderWhen=""
                 hideIcon
@@ -590,6 +615,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                 onUpdate={updateItem}
                 onRemove={removeItem}
                 isFirst={i === 0}
+                itemSelectOptions={itemSelectOptions}
               />
             ))}
           </div>

@@ -2,14 +2,14 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { mockPurchaseOrders, mockReplenishmentItems, mockSuppliers } from '../../inventory/lib/inventoryData';
+import { inventoryPurchaseOrders, inventoryItems, inventorySuppliers } from '../../inventory/lib/inventoryDataStore';
 import type { PurchaseOrder } from '../../inventory/types';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
 type POStatus = PurchaseOrder['status'];
 
 export default function AdminReplenishmentPage() {
-  const [orders, setOrders] = useState<PurchaseOrder[]>(() => [...mockPurchaseOrders]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(() => [...inventoryPurchaseOrders]);
   const [selectedItemId, setSelectedItemId] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [quickQty, setQuickQty] = useState('');
@@ -18,7 +18,7 @@ export default function AdminReplenishmentPage() {
   const [workflowSearch, setWorkflowSearch] = useState('');
 
   const lowStockItems = useMemo(
-    () => mockReplenishmentItems.filter((item) => item.shortfall > 0).slice(0, 8),
+    () => inventoryItems.filter((item) => item.shortfall > 0).slice(0, 8),
     []
   );
 
@@ -35,7 +35,7 @@ export default function AdminReplenishmentPage() {
 
   const createQuickPO = () => {
     const quantity = Number(quickQty);
-    const item = mockReplenishmentItems.find((entry) => entry.id === selectedItemId);
+    const item = inventoryItems.find((entry) => entry.id === selectedItemId);
     if (!item || !selectedSupplierId || !Number.isFinite(quantity) || quantity <= 0) {
       return;
     }
@@ -82,7 +82,7 @@ export default function AdminReplenishmentPage() {
         return true;
       }
 
-      const supplierName = mockSuppliers.find((entry) => entry.id === order.supplierId)?.name ?? '';
+      const supplierName = inventorySuppliers.find((entry) => entry.id === order.supplierId)?.name ?? '';
       return (
         order.id.toLowerCase().includes(normalizedSearch) ||
         supplierName.toLowerCase().includes(normalizedSearch)
@@ -159,7 +159,7 @@ export default function AdminReplenishmentPage() {
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
             >
               <option value="">Select supplier</option>
-              {mockSuppliers.map((supplier) => (
+              {inventorySuppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
                   {supplier.name}
                 </option>
@@ -217,7 +217,7 @@ export default function AdminReplenishmentPage() {
                   aria-label="Filter by supplier"
                 >
                   <option value="all">All suppliers</option>
-                  {mockSuppliers.map((supplier) => (
+                  {inventorySuppliers.map((supplier) => (
                     <option key={supplier.id} value={supplier.id}>
                       {supplier.name}
                     </option>
@@ -266,7 +266,7 @@ export default function AdminReplenishmentPage() {
               </thead>
               <tbody>
                 {filteredOrders.map((order) => {
-                  const supplier = mockSuppliers.find((entry) => entry.id === order.supplierId);
+                  const supplier = inventorySuppliers.find((entry) => entry.id === order.supplierId);
                   return (
                     <tr key={order.id} className="border-b border-gray-100 last:border-b-0">
                       <td className="px-4 py-3 font-medium text-gray-900">{order.id.toUpperCase()}</td>

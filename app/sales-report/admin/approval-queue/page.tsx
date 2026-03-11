@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { mockDamageAdjustments, mockReplenishmentItems, mockStockMovements } from '../../inventory/lib/inventoryData';
+import { inventoryDamageAdjustments, inventoryItems, inventoryStockMovements } from '../../inventory/lib/inventoryDataStore';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
 type ApprovalKind = 'stock-out' | 'write-off' | 'adjustment' | 'negative-override';
@@ -28,7 +28,7 @@ const initialRequests: ApprovalRequest[] = [
     id: 'aq-001',
     kind: 'stock-out',
     risk: 'high',
-    itemName: mockReplenishmentItems[0]?.name ?? 'Towels',
+    itemName: inventoryItems[0]?.name ?? 'Towels',
     quantity: 28,
     reason: 'Bulk room turnover for long-stay block booking.',
     requestedBy: 'Housekeeping Lead',
@@ -40,7 +40,7 @@ const initialRequests: ApprovalRequest[] = [
     id: 'aq-002',
     kind: 'write-off',
     risk: 'high',
-    itemName: mockReplenishmentItems[14]?.name ?? 'Iron',
+    itemName: inventoryItems[14]?.name ?? 'Iron',
     quantity: 1,
     reason: 'Unit failed safety check and cannot be repaired.',
     requestedBy: 'Maintenance Officer',
@@ -52,19 +52,19 @@ const initialRequests: ApprovalRequest[] = [
     id: 'aq-003',
     kind: 'adjustment',
     risk: 'medium',
-    itemName: mockReplenishmentItems[12]?.name ?? 'Air freshener',
+    itemName: inventoryItems[12]?.name ?? 'Air freshener',
     quantity: 3,
     reason: 'Physical count mismatch after shelf recount.',
     requestedBy: 'Warehouse Staff',
     requestedAt: '2025-03-08 08:40',
-    referenceId: mockDamageAdjustments[2]?.id,
+    referenceId: inventoryDamageAdjustments[2]?.id,
     status: 'pending',
   },
   {
     id: 'aq-004',
     kind: 'negative-override',
     risk: 'high',
-    itemName: mockReplenishmentItems[9]?.name ?? 'Laundry detergent',
+    itemName: inventoryItems[9]?.name ?? 'Laundry detergent',
     quantity: 2,
     reason: 'Urgent service use while stock is currently zero.',
     requestedBy: 'Operations Supervisor',
@@ -76,12 +76,12 @@ const initialRequests: ApprovalRequest[] = [
     id: 'aq-005',
     kind: 'stock-out',
     risk: 'low',
-    itemName: mockReplenishmentItems[1]?.name ?? 'Soap (bars)',
+    itemName: inventoryItems[1]?.name ?? 'Soap (bars)',
     quantity: 6,
     reason: 'Regular unit refill.',
     requestedBy: 'Housekeeping Staff',
     requestedAt: '2025-03-07 14:10',
-    referenceId: mockStockMovements.find((entry) => entry.type === 'out')?.id,
+    referenceId: inventoryStockMovements.find((entry) => entry.type === 'out')?.id,
     status: 'approved',
     reviewedBy: 'Admin Team A',
     reviewedAt: '2025-03-07 14:30',

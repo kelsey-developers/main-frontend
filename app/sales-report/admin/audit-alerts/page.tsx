@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { mockDamageAdjustments, mockReplenishmentItems, mockStockMovements } from '../../inventory/lib/inventoryData';
+import { inventoryDamageAdjustments, inventoryItems, inventoryStockMovements } from '../../inventory/lib/inventoryDataStore';
 import type { StockMovementType } from '../../inventory/types';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
@@ -15,14 +15,14 @@ interface AlertItem {
   signal: string;
 }
 
-const itemNameById = new Map(mockReplenishmentItems.map((item) => [item.id, item.name]));
+const itemNameById = new Map(inventoryItems.map((item) => [item.id, item.name]));
 
 export default function AuditAlertsPage() {
   const [movementFilter, setMovementFilter] = useState<'all' | StockMovementType>('all');
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
 
   const movementRows = useMemo(() => {
-    const sorted = [...mockStockMovements].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    const sorted = [...inventoryStockMovements].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     if (movementFilter === 'all') return sorted.slice(0, 18);
     return sorted.filter((entry) => entry.type === movementFilter).slice(0, 18);
   }, [movementFilter]);
@@ -30,7 +30,7 @@ export default function AuditAlertsPage() {
   const alerts = useMemo<AlertItem[]>(() => {
     const rows: AlertItem[] = [];
 
-    mockReplenishmentItems
+    inventoryItems
       .filter((item) => item.currentStock === 0 || item.shortfall >= 10)
       .slice(0, 6)
       .forEach((item) => {
@@ -43,7 +43,7 @@ export default function AuditAlertsPage() {
         });
       });
 
-    mockDamageAdjustments
+    inventoryDamageAdjustments
       .filter((entry) => entry.status !== 'resolved')
       .forEach((entry) => {
         rows.push({
@@ -56,7 +56,7 @@ export default function AuditAlertsPage() {
       });
 
     const consumptionByProduct: Record<string, number> = {};
-    mockStockMovements
+    inventoryStockMovements
       .filter((entry) => entry.type === 'out')
       .forEach((entry) => {
         consumptionByProduct[entry.productId] = (consumptionByProduct[entry.productId] ?? 0) + entry.quantity;
@@ -74,7 +74,7 @@ export default function AuditAlertsPage() {
         });
       });
 
-    const missingReferenceCount = mockStockMovements.filter(
+    const missingReferenceCount = inventoryStockMovements.filter(
       (entry) => !entry.referenceId && entry.type === 'out'
     ).length;
 
@@ -92,8 +92,8 @@ export default function AuditAlertsPage() {
   }, []);
 
   const stats = {
-    movementCount: mockStockMovements.length,
-    activeDamageCases: mockDamageAdjustments.filter((entry) => entry.status !== 'resolved').length,
+    movementCount: inventoryStockMovements.length,
+    activeDamageCases: inventoryDamageAdjustments.filter((entry) => entry.status !== 'resolved').length,
     criticalAlerts: alerts.filter((entry) => entry.severity === 'critical').length,
     unacknowledged: alerts.filter((entry) => !acknowledged[entry.id]).length,
   };
