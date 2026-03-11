@@ -7,8 +7,11 @@ import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { apiClient } from '@/lib/api/client';
-import { type InventoryDropdownOption } from '../../components/InventoryDropdown';
-import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems } from '../../lib/inventoryDataStore';
+import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems, inventoryPurchaseOrders, inventoryPurchaseOrderLines } from '../../lib/inventoryDataStore';
+import { getLastUnitPriceForProduct } from '../../helpers/purchaseOrderHelpers';
+import { useToast } from '../../hooks/useToast';
+import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
 interface POLineItem {
   id: string;
@@ -41,6 +44,7 @@ function CreatePurchaseOrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prePopItemId = searchParams.get('itemId');
+  const { success } = useToast();
   const [, setRefreshTick] = useState(0);
   const [showCreateItemModal, setShowCreateItemModal] = useState(false);
   const [isCreatingItem, setIsCreatingItem] = useState(false);
@@ -57,7 +61,7 @@ function CreatePurchaseOrderPageContent() {
 
   const [form, setForm] = useState({
     supplierId: '',
-    orderDate: new Date().toISOString().split('T')[0],
+    orderDate: getTodayInPhilippineTime(),
     expectedDelivery: '',
   });
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
@@ -69,6 +73,7 @@ function CreatePurchaseOrderPageContent() {
   const supplierButtonRef = useRef<HTMLButtonElement>(null);
   const [supplierDropdownPosition, setSupplierDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const hasPrepopulatedRef = useRef(false);
+  const lineItemsRef = useRef<POLineItem[]>([]);
   const isClient = typeof window !== 'undefined';
   const [activeItemPickerLineId, setActiveItemPickerLineId] = useState<string | null>(null);
   const [itemPickerQuery, setItemPickerQuery] = useState('');
@@ -85,13 +90,15 @@ function CreatePurchaseOrderPageContent() {
               supplierId: item.currentsupplierId || '',
             }));
 
+            const lastPrice = getLastUnitPriceForProduct(item.id, inventoryPurchaseOrders, inventoryPurchaseOrderLines);
+            const defaultPrice = lastPrice > 0 ? lastPrice : item.unitCost;
             setLineItems([
               {
                 id: getLineItemId(item.id),
                 productId: item.id,
                 productName: item.name,
                 quantity: item.shortfall || item.minStock,
-                unitPrice: item.unitCost,
+                unitPrice: defaultPrice,
                 unit: item.unit,
               },
               createEmptyLine(),
@@ -104,18 +111,42 @@ function CreatePurchaseOrderPageContent() {
         setRefreshTick((tick) => tick + 1);
       });
 
-    const refresh = () => {
-      setRefreshTick((tick) => tick + 1);
+    const onMovementUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<{ source?: string; itemId?: string }>).detail;
+      if (detail?.source === 'edit-item') {
+        // Store was updated in-place; sync form if the edited item is our prepop or first line
+        const itemId = detail.itemId;
+        if (itemId) {
+          const item = inventoryItems.find((i) => i.id === itemId);
+          if (item?.currentsupplierId) {
+            setForm((prev) => {
+              if (prePopItemId === itemId || lineItemsRef.current.some((l) => l.productId === itemId)) {
+                return { ...prev, supplierId: item.currentsupplierId };
+              }
+              return prev;
+            });
+          }
+        }
+        setRefreshTick((tick) => tick + 1);
+      } else {
+        void loadInventoryDataset(true).finally(() => setRefreshTick((tick) => tick + 1));
+      }
     };
 
-    window.addEventListener('inventory:movement-updated', refresh);
-    window.addEventListener('focus', refresh);
+    const onFocus = () => {
+      void loadInventoryDataset(true).finally(() => setRefreshTick((tick) => tick + 1));
+    };
+
+    window.addEventListener('inventory:movement-updated', onMovementUpdated);
+    window.addEventListener('focus', onFocus);
 
     return () => {
-      window.removeEventListener('inventory:movement-updated', refresh);
-      window.removeEventListener('focus', refresh);
+      window.removeEventListener('inventory:movement-updated', onMovementUpdated);
+      window.removeEventListener('focus', onFocus);
     };
   }, [prePopItemId]);
+
+  lineItemsRef.current = lineItems;
 
   // Keep the item picker popover anchored to the active row input while scrolling/resizing.
   useEffect(() => {
@@ -240,6 +271,7 @@ function CreatePurchaseOrderPageContent() {
       setShowCreateItemModal(false);
       setCreateItemTargetLineId(null);
       resetCreateItemForm();
+      success('Item created and added to order.');
     } finally {
       setIsCreatingItem(false);
     }
@@ -260,6 +292,11 @@ function CreatePurchaseOrderPageContent() {
     const product = inventoryItems.find((entry) => entry.id === productId);
     if (!product) return;
 
+    // Use item's default supplier for PO when supplier not yet set
+    if (product.currentsupplierId && !form.supplierId) {
+      setForm((prev) => ({ ...prev, supplierId: product.currentsupplierId }));
+    }
+
     setLineItems((prev) => {
       const existingIndex = prev.findIndex((line) => line.productId === product.id && line.id !== lineId);
       const targetIndex = prev.findIndex((line) => line.id === lineId);
@@ -275,6 +312,8 @@ function CreatePurchaseOrderPageContent() {
           .map((line, idx) => (idx === targetIndex ? { ...createEmptyLine(), id: prev[targetIndex].id } : line));
       }
 
+      const lastPrice = getLastUnitPriceForProduct(product.id, inventoryPurchaseOrders, inventoryPurchaseOrderLines);
+      const defaultPrice = lastPrice > 0 ? lastPrice : Math.max(0, Number(product.unitCost || 0));
       return prev.map((line) =>
         line.id === lineId
           ? {
@@ -282,7 +321,7 @@ function CreatePurchaseOrderPageContent() {
               productId: product.id,
               productName: product.name,
               unit: product.unit,
-              unitPrice: Math.max(0, Number(product.unitCost || 0)),
+              unitPrice: defaultPrice,
               quantity: Math.max(1, line.quantity || 1),
             }
           : line
@@ -295,7 +334,8 @@ function CreatePurchaseOrderPageContent() {
   };
 
   const handleUpdateLineItem = (lineId: string, field: 'quantity' | 'unitPrice', rawValue: number | string) => {
-    const numeric = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+    const str = typeof rawValue === 'number' ? String(rawValue) : String(rawValue).replace(/\D/g, '');
+    const numeric = str === '' ? 0 : parseInt(str, 10);
     let clean = Number.isFinite(numeric) ? numeric : 0;
 
     if (field === 'quantity') {
@@ -305,8 +345,8 @@ function CreatePurchaseOrderPageContent() {
     }
 
     setLineItems((prev) =>
-      prev.map((line) =>
-        line.id === lineId ? { ...line, [field]: clean } : line
+      prev.map((l) =>
+        l.id === lineId ? { ...l, [field]: clean } : l
       )
     );
   };
@@ -714,12 +754,12 @@ function CreatePurchaseOrderPageContent() {
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={line.unitPrice}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', e.target.value)}
-                          min="0"
-                          step="1"
                           className="w-28 bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-700 text-right outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e] disabled:opacity-50"
                           style={{ fontFamily: 'Poppins' }}
                           disabled={!line.productId}
@@ -727,11 +767,12 @@ function CreatePurchaseOrderPageContent() {
                       </td>
                       <td className="px-3 py-2.5 text-right">
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={line.quantity}
                           onFocus={(e) => e.target.select()}
                           onChange={(e) => handleUpdateLineItem(line.id, 'quantity', e.target.value)}
-                          min="1"
                           className="w-20 bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-700 text-right outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e] disabled:opacity-50"
                           style={{ fontFamily: 'Poppins' }}
                           disabled={!line.productId}
@@ -869,40 +910,47 @@ function CreatePurchaseOrderPageContent() {
 
                 <div>
                   <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Unit</label>
-                  <select
+                  <InventoryDropdown
                     value={createItemForm.unit}
-                    onChange={(e) => setCreateItemForm((p) => ({ ...p, unit: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] bg-white"
-                  >
-                    {ITEM_UNITS.map((u) => (
-                      <option key={u} value={u}>{u}</option>
-                    ))}
-                  </select>
+                    onChange={(value) => setCreateItemForm((p) => ({ ...p, unit: value }))}
+                    options={ITEM_UNITS.map((u) => ({ value: u, label: u }))}
+                    fullWidth={true}
+                    minWidthClass="min-w-0"
+                    align="left"
+                    backdropZIndexClass="z-[10025]"
+                    menuZIndexClass="z-[10030]"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Category</label>
-                  <select
+                  <InventoryDropdown
                     value={createItemForm.category}
-                    onChange={(e) => setCreateItemForm((p) => ({ ...p, category: e.target.value as any }))}
-                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] bg-white"
-                  >
-                    {ITEM_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                    onChange={(value) => setCreateItemForm((p) => ({ ...p, category: value }))}
+                    options={ITEM_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                    fullWidth={true}
+                    minWidthClass="min-w-0"
+                    align="left"
+                    backdropZIndexClass="z-[10025]"
+                    menuZIndexClass="z-[10030]"
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Type</label>
-                  <select
+                  <InventoryDropdown
                     value={createItemForm.itemType}
-                    onChange={(e) => setCreateItemForm((p) => ({ ...p, itemType: e.target.value as any }))}
-                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] bg-white"
-                  >
-                    <option value="consumable">Consumable</option>
-                    <option value="reusable">Reusable</option>
-                  </select>
+                    onChange={(value) => setCreateItemForm((p) => ({ ...p, itemType: value as 'consumable' | 'reusable' }))}
+                    options={[
+                      { value: 'consumable', label: 'Consumable' },
+                      { value: 'reusable', label: 'Reusable' },
+                    ]}
+                    fullWidth={true}
+                    minWidthClass="min-w-0"
+                    align="left"
+                    backdropZIndexClass="z-[10025]"
+                    menuZIndexClass="z-[10030]"
+                  />
                 </div>
 
                 <div>

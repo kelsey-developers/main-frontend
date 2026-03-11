@@ -5,6 +5,13 @@ import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { ReplenishmentItem } from '../types';
 import StatusBadge from './StatusBadge';
+import {
+  inventoryStockMovements,
+  inventoryUnitStockMovements,
+  inventoryPurchaseOrders,
+  inventoryPurchaseOrderLines,
+  inventorySupplierDirectory,
+} from '../lib/inventoryDataStore';
 
 interface AuditTrailModalProps {
   item: ReplenishmentItem | null;
@@ -78,7 +85,7 @@ interface AuditItem {
   auditNotes: string;
   movements: Movement[];
   damageAdjustments: DamageAdjustmentView[];
-  lastPurchaseOrder: PurchaseOrderView;
+  lastPurchaseOrder: PurchaseOrderView | null;
 }
 
 function useModalNavbarHide() {
@@ -288,6 +295,22 @@ const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMob
           </div>
           {c.isStatus ? (
             <StatusBadge active={c.value === 'Active'} />
+          ) : c.label === 'SUPPLIER' && !c.value ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#64748b',
+                background: '#f1f5f9',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              None
+            </span>
           ) : (
             <>
               <div style={{ fontSize: '13.5px', fontWeight: 700, color: c.clickable ? B.primary : c.color }}>{c.value}</div>
@@ -588,11 +611,17 @@ const MovementHistory = ({ movements }: { movements: Movement[] }) => (
       <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.65)' }}>MOVEMENT</span>
       <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.65)' }}>QTY CHANGE</span>
     </div>
-    {movements.map((mv, i) => (
-      <div key={mv.id} style={{ borderBottom: i < movements.length - 1 ? `1px solid ${B.tint10}` : 'none' }}>
-        <MovementCard mv={mv} />
+    {movements.length === 0 ? (
+      <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+        No movement history
       </div>
-    ))}
+    ) : (
+      movements.map((mv, i) => (
+        <div key={mv.id} style={{ borderBottom: i < movements.length - 1 ? `1px solid ${B.tint10}` : 'none' }}>
+          <MovementCard mv={mv} />
+        </div>
+      ))
+    )}
   </div>
 );
 
@@ -629,20 +658,70 @@ const mapPOStatus = (value?: string): POStatus => {
 };
 
 const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
-  // TODO(backend): Replace this mapping when backend returns a dedicated audit-trail DTO.
-  const movementRows: Movement[] = source.stockMovements && source.stockMovements.length > 0
-    ? source.stockMovements.map((movement, index) => ({
+  // Use live data: source.stockMovements if provided, else inventoryStockMovements + unit movements
+  const getMovementRows = (): Movement[] => {
+    if (source.stockMovements && source.stockMovements.length > 0) {
+      const sorted = [...source.stockMovements].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      return sorted.map((movement, index) => ({
         id: movement.id ?? `mv-${index + 1}`,
-        date: toDateText(movement.createdAt) || SAMPLE_ITEM.movements[Math.min(index, SAMPLE_ITEM.movements.length - 1)].date,
-        time: toTimeText(movement.createdAt) || SAMPLE_ITEM.movements[Math.min(index, SAMPLE_ITEM.movements.length - 1)].time,
-        type: movement.type,
+        date: toDateText(movement.createdAt) ?? '',
+        time: toTimeText(movement.createdAt) ?? '',
+        type: movement.type as MovementType,
         qty: movement.quantity,
         unit: source.unit,
         notes: (movement.notes || 'No note provided.').trim(),
         user: movement.createdBy || 'System User',
         ref: movement.referenceId,
-      }))
-    : SAMPLE_ITEM.movements;
+      }));
+    }
+    const warehouseMoves = inventoryStockMovements
+      .filter((m) => m.productId === source.id)
+      .map((m) => ({
+        id: m.id,
+        ts: new Date(m.createdAt || m.movementDateTime || 0).getTime(),
+        movement: m,
+      }));
+    const unitMoves = inventoryUnitStockMovements
+      .filter((m) => m.productId === source.id)
+      .map((m) => ({
+        id: m.id,
+        ts: new Date(m.recordedAt || 0).getTime(),
+        movement: m,
+      }));
+    const merged = [...warehouseMoves, ...unitMoves].sort((a, b) => b.ts - a.ts);
+    return merged.map(({ id, movement }, index) => {
+      if ('quantity' in movement && 'createdAt' in movement) {
+        const sm = movement as { quantity: number; createdAt?: string; notes?: string; createdBy?: string; referenceId?: string };
+        return {
+          id: id ?? `mv-${index + 1}`,
+          date: toDateText(sm.createdAt) ?? '',
+          time: toTimeText(sm.createdAt) ?? '',
+          type: (movement as { type?: 'in' | 'out' }).type ?? 'out',
+          qty: sm.quantity,
+          unit: source.unit,
+          notes: (sm.notes || 'No note provided.').trim(),
+          user: sm.createdBy || 'System User',
+          ref: sm.referenceId,
+        };
+      }
+      const um = movement as { quantity: number; recordedAt?: string; recordedDate?: string; recordedTime?: string; reason?: string; createdBy?: string; referenceId?: string };
+      const dtStr = um.recordedAt || (um.recordedDate ? `${um.recordedDate}T${um.recordedTime || '00:00'}` : '');
+      return {
+        id: id ?? `mv-${index + 1}`,
+        date: toDateText(dtStr) ?? '',
+        time: toTimeText(dtStr) ?? um.recordedTime ?? '',
+        type: 'out' as MovementType,
+        qty: um.quantity,
+        unit: source.unit,
+        notes: (um.reason || 'No note provided.').trim(),
+        user: um.createdBy || 'System User',
+        ref: um.referenceId,
+      };
+    });
+  };
+  const movementRows = getMovementRows();
 
   const damageRows: DamageAdjustmentView[] = source.damageAdjustments && source.damageAdjustments.length > 0
     ? source.damageAdjustments.map((damage, index) => ({
@@ -659,22 +738,48 @@ const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
       }))
     : SAMPLE_ITEM.damageAdjustments;
 
-  const poFallback = SAMPLE_ITEM.lastPurchaseOrder;
-  const normalizedPO: PurchaseOrderView = {
-    id: source.lastPurchaseOrder?.id || poFallback.id,
-    orderDate: toDateText(source.lastPurchaseOrder?.orderDate) || poFallback.orderDate,
-    status: mapPOStatus(source.lastPurchaseOrder?.status),
-    qty: source.lastPurchaseOrder ? Math.max(source.shortfall, 1) : poFallback.qty,
-    unit: source.unit,
-    unitPrice: source.unitCost || poFallback.unitPrice,
-    supplier: source.supplierName || poFallback.supplier,
+  const getLastPO = (): PurchaseOrderView | null => {
+    const productLines = inventoryPurchaseOrderLines
+      .filter((l) => l.productId === source.id)
+      .map((line) => {
+        const po = inventoryPurchaseOrders.find((p) => p.id === line.poId);
+        return { line, po };
+      })
+      .filter((x): x is { line: typeof x.line; po: NonNullable<typeof x.po> } => x.po != null)
+      .sort((a, b) => new Date(b.po.orderDate).getTime() - new Date(a.po.orderDate).getTime());
+    const latest = productLines[0];
+    if (!latest) {
+      if (source.lastPurchaseOrder?.id) {
+        return {
+          id: source.lastPurchaseOrder.id,
+          orderDate: toDateText(source.lastPurchaseOrder.orderDate) ?? '',
+          status: mapPOStatus(source.lastPurchaseOrder.status),
+          qty: Math.max(source.shortfall, 1),
+          unit: source.unit,
+          unitPrice: source.unitCost,
+          supplier: source.supplierName || '',
+        };
+      }
+      return null;
+    }
+    const supplier = inventorySupplierDirectory.find((s) => s.id === latest.po.supplierId);
+    return {
+      id: latest.po.id,
+      orderDate: toDateText(latest.po.orderDate) ?? '',
+      status: mapPOStatus(latest.po.status),
+      qty: latest.line.quantity,
+      unit: source.unit,
+      unitPrice: latest.line.unitPrice || source.unitCost,
+      supplier: supplier?.name ?? '',
+    };
   };
+  const normalizedPO = getLastPO();
 
   return {
     name: source.name || SAMPLE_ITEM.name,
     sku: source.sku || SAMPLE_ITEM.sku,
     warehouse: source.warehouseName || SAMPLE_ITEM.warehouse,
-    supplier: source.supplierName || SAMPLE_ITEM.supplier,
+    supplier: source.supplierName || '',
     unitCost: source.unitCost || SAMPLE_ITEM.unitCost,
     totalValue: source.totalValue || SAMPLE_ITEM.totalValue,
     status: source.isActive ? 'Active' : 'Inactive',
@@ -693,9 +798,20 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeStartY, setSwipeStartY] = useState<number | null>(null);
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
+  const [movementRefreshTick, setMovementRefreshTick] = useState(0);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const onRefresh = () => setMovementRefreshTick((t) => t + 1);
+    window.addEventListener('inventory:movement-updated', onRefresh);
+    window.addEventListener('focus', onRefresh);
+    return () => {
+      window.removeEventListener('inventory:movement-updated', onRefresh);
+      window.removeEventListener('focus', onRefresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -724,7 +840,7 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
   const viewItem = useMemo(() => {
     if (!item) return null;
     return normalizeAuditItem(item);
-  }, [item]);
+  }, [item, movementRefreshTick]);
 
   if (!viewItem || !mounted) return null;
   const pendingDamage = viewItem.damageAdjustments.filter((d) => d.status !== 'Resolved').length;
@@ -899,14 +1015,20 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
           <Divider />
 
           <SectionLabel>Last Purchase Order</SectionLabel>
-          <POBlock po={viewItem.lastPurchaseOrder} isMobile={isMobile} />
+          {viewItem.lastPurchaseOrder ? (
+            <POBlock po={viewItem.lastPurchaseOrder} isMobile={isMobile} />
+          ) : (
+            <div style={{ border: `1px solid ${B.tint20}`, borderRadius: '12px', padding: '24px 16px', background: 'white', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+              No purchase order
+            </div>
+          )}
 
           <Divider />
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <SectionLabel>Stock Movement History</SectionLabel>
             <span style={{ fontSize: '11px', fontWeight: 600, color: '#94a3b8', marginTop: '-8px' }}>
-              {viewItem.movements.length} entries
+              {viewItem.movements.length === 0 ? 'No movement history' : `${viewItem.movements.length} entries`}
             </span>
           </div>
           <MovementHistory movements={viewItem.movements} />

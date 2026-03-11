@@ -19,7 +19,10 @@ export {
   mockUnitItems as inventoryUnitItems,
   inventoryUnitsState as inventoryUnits,
   mockUnitStockMovements as inventoryUnitStockMovements,
-} from './mockData';
+  getDisplayableInventoryItems,
+  updateInventoryItem,
+  normalizeUnit,
+} from './inventoryData';
 
 export type {
   WarehouseDirectoryRecord,
@@ -27,4 +30,4 @@ export type {
   WarehouseMovementRow,
   SupplierDirectoryRecord,
   UnitStockMovementRow,
-} from './mockData';
+} from './inventoryData';

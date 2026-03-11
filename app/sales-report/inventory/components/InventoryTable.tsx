@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
+import { updateInventoryItem } from '../lib/inventoryDataStore';
 import AuditTrailModal from './AuditTrailModal';
 import EditItemModal from './EditItemModal';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
@@ -559,8 +560,9 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
         item={editItem}
         onClose={() => setEditItem(null)}
         onSave={(updatedData) => {
-          console.log('Item updated:', updatedData);
-          // TODO(backend): Update item in the items array or refetch from API
+          if (editItem) {
+            updateInventoryItem(editItem.id, updatedData);
+          }
         }}
       />
     </div>

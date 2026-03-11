@@ -1,52 +1,69 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import {
-  mockReplenishmentItems,
-  mockWarehouseDirectoryData,
-} from '@/app/sales-report/inventory/lib/mockData';
-
-const itemSelectOptions = [
-  { value: '', label: 'Select item…' },
-  ...mockReplenishmentItems.map((p) => ({
-    value: p.id,
-    label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
-  })),
-];
+  inventoryItems,
+  inventoryWarehouseDirectory,
+  loadInventoryDataset,
+} from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 /** One line: product (from inventory) */
-type OutOfStockLine = { productId: string };
+type OutOfStockLine = { id: string; productId: string };
 
-const emptyLine: OutOfStockLine = { productId: '' };
-
-const warehouseOptions = [
-  { value: '', label: 'Select warehouse…' },
-  ...mockWarehouseDirectoryData
-    .filter((wh) => wh.isActive)
-    .map((w) => ({ value: w.id, label: w.name })),
-];
+function createEmptyLine(): OutOfStockLine {
+  return { id: crypto.randomUUID(), productId: '' };
+}
 
 export default function HousekeepingOutOfStockPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const itemSelectOptions = useMemo(
+    () => [
+      { value: '', label: 'Select item…' },
+      ...inventoryItems.map((p) => ({
+        value: p.id,
+        label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
+      })),
+    ],
+    [refreshTick]
+  );
+
+  const warehouseOptions = useMemo(
+    () => [
+      { value: '', label: 'Select warehouse…' },
+      ...inventoryWarehouseDirectory
+        .filter((wh) => wh.isActive)
+        .map((w) => ({ value: w.id, label: w.name })),
+    ],
+    [refreshTick]
+  );
+
+  useEffect(() => {
+    void loadInventoryDataset();
+    const onUpdate = () => setRefreshTick((t) => t + 1);
+    window.addEventListener('inventory:movement-updated', onUpdate);
+    return () => window.removeEventListener('inventory:movement-updated', onUpdate);
+  }, []);
 
   const [warehouseId, setWarehouseId] = useState('');
   const [date, setDate] = useState(todayStr);
-  const [lines, setLines] = useState<OutOfStockLine[]>([{ ...emptyLine }]);
+  const [lines, setLines] = useState<OutOfStockLine[]>(() => [createEmptyLine()]);
   const [notes, setNotes] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
-  const updateLine = (index: number, field: keyof OutOfStockLine, value: string) => {
+  const updateLine = (id: string, field: keyof OutOfStockLine, value: string) => {
     setLines((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
     );
   };
 
-  const addLine = () => setLines((prev) => [...prev, { ...emptyLine }]);
-  const removeLine = (index: number) => {
+  const addLine = () => setLines((prev) => [...prev, createEmptyLine()]);
+  const removeLine = (id: string) => {
     if (lines.length <= 1) return;
-    setLines((prev) => prev.filter((_, i) => i !== index));
+    setLines((prev) => prev.filter((row) => row.id !== id));
   };
 
   const hasValidEntry = lines.some((r) => r.productId.trim() !== '');
@@ -57,7 +74,7 @@ export default function HousekeepingOutOfStockPage() {
     setSubmitted(true);
     setWarehouseId('');
     setDate(todayStr);
-    setLines([{ ...emptyLine }]);
+    setLines([createEmptyLine()]);
     setNotes('');
   };
 
@@ -127,17 +144,17 @@ export default function HousekeepingOutOfStockPage() {
             List items you noticed are missing or out of stock that are not reflected in inventory.
           </p>
           <div className="space-y-3">
-            {lines.map((line, index) => {
-              const product = mockReplenishmentItems.find((p) => p.id === line.productId);
+            {lines.map((line) => {
+              const product = inventoryItems.find((p) => p.id === line.productId);
               return (
                 <div
-                  key={index}
+                  key={line.id}
                   className="grid grid-cols-1 sm:grid-cols-[1fr_40px] gap-3 items-start p-3 rounded-lg border border-gray-200 bg-gray-50/50"
                 >
                   <div>
                     <InventoryDropdown
                       value={line.productId}
-                      onChange={(v) => updateLine(index, 'productId', v)}
+                      onChange={(v) => updateLine(line.id, 'productId', v)}
                       options={itemSelectOptions}
                       placeholder="Select item…"
                       placeholderWhen=""
@@ -152,7 +169,7 @@ export default function HousekeepingOutOfStockPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeLine(index)}
+                    onClick={() => removeLine(line.id)}
                     disabled={lines.length <= 1}
                     className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
                     aria-label="Remove row"

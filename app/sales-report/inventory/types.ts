@@ -129,6 +129,7 @@ export interface ReplenishmentItem {
   // Audit & Financial
   unitCost: number;
   totalValue: number;
+  /** Primary/default warehouse for this item. Used to auto-fill forms (goods receipt, stock out). Items may have stock in multiple warehouses; this is the preferred one for quick operations. */
   warehouseId: string;
   warehouseName: string;
   isActive: boolean;
@@ -136,7 +137,7 @@ export interface ReplenishmentItem {
   updatedAt: string;
   lastModifiedBy?: string;
   
-  // Relationships (for backend integration)
+  /** Primary/default supplier. Used to auto-fill PO creation. Items may have multiple suppliers; this is the preferred one for quick operations. */
   currentsupplierId: string;
   supplierName: string;
   
