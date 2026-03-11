@@ -104,7 +104,7 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
 
       <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
         <aside className="w-full lg:w-80 flex-shrink-0 inventory-reveal" style={{ animationDelay: '90ms' }}>
-          <SearchUnits units={mockUnits} />
+          <SearchUnits units={inventoryUnits} />
         </aside>
         <div className="flex-1 flex-col min-w-0 gap-6">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden p-6 flex flex-row gap-6 inventory-reveal" style={{ animationDelay: '140ms' }}>

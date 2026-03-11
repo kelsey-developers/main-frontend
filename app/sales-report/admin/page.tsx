@@ -1,25 +1,25 @@
 import Link from 'next/link';
 import {
-  mockReplenishmentItems,
-  mockSupplierDirectoryData,
-  mockWarehouseDirectoryData,
-  mockPurchaseOrders,
-  mockStockMovements,
-  mockDamageAdjustments,
-} from '../inventory/lib/inventoryData';
+  inventoryItems,
+  inventorySupplierDirectory,
+  inventoryWarehouseDirectory,
+  inventoryPurchaseOrders,
+  inventoryStockMovements,
+  inventoryDamageAdjustments,
+} from '../inventory/lib/inventoryDataStore';
 import { AdminPageHeader, AdminStatCard, AdminSection } from './components';
 
 const cards = [
-  { title: 'Items Tracked', value: mockReplenishmentItems.length, accent: 'teal' as const },
-  { title: 'Suppliers', value: mockSupplierDirectoryData.length, accent: 'teal' as const },
-  { title: 'Warehouses', value: mockWarehouseDirectoryData.length, accent: 'slate' as const },
+  { title: 'Items Tracked', value: inventoryItems.length, accent: 'teal' as const },
+  { title: 'Suppliers', value: inventorySupplierDirectory.length, accent: 'teal' as const },
+  { title: 'Warehouses', value: inventoryWarehouseDirectory.length, accent: 'slate' as const },
   {
     title: 'Pending POs',
-    value: mockPurchaseOrders.filter((e) => e.status === 'pending').length,
+    value: inventoryPurchaseOrders.filter((e) => e.status === 'pending').length,
     accent: 'amber' as const,
   },
-  { title: 'Movements Logged', value: mockStockMovements.length, accent: 'slate' as const },
-  { title: 'Damage Cases', value: mockDamageAdjustments.length, accent: 'red' as const },
+  { title: 'Movements Logged', value: inventoryStockMovements.length, accent: 'slate' as const },
+  { title: 'Damage Cases', value: inventoryDamageAdjustments.length, accent: 'red' as const },
 ];
 
 const sectionLinks = [
