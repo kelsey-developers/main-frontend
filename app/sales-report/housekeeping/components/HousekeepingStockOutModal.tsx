@@ -118,22 +118,23 @@ function SectionLabel({ label, color }: { label: string; color?: string }) {
 }
 
 interface LineItem {
+  id: string;
   productId: string;
   quantity: string;
 }
 
 function LineItemRow({
   item,
-  index,
+  rowIndex,
   onUpdate,
   onRemove,
   isFirst,
   itemSelectOptions,
 }: {
   item: LineItem;
-  index: number;
-  onUpdate: (i: number, k: keyof LineItem, v: string) => void;
-  onRemove: (i: number) => void;
+  rowIndex: number;
+  onUpdate: (id: string, k: keyof LineItem, v: string) => void;
+  onRemove: (id: string) => void;
   isFirst: boolean;
   itemSelectOptions: Array<{ value: string; label: string }>;
 }) {
@@ -148,7 +149,7 @@ function LineItemRow({
         gap: 10,
         alignItems: 'start',
         padding: '14px',
-        background: index % 2 === 0 ? C.bg : C.white,
+        background: rowIndex % 2 === 0 ? C.bg : C.white,
         borderRadius: 12,
         border: `1.5px solid ${over ? C.red + '60' : C.lightGray}`,
         transition: 'border-color 0.15s',
@@ -162,7 +163,7 @@ function LineItemRow({
         )}
         <InventoryDropdown
           value={item.productId}
-          onChange={(v) => onUpdate(index, 'productId', v)}
+          onChange={(v) => onUpdate(item.id, 'productId', v)}
           options={itemSelectOptions}
           placeholder="Select item…"
           placeholderWhen=""
@@ -186,7 +187,7 @@ function LineItemRow({
           type="number"
           min={1}
           value={item.quantity}
-          onChange={(e) => onUpdate(index, 'quantity', e.target.value)}
+          onChange={(e) => onUpdate(item.id, 'quantity', e.target.value)}
           placeholder="0"
           style={{ ...inputStyle, borderColor: over ? C.red : C.lightGray }}
         />
@@ -196,7 +197,7 @@ function LineItemRow({
       </div>
       <button
         type="button"
-        onClick={() => onRemove(index)}
+        onClick={() => onRemove(item.id)}
         style={{
           width: 36,
           height: 38,
@@ -261,7 +262,9 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
   const [warehouse, setWarehouse] = useState('');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
+  const [items, setItems] = useState<LineItem[]>(() => [
+    { id: crypto.randomUUID(), productId: '', quantity: '' },
+  ]);
 
   const itemSelectOptions = useMemo(
     () => [
@@ -315,10 +318,10 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
     setTimeout(onClose, 230);
   };
 
-  const updateItem = (i: number, k: keyof LineItem, v: string) =>
-    setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
-  const removeItem = (i: number) =>
-    setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
+  const updateItem = (id: string, k: keyof LineItem, v: string) =>
+    setItems((p) => p.map((it) => (it.id === id ? { ...it, [k]: v } : it)));
+  const removeItem = (id: string) =>
+    setItems((p) => (p.length > 1 ? p.filter((it) => it.id !== id) : p));
 
   const canSubmit =
     confirmedBy &&
@@ -609,9 +612,9 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {items.map((it, i) => (
               <LineItemRow
-                key={i}
+                key={it.id}
                 item={it}
-                index={i}
+                rowIndex={i}
                 onUpdate={updateItem}
                 onRemove={removeItem}
                 isFirst={i === 0}
@@ -619,7 +622,11 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
               />
             ))}
           </div>
-          <AddItemBtn onAdd={() => setItems((p) => [...p, { productId: '', quantity: '' }])} />
+          <AddItemBtn
+            onAdd={() =>
+              setItems((p) => [...p, { id: crypto.randomUUID(), productId: '', quantity: '' }])
+            }
+          />
 
           <Field label="Notes" style={{ marginTop: 16 }}>
             <textarea

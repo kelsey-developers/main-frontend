@@ -190,7 +190,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
           ? rawMessage
           : getUserFriendlyErrorMessage(res.status, raw));
 
-    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && rawLooksLikeHtml) {
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && isHtmlErrorPage(raw)) {
       console.warn(`[apiClient] ${res.status} HTML error page received (${raw.length} chars). Backend may be down.`);
     }
 

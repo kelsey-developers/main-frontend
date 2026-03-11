@@ -218,7 +218,7 @@ export default function SingleDatePicker({
               const currentMonth = day.getMonth() === displayMonth;
               const selected = isSelected(day);
               const today = isToday(day);
-              const disabled = !currentMonth || isDisabled(day);
+              const disabled = isDisabled(day);
               return (
                 <button
                   key={index}
