@@ -8,9 +8,8 @@ import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
-import { mockReplenishmentItems, mockWarehouseDirectoryData, getWarehouseUnitAllocations } from '../lib/mockData';
+import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations } from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
-import StockInModal from '../components/StockInModal';
 
 function InventoryItemsPageContent() {
   const router = useRouter();
@@ -19,13 +18,12 @@ function InventoryItemsPageContent() {
   const warehouseNameFromQuery = searchParams.get('warehouseName');
   const itemIdFromQuery = searchParams.get('itemId');
   const [refreshTick, setRefreshTick] = useState(0);
-  const [showAddNewItemModal, setShowAddNewItemModal] = useState(false);
   const [view, setView] = useState<'items' | 'unitAllocations'>('items');
   const [unitFilter, setUnitFilter] = useState<'all' | string>('all');
 
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(warehouseIdFromQuery);
-  const [selectedItem, setSelectedItem] = useState<typeof mockReplenishmentItems[number] | null>(
-    itemIdFromQuery ? mockReplenishmentItems.find((item) => item.id === itemIdFromQuery) || null : null
+  const [selectedItem, setSelectedItem] = useState<typeof inventoryItems[number] | null>(
+    itemIdFromQuery ? inventoryItems.find((item) => item.id === itemIdFromQuery) || null : null
   );
 
   useEffect(() => {
@@ -33,7 +31,9 @@ function InventoryItemsPageContent() {
       void recomputeAllInventoryDerivedValues()
         .finally(() => {
           if (itemIdFromQuery) {
-            setSelectedItem(mockReplenishmentItems.find((item) => item.id === itemIdFromQuery) || null);
+            setSelectedItem(inventoryItems.find((item) => item.id === itemIdFromQuery) || null);
+          } else {
+            setSelectedItem(null);
           }
           setRefreshTick((tick) => tick + 1);
         });
@@ -47,19 +47,28 @@ function InventoryItemsPageContent() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
+  }, [itemIdFromQuery]);
+
+  useEffect(() => {
+    const onMovementUpdated = () => {
+      // Data is already updated by the emitter (stock-out, recompute, etc.); just re-render.
+      setRefreshTick((t) => t + 1);
+    };
+    window.addEventListener('inventory:movement-updated', onMovementUpdated);
+    return () => window.removeEventListener('inventory:movement-updated', onMovementUpdated);
   }, []);
 
   // Combine query param with local state (query param takes precedence)
   const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId;
-  const activeWarehouse = mockWarehouseDirectoryData.find((wh) => wh.id === activeWarehouseId);
+  const activeWarehouse = inventoryWarehouseDirectory.find((wh) => wh.id === activeWarehouseId);
   const activeWarehouseName = warehouseNameFromQuery || activeWarehouse?.name;
 
   const filteredItems = useMemo(() => {
-    return filterItemsByWarehouse(mockReplenishmentItems, activeWarehouseId);
-  }, [activeWarehouseId]);
+    return filterItemsByWarehouse(getDisplayableInventoryItems(), activeWarehouseId);
+  }, [activeWarehouseId, refreshTick]);
 
   const warehouseOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
-    return buildWarehouseOptions(mockWarehouseDirectoryData);
+    return buildWarehouseOptions(inventoryWarehouseDirectory);
   }, []);
 
   const unitAllocations = useMemo(() => {
@@ -144,8 +153,12 @@ function InventoryItemsPageContent() {
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
             type="button"
-            onClick={() => setShowAddNewItemModal(true)}
-            className="stock-btn"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (activeWarehouseId) params.set('warehouseId', activeWarehouseId);
+              router.push(`/sales-report/inventory/StockOut${params.toString() ? `?${params.toString()}` : ''}`);
+            }}
+            className="stock-btn stock-out-primary"
             style={{
               padding: '10px 18px',
               borderRadius: '10px',
@@ -154,38 +167,13 @@ function InventoryItemsPageContent() {
               color: '#ffffff',
               fontFamily: 'Poppins',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: 'pointer',
               transition: 'all 0.15s',
               display: 'flex',
               alignItems: 'center',
               gap: '7px',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Add New Item
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push('/sales-report/inventory/StockOut')}
-            className="stock-btn"
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              border: '1.5px solid #e2e8f0',
-              background: 'white',
-              color: '#334155',
-              fontFamily: 'Poppins',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
+              boxShadow: '0 10px 26px rgba(11, 88, 88, 0.22)',
             }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -193,6 +181,20 @@ function InventoryItemsPageContent() {
               <path d="M1 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             Stock Out
+            <span
+              style={{
+                marginLeft: 6,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.18)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: 0.6,
+              }}
+            >
+              ACTION
+            </span>
           </button>
         </div>
       </div>
@@ -371,13 +373,6 @@ function InventoryItemsPageContent() {
           router.push('/sales-report/inventory/items');
         }} 
       />
-
-      {showAddNewItemModal && (
-        <StockInModal
-          mode="new"
-          onClose={() => setShowAddNewItemModal(false)}
-        />
-      )}
     </>
   );
 }

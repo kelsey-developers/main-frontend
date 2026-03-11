@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import {
-  mockReplenishmentItems,
-  mockWarehouseDirectoryData,
-  mockUnits,
-} from '@/app/sales-report/inventory/lib/mockData';
+  inventoryItems,
+  inventoryWarehouseDirectory,
+  inventoryUnits,
+} from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 const C = {
   darkTeal: '#0b5858',
@@ -46,7 +46,7 @@ const BOOKINGS = [
 
 const itemSelectOptions = [
   { value: '', label: 'Select item…' },
-  ...mockReplenishmentItems.map((p) => ({
+  ...inventoryItems.map((p) => ({
     value: p.id,
     label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
   })),
@@ -303,7 +303,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
   };
 
   const bk = BOOKINGS.find((b) => b.id === booking);
-  const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
   const grad = `linear-gradient(135deg, ${C.unGrad1}, ${C.unGrad2})`;
 
   return (
@@ -450,7 +450,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                 onChange={setUnit}
                 options={[
                   { value: '', label: 'Select unit…' },
-                  ...mockUnits.map((u) => ({ value: u.id, label: u.name })),
+                  ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
                 ]}
                 placeholder="Select unit…"
                 placeholderWhen=""

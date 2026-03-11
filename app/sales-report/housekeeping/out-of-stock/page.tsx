@@ -6,7 +6,7 @@ import InventoryDropdown from '@/app/sales-report/inventory/components/Inventory
 import {
   mockReplenishmentItems,
   mockWarehouseDirectoryData,
-} from '@/app/sales-report/inventory/lib/mockData';
+} from '@/app/sales-report/inventory/lib/inventoryData';
 
 const itemSelectOptions = [
   { value: '', label: 'Select item…' },

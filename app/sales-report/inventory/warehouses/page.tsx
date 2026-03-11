@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -11,16 +11,38 @@ import { getWarehouseStats } from '../helpers/warehouseHelpers';
 import {
   getWarehouseUnitAllocations,
   loadInventoryDataset,
-  mockWarehouseDirectoryData,
-  mockReplenishmentItems,
+  inventoryWarehouseDirectory,
+  inventoryItems,
+  updateInventoryItem,
   type WarehouseDirectoryRecord,
   type WarehouseInventoryBalanceRow,
   type WarehouseMovementRow,
-} from '../lib/mockData';
+} from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
+import { apiClient } from '@/lib/api/client';
+import { useToast } from '../hooks/useToast';
 
 type Warehouse = WarehouseDirectoryRecord;
 type SortKey = 'name' | 'mostStock' | 'mostLowStock';
+const LOCAL_WAREHOUSES_KEY = 'inventory.localWarehouses.v1';
+
+const readLocalWarehouses = (): Warehouse[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_WAREHOUSES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Warehouse[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((row) => row && typeof row.id === 'string' && typeof row.name === 'string');
+  } catch {
+    return [];
+  }
+};
+
+const writeLocalWarehouses = (rows: Warehouse[]) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(LOCAL_WAREHOUSES_KEY, JSON.stringify(rows));
+};
 
 const formatRecordedDateTime = (value?: string) => {
   const base = value ? new Date(value) : new Date();
@@ -128,7 +150,7 @@ const WarehouseFormModal = ({
       style={{ fontFamily: 'Poppins' }}
     >
       {label}
-      {errors[fieldKey] && <span className="font-normal ml-1.5">· {errors[fieldKey]}</span>}
+      {errors[fieldKey] && <span className="font-normal ml-1.5">? {errors[fieldKey]}</span>}
     </label>
   );
 
@@ -197,7 +219,7 @@ const WarehouseFormModal = ({
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-semibold text-gray-700" style={{ fontFamily: 'Poppins' }}>
-                Description <span className="font-normal text-gray-500">· optional</span>
+                Description <span className="font-normal text-gray-500">? optional</span>
               </label>
               <textarea
                 value={form.description}
@@ -699,8 +721,10 @@ const WarehousesSkeleton = () => (
 
 export default function WarehousesPage() {
   const router = useRouter();
+  const { error, success } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const sessionOnlyWarehouses = useRef<Warehouse[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -751,36 +775,98 @@ export default function WarehousesPage() {
     return { totalWarehouses, activeCount, inactiveCount, lowStockTotal };
   }, [warehouses]);
 
+  const applyWarehouseList = () => {
+    const backendIds = new Set(inventoryWarehouseDirectory.map((row) => row.id));
+    const localOnly = sessionOnlyWarehouses.current.filter((row) => !backendIds.has(row.id));
+    setWarehouses([...localOnly, ...inventoryWarehouseDirectory]);
+  };
+
   const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
     if (editTarget) {
-      setWarehouses((prev) =>
-        prev.map((warehouse) =>
-          warehouse.id === editTarget.id
-            ? { ...warehouse, ...data }
-            : warehouse
-        )
-      );
+      if (editTarget.id.startsWith('wd-')) {
+        setWarehouses((prev) =>
+          prev.map((warehouse) =>
+            warehouse.id === editTarget.id ? { ...warehouse, ...data } : warehouse
+          )
+        );
+        sessionOnlyWarehouses.current = sessionOnlyWarehouses.current.map((warehouse) =>
+          warehouse.id === editTarget.id ? { ...warehouse, ...data } : warehouse
+        );
+        writeLocalWarehouses(sessionOnlyWarehouses.current);
+        setFormOpen(false);
+        setEditTarget(null);
+        return;
+      }
+
+      const run = async () => {
+        await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}`, {
+          name: data.name,
+          location: data.location ?? '',
+          description: data.description ?? '',
+          isActive: data.isActive ?? true,
+        });
+        await loadInventoryDataset(true);
+        applyWarehouseList();
+        setFormOpen(false);
+        setEditTarget(null);
+        success('Warehouse updated successfully.');
+      };
+      void run().catch((err) => {
+        if (process.env.NODE_ENV !== 'production') console.error('Warehouse update error:', err);
+        error("We couldn't update the warehouse. Please try again.");
+      });
       return;
     }
 
-    const newWarehouse: Warehouse = {
-      id: `wd-${Date.now()}`,
-      ...data,
-      inventoryBalances: [],
-      stockMovements: [],
+    const run = async () => {
+      const response = await apiClient.post<{
+        warehouse: { id: string; name: string; location: string; createdAt: string };
+      }>('/api/inventory/warehouses', {
+        name: data.name,
+        location: data.location ?? '',
+      });
+
+      await loadInventoryDataset(true);
+      applyWarehouseList();
+      setSelectedWarehouseId(response.warehouse.id);
+      success('Warehouse created successfully.');
     };
 
-    setWarehouses((prev) => [newWarehouse, ...prev]);
-    setSelectedWarehouseId(newWarehouse.id);
+    run().catch((err) => {
+      const status = (err as { status?: number }).status;
+      const msg = err instanceof Error ? err.message : '';
+      const routeMissing = status === 404 || msg.toLowerCase().includes('route not found');
+      if (!routeMissing) {
+        if (process.env.NODE_ENV !== 'production') console.error('Warehouse create error:', err);
+        error("We couldn't create the warehouse. Please try again.");
+        return;
+      }
+      const localWarehouse: Warehouse = {
+        id: `wd-${Date.now()}`,
+        name: data.name,
+        location: data.location ?? '',
+        description: data.description ?? '',
+        isActive: data.isActive ?? true,
+        inventoryBalances: [],
+        stockMovements: [],
+      };
+      if (routeMissing) {
+        sessionOnlyWarehouses.current = [localWarehouse, ...sessionOnlyWarehouses.current];
+        writeLocalWarehouses(sessionOnlyWarehouses.current);
+        setWarehouses((prev) => [localWarehouse, ...prev]);
+        setSelectedWarehouseId(localWarehouse.id);
+      }
+    });
   };
 
   useEffect(() => {
     let isMounted = true;
+    sessionOnlyWarehouses.current = readLocalWarehouses();
 
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setWarehouses([...mockWarehouseDirectoryData]);
+        applyWarehouseList();
         setIsLoading(false);
       });
 
@@ -791,8 +877,9 @@ export default function WarehousesPage() {
 
   useEffect(() => {
     const refresh = () => {
-      // Create a new top-level array reference so React re-renders updated warehouse movement history.
-      setWarehouses([...mockWarehouseDirectoryData]);
+      void loadInventoryDataset(true).finally(() => {
+        applyWarehouseList();
+      });
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -894,28 +981,18 @@ export default function WarehousesPage() {
   };
 
   const handleWarehouseThresholdChange = (
-    warehouseId: string,
+    _warehouseId: string,
     productId: string,
     reorderLevel: number
   ) => {
     const safeValue = Math.max(0, reorderLevel);
 
-    // Update warehouse threshold
-    const sourceWarehouse = mockWarehouseDirectoryData.find((warehouse) => warehouse.id === warehouseId);
-    const sourceBalance = sourceWarehouse?.inventoryBalances.find((row) => row.productId === productId);
-    if (sourceBalance) {
-      sourceBalance.reorderLevel = safeValue;
-    }
-
-    // Update corresponding item's minStock in inventory
-    const item = mockReplenishmentItems.find((i) => i.id === productId);
-    if (item) {
-      item.minStock = safeValue;
-    }
+    // Persist to backend and update in-memory store (syncs warehouse directory)
+    updateInventoryItem(productId, { minStock: safeValue });
 
     // Recompute derived values (shortfall, low stock status, etc.)
     void recomputeAllInventoryDerivedValues().finally(() => {
-      setWarehouses([...mockWarehouseDirectoryData]);
+      applyWarehouseList();
     });
   };
 

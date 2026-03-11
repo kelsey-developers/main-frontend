@@ -6,11 +6,11 @@ import SingleDatePicker from '@/components/SingleDatePicker';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import {
   loadInventoryDataset,
-  mockReplenishmentItems,
-  mockStockMovements,
-  mockUnitStockMovements,
-  mockWarehouseDirectoryData,
-} from '../lib/mockData';
+  inventoryItems,
+  inventoryStockMovements,
+  inventoryUnitStockMovements,
+  inventoryWarehouseDirectory,
+} from '../lib/inventoryDataStore';
 import type { EnhancedMovement } from '../helpers/types';
 import { exportStockMovementsToCsv, exportStockMovementsToPdf } from '../helpers/exportHelpers';
 
@@ -37,7 +37,7 @@ type WarehouseMovementRow = {
   recordedTime: string;
 };
 
-type UnitMovementRow = (typeof mockUnitStockMovements)[number];
+type UnitMovementRow = (typeof inventoryUnitStockMovements)[number];
 
 const pad2 = (value: number) => String(value).padStart(2, '0');
 const parseDateTime = (date: string, time: string) => new Date(`${date}T${time || '00:00'}`);
@@ -103,11 +103,65 @@ export default function StockMovementsPage() {
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   const warehouseRows = useMemo<WarehouseMovementRow[]>(() => {
-    const byWarehouseId = new Map(mockWarehouseDirectoryData.map((warehouse) => [warehouse.id, warehouse.name]));
-    const byProductId = new Map(mockReplenishmentItems.map((item) => [item.id, item.name]));
+    const byWarehouseId = new Map(inventoryWarehouseDirectory.map((warehouse) => [warehouse.id, warehouse.name]));
+    const byProductId = new Map(inventoryItems.map((item) => [item.id, item.name]));
 
-    return mockStockMovements.map((movement) => {
+    // Compute before/after by replaying movements chronologically per (warehouse, product)
+    const movementsWithDate = inventoryStockMovements
+      .filter((m) => m.warehouseId)
+      .map((m) => {
+        const dt = normalizeDateTime(m.movementDateTime || m.createdAt);
+        const parsed = parseDateTime(dt.date || '1970-01-01', dt.time || '00:00');
+        const ts = Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+        return { movement: m, ts };
+      });
+
+    // Current balance per (warehouse, product). Prefer replenishment item's currentStock when
+    // the product's default warehouse matches, as it's often more accurate after stock movements.
+    const currentBalanceByKey = new Map<string, number>();
+    for (const warehouse of inventoryWarehouseDirectory) {
+      for (const row of warehouse.inventoryBalances ?? []) {
+        currentBalanceByKey.set(`${warehouse.id}::${row.productId}`, row.quantity);
+      }
+    }
+    for (const item of inventoryItems) {
+      if (item.warehouseId) {
+        const key = `${item.warehouseId}::${item.id}`;
+        currentBalanceByKey.set(key, item.currentStock);
+      }
+    }
+
+    const byKey = new Map<string, typeof movementsWithDate>();
+    for (const entry of movementsWithDate) {
+      const key = `${entry.movement.warehouseId}::${entry.movement.productId}`;
+      const list = byKey.get(key) ?? [];
+      list.push(entry);
+      byKey.set(key, list);
+    }
+
+    const computedBeforeAfter = new Map<string, { before: number; after: number }>();
+    for (const [key, list] of byKey) {
+      list.sort((a, b) => a.ts - b.ts);
+      const currentBalance = currentBalanceByKey.get(key) ?? 0;
+      const netDelta = list.reduce(
+        (sum, { movement }) => sum + (movement.type === 'in' ? movement.quantity : -movement.quantity),
+        0
+      );
+      const openingBalance = currentBalance - netDelta;
+      let balance = openingBalance;
+      for (const { movement } of list) {
+        const before = balance;
+        const delta = movement.type === 'in' ? movement.quantity : -movement.quantity;
+        balance += delta;
+        computedBeforeAfter.set(movement.id, { before, after: balance });
+      }
+    }
+
+    return inventoryStockMovements.map((movement) => {
       const dateTime = normalizeDateTime(movement.movementDateTime || movement.createdAt);
+      const computed = movement.warehouseId
+        ? computedBeforeAfter.get(movement.id)
+        : undefined;
       return {
         id: movement.id,
         productName: byProductId.get(movement.productId) || 'Unknown Product',
@@ -119,15 +173,15 @@ export default function StockMovementsPage() {
         reason: movement.reason || movement.notes || 'N/A',
         referenceType: movement.referenceType || 'MANUAL',
         referenceId: movement.referenceId,
-        beforeQuantity: movement.beforeQuantity,
-        afterQuantity: movement.afterQuantity,
+        beforeQuantity: computed?.before ?? movement.beforeQuantity,
+        afterQuantity: computed?.after ?? movement.afterQuantity,
         recordedDate: dateTime.date,
         recordedTime: dateTime.time,
       };
     });
   }, [refreshTick, datasetTick]);
 
-  const unitRows = useMemo<UnitMovementRow[]>(() => [...mockUnitStockMovements], [refreshTick, datasetTick]);
+  const unitRows = useMemo<UnitMovementRow[]>(() => [...inventoryUnitStockMovements], [refreshTick, datasetTick]);
 
   const warehouseOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
     const source = view === 'warehouse'
@@ -431,8 +485,10 @@ export default function StockMovementsPage() {
 
   useEffect(() => {
     const refresh = () => {
-      setRefreshTick((tick) => tick + 1);
-      setDatasetTick((tick) => tick + 1);
+      void loadInventoryDataset(true).finally(() => {
+        setRefreshTick((tick) => tick + 1);
+        setDatasetTick((tick) => tick + 1);
+      });
     };
     window.addEventListener('inventory:movement-updated', refresh);
     window.addEventListener('focus', refresh);

@@ -10,45 +10,68 @@ import type { InventoryDashboardSummary } from './types';
 import {
   isInventoryDatasetLoaded,
   loadInventoryDataset,
-  mockReplenishmentItems,
-  mockUnits,
-  mockUnitItems,
-} from './lib/mockData';
+  getDisplayableInventoryItems,
+  inventoryItems,
+  inventoryUnits,
+  inventoryUnitItems,
+} from './lib/inventoryDataStore';
 import InventoryDashboardLinks from './components/InventoryDashboardLinks';
+import { useToast } from './hooks/useToast';
 
 export default function InventoryDashboardPage() {
+  const { error: showError } = useToast();
   const [refreshTick, setRefreshTick] = useState(0);
   const [isLoading, setIsLoading] = useState(() => !isInventoryDatasetLoaded());
+  const [initialLoadDone, setInitialLoadDone] = useState(() => isInventoryDatasetLoaded());
+  const itemsSnapshot = useMemo(() => [...getDisplayableInventoryItems()], [refreshTick]);
+  const unitsSnapshot = useMemo(() => [...inventoryUnits], [refreshTick]);
+  const unitItemsSnapshot = useMemo(() => [...inventoryUnitItems], [refreshTick]);
 
   useEffect(() => {
     let isMounted = true;
-    setIsLoading(true);
-    void loadInventoryDataset()
-      .finally(() => {
+    const loadDashboardData = async (showBlockingLoader: boolean) => {
+      if (showBlockingLoader) setIsLoading(true);
+      try {
+        await loadInventoryDataset(true);
+        if (isMounted && inventoryItems.length === 0 && inventoryUnits.length === 0) {
+          await loadInventoryDataset(true);
+        }
+      } catch (err) {
+        if (isMounted) {
+          showError('Could not load inventory data. Check that the backend is running and MARKET_API_URL is correct.');
+        }
+      } finally {
         if (isMounted) {
           setRefreshTick((tick) => tick + 1);
-          setIsLoading(false);
+          setInitialLoadDone(true);
+          if (showBlockingLoader) setIsLoading(false);
         }
-      });
+      }
+    };
+
+    void loadDashboardData(!isInventoryDatasetLoaded());
 
     const onUpdate = () => {
-      setIsLoading(true);
-      void loadInventoryDataset(true).finally(() => {
-        if (!isMounted) return;
-        setRefreshTick((tick) => tick + 1);
-        setIsLoading(false);
-      });
+      void loadDashboardData(false);
+    };
+    const onLoadFailed = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (isMounted && detail?.message) {
+        showError(detail.message);
+      }
     };
     window.addEventListener('inventory:movement-updated', onUpdate);
+    window.addEventListener('inventory:dataset-load-failed', onLoadFailed);
 
     return () => {
       isMounted = false;
       window.removeEventListener('inventory:movement-updated', onUpdate);
+      window.removeEventListener('inventory:dataset-load-failed', onLoadFailed);
     };
   }, []);
 
   const summary = useMemo((): InventoryDashboardSummary => {
-    const items = mockReplenishmentItems;
+    const items = itemsSnapshot;
     const totalStocks = items.reduce((sum, item) => sum + item.currentStock, 0);
     const lowStockCount = items.filter((item) => item.currentStock < item.minStock).length;
     return {
@@ -57,7 +80,7 @@ export default function InventoryDashboardPage() {
       lowStockCount,
       replenishmentNeeded: lowStockCount,
     };
-  }, [refreshTick]);
+  }, [itemsSnapshot]);
 
   return (
     <>
@@ -76,6 +99,13 @@ export default function InventoryDashboardPage() {
           opacity: 0;
           animation: inventoryReveal 560ms ease-in-out forwards;
         }
+        .inventory-panel-skeleton {
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          background: #ffffff;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+          padding: 14px;
+        }
       `}</style>
 
       <div className="mb-8 inventory-reveal" style={{ animationDelay: '40ms' }}>
@@ -91,7 +121,11 @@ export default function InventoryDashboardPage() {
       <div className="lg:hidden flex flex-col gap-6">
         {/* 1. Search Units */}
         <div className="inventory-reveal" style={{ animationDelay: '120ms' }}>
-          <SearchUnits units={mockUnits} />
+          {isLoading && !initialLoadDone ? (
+            <div className="inventory-panel-skeleton animate-pulse h-24" />
+          ) : (
+            <SearchUnits units={unitsSnapshot} />
+          )}
         </div>
 
         {/* 2. Summary Cards */}
@@ -101,7 +135,11 @@ export default function InventoryDashboardPage() {
 
         {/* 3. Unit Alert */}
         <div className="inventory-reveal" style={{ animationDelay: '230ms' }}>
-          <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
+          {isLoading && !initialLoadDone ? (
+            <div className="inventory-panel-skeleton animate-pulse h-40" />
+          ) : (
+            <UnitAlert units={unitsSnapshot} unitItems={unitItemsSnapshot} />
+          )}
         </div>
 
         {/* 4. Inventory Table */}
@@ -116,10 +154,10 @@ export default function InventoryDashboardPage() {
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '340ms' }}>
             <InventoryTable
-              items={mockReplenishmentItems}
+              items={itemsSnapshot}
               redirectOnClick={true}
               hideEditButton={true}
-              isLoading={isLoading}
+              isLoading={isLoading && !initialLoadDone}
             />
           </div>
         </div>
@@ -133,7 +171,11 @@ export default function InventoryDashboardPage() {
       {/* Desktop Layout: Sidebar + Main Content */}
       <div className="hidden lg:flex lg:flex-row gap-8 lg:items-start">
         <aside className="w-80 flex-shrink-0 inventory-reveal" style={{ animationDelay: '120ms' }}>
-          <SearchUnits units={mockUnits} />
+          {isLoading && !initialLoadDone ? (
+            <div className="inventory-panel-skeleton animate-pulse h-24" />
+          ) : (
+            <SearchUnits units={unitsSnapshot} />
+          )}
           <div className="mt-6">
             <InventoryDashboardLinks />
           </div>
@@ -143,7 +185,11 @@ export default function InventoryDashboardPage() {
             <InventorySummaryCards summary={summary} isLoading={isLoading} />
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '240ms' }}>
-            <UnitAlert units={mockUnits} unitItems={mockUnitItems} />
+            {isLoading && !initialLoadDone ? (
+              <div className="inventory-panel-skeleton animate-pulse h-40" />
+            ) : (
+              <UnitAlert units={unitsSnapshot} unitItems={unitItemsSnapshot} />
+            )}
           </div>
           <div className="mb-4 inventory-reveal" style={{ animationDelay: '300ms' }}>
             <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
@@ -155,10 +201,10 @@ export default function InventoryDashboardPage() {
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
             <InventoryTable
-              items={mockReplenishmentItems}
+              items={itemsSnapshot}
               redirectOnClick={true}
               hideEditButton={true}
-              isLoading={isLoading}
+              isLoading={isLoading && !initialLoadDone}
             />
           </div>
         </div>

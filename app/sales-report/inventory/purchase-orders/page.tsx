@@ -9,17 +9,17 @@ import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
 import GoodsReceiptModal from '../components/GoodsReceiptModal';
-import ToastContainer from '../components/ToastContainer';
+import GoodsReceiptEvidenceImages from '../components/GoodsReceiptEvidenceImages';
 import { useToast } from '../hooks/useToast';
 import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
   loadInventoryDataset,
-  mockPurchaseOrders, 
-  mockPurchaseOrderLines, 
-  mockGoodsReceipts,
-  mockSuppliers,
-  mockReplenishmentItems,
-} from '../lib/mockData';
+  inventoryPurchaseOrders, 
+  inventoryPurchaseOrderLines, 
+  inventoryGoodsReceipts,
+  inventorySuppliers,
+  inventoryItems,
+} from '../lib/inventoryDataStore';
 import type { PurchaseOrder } from '../types';
 
 type GoodsReceiptSubmitData = {
@@ -28,6 +28,7 @@ type GoodsReceiptSubmitData = {
   receivedBy?: string;
   receiptDate?: string;
   receiptImages?: File[];
+  items?: { productId: string; quantityReceived: number }[];
 };
 
 // ─── Edit PO Modal ────────────────────────────────────────────────────
@@ -131,7 +132,7 @@ function EditPOModal({
                   setForm((prev) => ({ ...prev, supplierId: value }));
                   setErrors((prev) => ({ ...prev, supplierId: '' }));
                 }}
-                options={mockSuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
+                options={inventorySuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
@@ -202,9 +203,9 @@ function DetailDrawer({
   const [activeTab, setActiveTab] = useState<"items" | "receipts">("items");
   const [evidencePreview, setEvidencePreview] = useState<{ path: string; label: string } | null>(null);
 
-  const supplier = mockSuppliers.find(s => s.id === po.supplierId);
-  const poLines = mockPurchaseOrderLines.filter(line => line.poId === po.id);
-  const goodsReceipts = mockGoodsReceipts.filter(gr => gr.poId === po.id);
+  const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
+  const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
+  const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
 
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
   useEffect(() => {
@@ -357,7 +358,7 @@ function DetailDrawer({
                 </thead>
                 <tbody>
                   {poLines.map((line, i) => {
-                    const item = mockReplenishmentItems.find(x => x.id === line.productId);
+                    const item = inventoryItems.find(x => x.id === line.productId);
                     return (
                       <tr key={line.id} className={`border-b border-[#e5e7eb] ${i % 2 === 0 ? 'bg-white' : 'bg-[#f4f7f7]'}`}>
                         <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{item?.name || `Product #${line.productId}`}</td>
@@ -455,33 +456,11 @@ function DetailDrawer({
                         </div>
                       )}
 
-                      {/* GR evidence images */}
-                      {gr.evidenceImages && gr.evidenceImages.length > 0 && (
-                        <div className="px-5 py-3.5 border-t border-[#e5e7eb] bg-white">
-                          <div className="text-[10px] font-bold tracking-wider uppercase text-[#9ca3af] mb-2.5">Receipt Evidence</div>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                            {gr.evidenceImages.map((imagePath, imageIndex) => (
-                              <button
-                                type="button"
-                                key={`${gr.id}-evidence-${imageIndex}`}
-                                onClick={() =>
-                                  setEvidencePreview({
-                                    path: imagePath,
-                                    label: `${gr.receiptNo} evidence ${imageIndex + 1}`,
-                                  })
-                                }
-                                className="group block rounded-lg overflow-hidden border border-[#e5e7eb] bg-[#f9fafb]"
-                              >
-                                <img
-                                  src={imagePath}
-                                  alt={`${gr.receiptNo} evidence ${imageIndex + 1}`}
-                                  className="w-full h-28 object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                                />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      {/* GR evidence images — fetches from API when not in dataset */}
+                      <GoodsReceiptEvidenceImages
+                        gr={gr}
+                        onPreview={(path, label) => setEvidencePreview({ path, label })}
+                      />
                     </div>
                   ))}
 
@@ -612,11 +591,11 @@ const PurchaseOrdersSkeleton = () => (
 function PurchaseOrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { toasts, removeToast, success, error } = useToast();
+  const { success, error } = useToast();
   const poIdFromQuery = searchParams.get('poId');
   const supplierIdFromQuery = searchParams.get('supplierId');
   const supplierFromQuery = supplierIdFromQuery
-    ? mockSuppliers.find((supplier) => supplier.id === supplierIdFromQuery) ?? null
+    ? inventorySuppliers.find((supplier) => supplier.id === supplierIdFromQuery) ?? null
     : null;
 
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -636,12 +615,14 @@ function PurchaseOrdersPageContent() {
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setPurchaseOrders([...mockPurchaseOrders]);
+        setPurchaseOrders([...inventoryPurchaseOrders]);
         setIsLoading(false);
       });
 
     const refresh = () => {
-      setPurchaseOrders([...mockPurchaseOrders]);
+      void loadInventoryDataset(true).finally(() => {
+        if (isMounted) setPurchaseOrders([...inventoryPurchaseOrders]);
+      });
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -685,7 +666,7 @@ function PurchaseOrdersPageContent() {
 
   const supplierOptions: InventoryDropdownOption<'all' | string>[] = [
     { value: 'all', label: 'All Suppliers' },
-    ...mockSuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
+    ...inventorySuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
   ];
 
   const selectedPOFromQuery = useMemo(() => {
@@ -712,18 +693,23 @@ function PurchaseOrdersPageContent() {
     if (!goodsReceiptModalPO) return;
 
     const submit = async () => {
-      const poLines = mockPurchaseOrderLines.filter((line) => line.poId === goodsReceiptModalPO.id);
-      const items = poLines.map((line) => ({
-        productId: line.productId,
-        quantityReceived: Math.max(0, Number(line.quantity - line.receivedQuantity)),
-      })).filter((line) => line.quantityReceived > 0);
+      const poLines = inventoryPurchaseOrderLines.filter((line) => line.poId === goodsReceiptModalPO.id);
+      const items =
+        data.items && data.items.length > 0
+          ? data.items.filter((i) => i.quantityReceived > 0)
+          : poLines
+              .map((line) => ({
+                productId: line.productId,
+                quantityReceived: Math.max(0, Number(line.quantity - line.receivedQuantity)),
+              }))
+              .filter((line) => line.quantityReceived > 0);
 
       if (items.length === 0) {
         alert('All PO line items are already fully received.');
         return;
       }
 
-      const response = await apiClient.post<{ purchaseOrder: PurchaseOrder }>(
+      const response = await apiClient.post<{ purchaseOrder?: PurchaseOrder; goodsReceipt?: { id: string } }>(
         `/api/purchase-orders/${goodsReceiptModalPO.id}/receive`,
         {
           warehouseId: data.warehouseId,
@@ -732,25 +718,61 @@ function PurchaseOrdersPageContent() {
         }
       );
 
-      await loadInventoryDataset(true);
-      setPurchaseOrders([...mockPurchaseOrders]);
+      if (!response?.purchaseOrder) {
+        throw new Error('Invalid response: missing purchase order');
+      }
 
-      const updated = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === response.purchaseOrder.id)
-        ?? mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
+      const updatedPO = response.purchaseOrder;
+      const receiptId = response.goodsReceipt?.id;
+      let attachmentUploadFailed = false;
+      if (receiptId && data.receiptImages && data.receiptImages.length > 0) {
+        const formData = new FormData();
+        data.receiptImages.forEach((file) => {
+          formData.append('files', file);
+        });
+        try {
+          await apiClient.post(`/api/goods-receipts/${receiptId}/attachments`, formData);
+        } catch (uploadError) {
+          attachmentUploadFailed = true;
+          const err = uploadError as Error & { status?: number };
+          const is413 = err.status === 413 || (err.message?.toLowerCase().includes('entity too large') ?? false);
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('Goods receipt attachment upload error:', uploadError);
+          }
+          if (is413) {
+            error('Receipt images are too large. Use smaller images (max 2MB each) or fewer files.');
+          }
+        }
+      }
+
+      await loadInventoryDataset(true);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
+
+      const updated = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === updatedPO.id)
+        ?? inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === goodsReceiptModalPO.id)
         ?? null;
 
       if (updated) {
         setSelectedPO(updated);
       }
 
-      success('Goods Receipt created successfully.');
+      if (attachmentUploadFailed) {
+        error('Goods receipt was created, but photo upload failed. You can re-upload photos later.');
+      } else {
+        success('Goods Receipt created successfully.');
+      }
     };
 
     void submit().catch((err) => {
       if (process.env.NODE_ENV !== 'production') {
         console.error('Goods receipt submit error:', err);
       }
-      error('We couldn’t create the goods receipt. Please try again.');
+      const e = err as Error & { status?: number };
+      const is413 = e.status === 413 || (e.message?.toLowerCase().includes('entity too large') ?? false);
+      const message = is413
+        ? 'Request too large. Use smaller receipt images (max 2MB each) or fewer files.'
+        : (err instanceof Error ? err.message : 'We couldn’t create the goods receipt. Please try again.');
+      error(message);
     });
   };
 
@@ -761,14 +783,12 @@ function PurchaseOrdersPageContent() {
       await apiClient.patch(`/api/purchase-orders/${editPOTarget.id}`, {
         supplierId: updatedData.supplierId,
         expectedDelivery: updatedData.expectedDelivery,
-      }).catch(() => {
-        // Keep UX non-blocking when endpoint is unavailable.
       });
 
       await loadInventoryDataset(true);
-      setPurchaseOrders([...mockPurchaseOrders]);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updatedPO = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === editPOTarget.id);
+      const updatedPO = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === editPOTarget.id);
       if (selectedPO?.id === editPOTarget.id && updatedPO) {
         setSelectedPO(updatedPO);
       }
@@ -792,14 +812,12 @@ function PurchaseOrdersPageContent() {
     const run = async () => {
       await apiClient.patch(`/api/purchase-orders/${po.id}`, {
         status: 'CANCELLED',
-      }).catch(() => {
-        // Keep UX non-blocking when endpoint is unavailable.
       });
 
       await loadInventoryDataset(true);
-      setPurchaseOrders([...mockPurchaseOrders]);
+      setPurchaseOrders([...inventoryPurchaseOrders]);
 
-      const updatedPO = mockPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === po.id);
+      const updatedPO = inventoryPurchaseOrders.find((purchaseOrder) => purchaseOrder.id === po.id);
       if (updatedPO) {
         setSelectedPO(updatedPO);
       }
@@ -822,7 +840,7 @@ function PurchaseOrdersPageContent() {
         return false;
       }
       
-      const supplier = mockSuppliers.find(s => s.id === po.supplierId);
+      const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
       const matchesSearch = 
         po.id.toLowerCase().includes(search.toLowerCase()) ||
         (supplier?.name.toLowerCase() || '').includes(search.toLowerCase());
@@ -1019,8 +1037,8 @@ function PurchaseOrdersPageContent() {
             </div>
           ) : (
             pageOrders.map((po) => {
-              const supplier = mockSuppliers.find(s => s.id === po.supplierId);
-              const goodsReceipts = mockGoodsReceipts.filter(gr => gr.poId === po.id);
+              const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
+              const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
               return (
                 <Fragment key={po.id}>
                   {/* Desktop Row */}
@@ -1198,7 +1216,6 @@ function PurchaseOrdersPageContent() {
           onSave={handleEditPO}
         />
       )}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

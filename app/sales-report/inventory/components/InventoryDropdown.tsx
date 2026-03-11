@@ -194,7 +194,7 @@ export default function InventoryDropdown<T extends string>({
         ) : (
           <>
             <div
-              className={`fixed inset-0 ${backdropZIndexClass}`}
+              className={`absolute inset-0 ${backdropZIndexClass}`}
               onClick={() => setOpen(false)}
             />
             <div

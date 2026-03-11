@@ -15,6 +15,15 @@ function looksLikeNgrokErrorPage(text: string): boolean {
   return haystack.includes('ngrok') && (haystack.includes('err_ngrok_') || looksLikeHtml(text));
 }
 
+function isNgrokUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.endsWith('.ngrok-free.dev') || host.endsWith('.ngrok.io') || host.endsWith('.ngrok.app');
+  } catch {
+    return false;
+  }
+}
+
 async function forwardToUpstream(
   request: NextRequest,
   upstreamUrl: string
@@ -25,6 +34,7 @@ async function forwardToUpstream(
   // Preserve auth/dev-auth headers if present.
   const passthroughHeaders = [
     'authorization',
+    'content-type',
     'x-user-id',
     'x-user-email',
     'x-user-role',
@@ -35,15 +45,25 @@ async function forwardToUpstream(
     if (value) headers.set(key, value);
   });
 
-  // Ensure JSON content-type for requests with body.
-  if (method !== 'GET' && method !== 'HEAD') {
-    if (!headers.get('content-type')) headers.set('content-type', 'application/json');
+  // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
+  if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
   }
 
-  let body: string | undefined;
+  // Ensure JSON content-type only when not set (multipart uploads need their boundary).
+  if (method !== 'GET' && method !== 'HEAD' && !headers.get('content-type')) {
+    headers.set('content-type', 'application/json');
+  }
+
+  let body: string | ArrayBuffer | undefined;
   if (method !== 'GET' && method !== 'HEAD') {
-    const raw = await request.text();
-    body = raw || undefined;
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      body = await request.arrayBuffer();
+    } else {
+      const raw = await request.text();
+      body = raw || undefined;
+    }
   }
 
   const res = await fetch(upstreamUrl, {

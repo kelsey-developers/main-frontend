@@ -9,12 +9,12 @@ import ToastContainer from './ToastContainer';
 import { useToast } from '../hooks/useToast';
 import { 
   loadInventoryDataset,
-  mockReplenishmentItems, 
-  mockWarehouseDirectoryData,
+  inventoryItems, 
+  inventoryWarehouseDirectory,
   ITEM_CATEGORIES,
   ITEM_TYPES,
   ITEM_UNITS,
-} from '../lib/mockData';
+} from '../lib/inventoryDataStore';
 import { createItemAndProcessStockIn, processStockIn } from '../lib/inventoryLedger';
 
 // ─── Brand colors ────────────────────────────────────────────────
@@ -217,7 +217,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
         : [...form.warehouse, w]
     );
 
-  const selectedItem = mockReplenishmentItems.find((i) => i.id === form.existingItem);
+  const selectedItem = inventoryItems.find((i) => i.id === form.existingItem);
 
   const handleClose = () => {
     setVisible(false);
@@ -290,7 +290,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
     }
   };
 
-  const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
 
   const stockInDropdownProps = {
     align: 'left' as const,
@@ -441,7 +441,7 @@ export default function StockInModal({ mode, onClose }: StockInModalProps) {
                     onChange={(value) => set('existingItem', value)}
                     options={[
                       { value: '', label: 'Search or select item...' },
-                      ...mockReplenishmentItems.map((i) => ({
+                      ...inventoryItems.map((i) => ({
                         value: i.id,
                         label: `${i.sku} - ${i.name}`,
                       })),

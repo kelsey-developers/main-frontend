@@ -5,14 +5,13 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from '@/lib/api/client';
-import { loadInventoryDataset, mockSupplierDirectoryData } from "../lib/mockData";
+import { loadInventoryDataset, inventorySupplierDirectory } from "../lib/inventoryDataStore";
 import InventoryDropdown, { type InventoryDropdownOption } from "../components/InventoryDropdown";
 import ActiveStatusToggle from "../components/ActiveStatusToggle";
-import ToastContainer from "../components/ToastContainer";
 import { useToast } from "../hooks/useToast";
 import { avatarPalette, initials } from "../helpers/supplierHelpers";
 
-type Supplier = (typeof mockSupplierDirectoryData)[number];
+type Supplier = (typeof inventorySupplierDirectory)[number];
 
 const SupplierFormModal = ({
   supplier,
@@ -238,7 +237,7 @@ const SuppliersSkeleton = () => (
 
 export default function SuppliersPage() {
   const router = useRouter();
-  const { toasts, removeToast, success, error } = useToast();
+  const { success, error } = useToast();
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -253,12 +252,14 @@ export default function SuppliersPage() {
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setSuppliers([...mockSupplierDirectoryData]);
+        setSuppliers([...inventorySupplierDirectory]);
         setIsLoading(false);
       });
 
     const onRefresh = () => {
-      setSuppliers([...mockSupplierDirectoryData]);
+      void loadInventoryDataset(true).finally(() => {
+        if (isMounted) setSuppliers([...inventorySupplierDirectory]);
+      });
     };
 
     window.addEventListener('inventory:movement-updated', onRefresh);
@@ -312,7 +313,7 @@ export default function SuppliersPage() {
       }
 
       await loadInventoryDataset(true);
-      setSuppliers([...mockSupplierDirectoryData]);
+      setSuppliers([...inventorySupplierDirectory]);
       success(editTarget ? 'Supplier updated successfully.' : 'Supplier added successfully.');
     };
 
@@ -688,7 +689,6 @@ export default function SuppliersPage() {
           onSave={handleSave}
         />
       )}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }

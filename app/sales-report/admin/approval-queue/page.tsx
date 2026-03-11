@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { mockDamageAdjustments, mockReplenishmentItems, mockStockMovements } from '../../inventory/lib/mockData';
+import { mockDamageAdjustments, mockReplenishmentItems, mockStockMovements } from '../../inventory/lib/inventoryData';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
 type ApprovalKind = 'stock-out' | 'write-off' | 'adjustment' | 'negative-override';

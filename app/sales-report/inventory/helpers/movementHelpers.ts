@@ -1,4 +1,4 @@
-import { mockReplenishmentItems, mockStockMovements, mockWarehouses } from '../lib/mockData';
+import { inventoryItems, inventoryStockMovements, inventoryWarehouses } from '../lib/inventoryDataStore';
 import type { EnhancedMovement } from './types';
 
 const toRecordedDateTime = (value?: string) => {
@@ -21,9 +21,9 @@ const toRecordedDateTime = (value?: string) => {
 };
 
 export const buildEnhancedMovements = (): EnhancedMovement[] => {
-  return mockStockMovements.map((movement) => {
-    const product = mockReplenishmentItems.find((item) => item.id === movement.productId);
-    const warehouse = mockWarehouses.find(
+  return inventoryStockMovements.map((movement) => {
+    const product = inventoryItems.find((item) => item.id === movement.productId);
+    const warehouse = inventoryWarehouses.find(
       (item) => item.id === movement.warehouseId || item.id === product?.warehouseId
     );
 

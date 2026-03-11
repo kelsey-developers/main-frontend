@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { InventoryUnit, ReplenishmentItem } from '../types';
 import SearchUnits from './SearchUnits';
 import InventoryTable from './InventoryTable';
-import { loadInventoryDataset, mockUnits, mockUnitItems } from '../lib/mockData';
+import { loadInventoryDataset, inventoryUnits, inventoryUnitItems } from '../lib/inventoryDataStore';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 
 interface UnitPageProps {
@@ -34,7 +34,7 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
 
   // Filter items for this unit and transform to ReplenishmentItem format
   const unitInventoryItems = useMemo<ReplenishmentItem[]>(() => {
-    return mockUnitItems
+    return inventoryUnitItems
       .filter((item) => item.assignedToUnit === unit.id)
       .map((item) => ({
         id: item.id,

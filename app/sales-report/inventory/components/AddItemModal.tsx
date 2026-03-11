@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { apiClient } from '@/lib/api/client';
 import type { ItemType, ItemCategory } from '../types';
-import { ITEM_CATEGORIES } from '../lib/mockData';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset } from '../lib/inventoryDataStore';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
+import { useToast } from '../hooks/useToast';
 
 const inputClass = 'w-full px-3 py-2 rounded-lg border border-gray-200 text-gray-700 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] outline-none bg-white';
 const labelClass = 'block text-sm font-medium text-gray-700 mb-1.5';
@@ -18,36 +20,73 @@ const ITEM_TYPE_OPTIONS: InventoryDropdownOption<ItemType | ''>[] = [
 interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd?: (data: { name: string; type: ItemType; category: ItemCategory; quantity: number }) => void;
 }
 
-const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) => {
+const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
+  const { toasts, removeToast, success } = useToast();
   const [mounted, setMounted] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState('');
+  const [sku, setSku] = useState('');
+  const [unit, setUnit] = useState('pcs');
   const [type, setType] = useState<ItemType | ''>('');
   const [category, setCategory] = useState<ItemCategory | ''>('');
-  const [quantity, setQuantity] = useState<string>('');
+  const [reorderLevel, setReorderLevel] = useState<string>('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !type || !category) return;
-    const num = parseInt(quantity, 10);
-    if (quantity === '' || isNaN(num) || num < 0) return;
-    onAdd?.({ name: name.trim(), type, category, quantity: num });
-    setName('');
-    setType('');
-    setCategory('');
-    setQuantity('');
-    onClose();
+    void (async () => {
+      setIsSaving(true);
+      try {
+        const reorder = Math.max(0, Math.floor(Number(reorderLevel || 0)));
+        const skuValue = sku.trim() || `SKU-${Date.now()}`;
+
+        // Ensure category exists (backend will validate categoryId if required by implementation).
+        const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
+          '/api/product-categories'
+        );
+        const normalized = category.toLowerCase();
+        const existing = categories.find((c) => c.name.toLowerCase() === normalized);
+        const categoryId =
+          existing?.id ??
+          (await apiClient.post<{ id: string }>('/api/product-categories', {
+            code: category.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
+            name: category,
+            description: `Auto-created for category ${category}`,
+          })).id;
+
+        await apiClient.post('/api/products', {
+          sku: skuValue,
+          name: name.trim(),
+          unit,
+          itemType: type === 'consumable' ? 'consumable' : 'non_consumable',
+          reorderLevel: reorder,
+          categoryId,
+        });
+
+        await loadInventoryDataset(true);
+        setName('');
+        setSku('');
+        setUnit('pcs');
+        setType('');
+        setCategory('');
+        setReorderLevel('');
+        success('Item created successfully.');
+        onClose();
+      } finally {
+        setIsSaving(false);
+      }
+    })();
   };
 
-  const handleQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReorderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     if (v === '') {
-      setQuantity(v);
+      setReorderLevel(v);
       return;
     }
-    if (/^\d+$/.test(v)) setQuantity(v);
+    if (/^\d+$/.test(v)) setReorderLevel(v);
   };
 
   React.useEffect(() => {
@@ -57,8 +96,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
   if (!isOpen || !mounted) return null;
 
   return createPortal(
-    <div
-      className="fixed inset-0 flex items-center justify-center z-[9999] p-4"
+    <>
+      <div
+        className="fixed inset-0 flex items-center justify-center z-[9999] p-4"
       style={{
         backgroundColor: 'rgba(17, 24, 39, 0.38)',
       }}
@@ -87,6 +127,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4" style={{ fontFamily: 'Poppins' }}>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-900">
+            Stock will <strong>not</strong> be added here. Use <strong>Purchase Order → Goods Receipt</strong> to increase inventory.
+          </div>
           <div>
             <label htmlFor="add-item-name" className={labelClass}>
               Item name
@@ -97,6 +140,19 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Enter item name"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label htmlFor="add-item-sku" className={labelClass}>
+              SKU (optional)
+            </label>
+            <input
+              id="add-item-sku"
+              type="text"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              placeholder="e.g. TWL-001 (auto-generated if blank)"
               className={inputClass}
             />
           </div>
@@ -112,6 +168,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
               placeholderWhen=""
               fullWidth={true}
               minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
             />
           </div>
           <div>
@@ -129,25 +188,38 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
               placeholderWhen=""
               fullWidth={true}
               minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
             />
           </div>
           <div>
-            <label htmlFor="add-item-quantity" className={labelClass}>
-              Quantity
+            <label htmlFor="add-item-unit" className={labelClass}>
+              Unit of measure
+            </label>
+            <InventoryDropdown
+              value={unit}
+              onChange={(value) => setUnit(value)}
+              options={ITEM_UNITS.map((u) => ({ value: u, label: u }))}
+              fullWidth={true}
+              minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
+            />
+          </div>
+          <div>
+            <label htmlFor="add-item-reorder" className={labelClass}>
+              Reorder level (min stock)
             </label>
             <input
-              id="add-item-quantity"
+              id="add-item-reorder"
               type="number"
               min={0}
               step={1}
               inputMode="numeric"
-              value={quantity}
-              onChange={handleQuantityChange}
-              onBlur={() => {
-                if (quantity === '') return;
-                const num = parseInt(quantity, 10);
-                if (isNaN(num) || num < 0) setQuantity('0');
-              }}
+              value={reorderLevel}
+              onChange={handleReorderChange}
               placeholder="0"
               className={inputClass}
             />
@@ -155,14 +227,16 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAdd }) =
           <div className="pt-2 flex justify-end">
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg border border-gray-200 bg-[#0B5858] text-white font-medium focus:ring-2 focus:ring-[#0B5858]/20 outline-none hover:bg-[#0a4a4a]"
+              disabled={isSaving}
+              className="px-4 py-2 rounded-lg border border-gray-200 bg-[#0B5858] text-white font-medium focus:ring-2 focus:ring-[#0B5858]/20 outline-none hover:bg-[#0a4a4a] disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Add
+              {isSaving ? 'Saving…' : 'Create item'}
             </button>
           </div>
         </form>
       </div>
-    </div>,
+    </div>
+    </>,
     document.body
   );
 };
