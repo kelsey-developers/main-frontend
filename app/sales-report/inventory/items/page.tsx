@@ -10,7 +10,6 @@ import InventoryDropdown, { type InventoryDropdownOption } from '../components/I
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
 import { mockReplenishmentItems, mockWarehouseDirectoryData, getWarehouseUnitAllocations } from '../lib/mockData';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
-import StockInModal from '../components/StockInModal';
 
 function InventoryItemsPageContent() {
   const router = useRouter();
@@ -19,7 +18,6 @@ function InventoryItemsPageContent() {
   const warehouseNameFromQuery = searchParams.get('warehouseName');
   const itemIdFromQuery = searchParams.get('itemId');
   const [refreshTick, setRefreshTick] = useState(0);
-  const [showAddNewItemModal, setShowAddNewItemModal] = useState(false);
   const [view, setView] = useState<'items' | 'unitAllocations'>('items');
   const [unitFilter, setUnitFilter] = useState<'all' | string>('all');
 
@@ -144,8 +142,8 @@ function InventoryItemsPageContent() {
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
             type="button"
-            onClick={() => setShowAddNewItemModal(true)}
-            className="stock-btn"
+            onClick={() => router.push('/sales-report/inventory/StockOut')}
+            className="stock-btn stock-out-primary"
             style={{
               padding: '10px 18px',
               borderRadius: '10px',
@@ -154,38 +152,13 @@ function InventoryItemsPageContent() {
               color: '#ffffff',
               fontFamily: 'Poppins',
               fontSize: '13px',
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: 'pointer',
               transition: 'all 0.15s',
               display: 'flex',
               alignItems: 'center',
               gap: '7px',
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            Add New Item
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push('/sales-report/inventory/StockOut')}
-            className="stock-btn"
-            style={{
-              padding: '10px 18px',
-              borderRadius: '10px',
-              border: '1.5px solid #e2e8f0',
-              background: 'white',
-              color: '#334155',
-              fontFamily: 'Poppins',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '7px',
+              boxShadow: '0 10px 26px rgba(11, 88, 88, 0.22)',
             }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -193,6 +166,20 @@ function InventoryItemsPageContent() {
               <path d="M1 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             Stock Out
+            <span
+              style={{
+                marginLeft: 6,
+                padding: '2px 8px',
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.18)',
+                border: '1px solid rgba(255,255,255,0.22)',
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: 0.6,
+              }}
+            >
+              ACTION
+            </span>
           </button>
         </div>
       </div>
@@ -371,13 +358,6 @@ function InventoryItemsPageContent() {
           router.push('/sales-report/inventory/items');
         }} 
       />
-
-      {showAddNewItemModal && (
-        <StockInModal
-          mode="new"
-          onClose={() => setShowAddNewItemModal(false)}
-        />
-      )}
     </>
   );
 }

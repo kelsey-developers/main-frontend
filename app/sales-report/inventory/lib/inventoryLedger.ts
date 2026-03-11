@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api/client';
-import type { ItemCategory, ItemType, ReplenishmentItem } from '../types';
+import type { ReplenishmentItem } from '../types';
 import { loadInventoryDataset, mockDashboardSummary, mockReplenishmentItems } from './mockData';
 
 type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
@@ -19,28 +19,6 @@ export interface LedgerMovementInput {
 export interface StockOutInput extends LedgerMovementInput {
   unitId?: string;
   transferToWarehouseId?: string;
-}
-
-export interface NewItemStockInInput {
-  sku: string;
-  name: string;
-  category: ItemCategory;
-  itemType: ItemType;
-  unit: string;
-  minStock: number;
-  unitCost?: number;
-  isActive?: boolean;
-  supplierId?: string;
-  supplierName?: string;
-  createdBy?: string;
-  initialStocks: Array<{
-    warehouseId: string;
-    quantity: number;
-    reason: string;
-    date: string;
-    reference?: string;
-    notes?: string;
-  }>;
 }
 
 export interface LedgerResult {
@@ -115,101 +93,6 @@ const postMovement = async (
   return response.movement.id;
 };
 
-const toCategoryCode = (value: string) =>
-  value
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'OTHER';
-
-const ensureCategoryId = async (categoryName: ItemCategory): Promise<string> => {
-  const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
-    '/api/product-categories'
-  );
-
-  const normalizedName = categoryName.toLowerCase();
-  const code = toCategoryCode(categoryName);
-  const existing = categories.find(
-    (category) => category.name.toLowerCase() === normalizedName || category.code === code
-  );
-  if (existing) return existing.id;
-
-  const created = await apiClient.post<{ id: string }>('/api/product-categories', {
-    code,
-    name: categoryName,
-    description: `Auto-created for category ${categoryName}`,
-  });
-
-  return created.id;
-};
-
-export const processStockIn = async (input: LedgerMovementInput): Promise<LedgerResult> => {
-  if (input.quantity <= 0) {
-    throw new Error('Quantity must be greater than zero.');
-  }
-
-  const movementId = await postMovement(input, 'IN');
-  await loadInventoryDataset(true);
-
-  const result = buildLedgerResult(input.productId, [movementId]);
-  emitInventoryMovementUpdated({
-    source: 'stock-in',
-    movementIds: [movementId],
-    productId: input.productId,
-  });
-
-  return result;
-};
-
-export const createItemAndProcessStockIn = async (
-  input: NewItemStockInInput
-): Promise<{ item: ReplenishmentItem; movementIds: string[] }> => {
-  if (!input.name.trim()) throw new Error('Item name is required.');
-  if (!input.sku.trim()) throw new Error('SKU is required.');
-  if (!input.initialStocks.length) throw new Error('At least one warehouse stock line is required.');
-
-  const categoryId = await ensureCategoryId(input.category);
-
-  const product = await apiClient.post<{ id: string }>('/api/products', {
-    sku: input.sku,
-    name: input.name,
-    unit: input.unit,
-    itemType: input.itemType === 'consumable' ? 'consumable' : 'non_consumable',
-    reorderLevel: Math.max(0, input.minStock),
-    supplierId: input.supplierId || undefined,
-    categoryId,
-  });
-
-  const movementIds: string[] = [];
-  for (const stockLine of input.initialStocks) {
-    const movementId = await apiClient.post<InventoryMovementResponse>('/api/inventory/movements', {
-      productId: product.id,
-      warehouseId: stockLine.warehouseId,
-      type: 'IN',
-      quantity: stockLine.quantity,
-      reason: stockLine.reason,
-      referenceType: mapReferenceType(undefined, stockLine.reference),
-      referenceId: stockLine.reference,
-      notes: stockLine.notes,
-    });
-    movementIds.push(movementId.movement.id);
-  }
-
-  await loadInventoryDataset(true);
-  const createdItem = mockReplenishmentItems.find((entry) => entry.id === product.id);
-  if (!createdItem) {
-    throw new Error('Product was created but could not be loaded into inventory list.');
-  }
-
-  emitInventoryMovementUpdated({
-    source: 'stock-in',
-    movementIds,
-    productId: product.id,
-  });
-
-  return { item: createdItem, movementIds };
-};
-
 export const processStockOut = async (input: StockOutInput): Promise<LedgerResult> => {
   if (input.quantity <= 0) {
     throw new Error('Quantity must be greater than zero.');
@@ -222,10 +105,14 @@ export const processStockOut = async (input: StockOutInput): Promise<LedgerResul
   movementIds.push(outMovementId);
 
   if (input.transferToWarehouseId) {
-    const transferInId = await postMovement(input, 'IN', {
-      warehouseId: input.transferToWarehouseId,
-      notes: [input.notes, `Transfer from ${input.warehouseId}`].filter(Boolean).join(' | '),
-    });
+    const transferInId = await postMovement(
+      { ...input, referenceType: 'MANUAL' },
+      'IN',
+      {
+        warehouseId: input.transferToWarehouseId,
+        notes: [input.notes, `Transfer from ${input.warehouseId}`].filter(Boolean).join(' | '),
+      }
+    );
     movementIds.push(transferInId);
   }
 

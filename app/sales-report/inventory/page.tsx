@@ -23,7 +23,9 @@ export default function InventoryDashboardPage() {
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
-    void loadInventoryDataset()
+    // Force fetch so the dashboard always has data immediately,
+    // even if a previous attempt stored an empty fallback dataset.
+    void loadInventoryDataset(true)
       .finally(() => {
         if (isMounted) {
           setRefreshTick((tick) => tick + 1);

@@ -8,11 +8,11 @@ import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { apiClient } from '@/lib/api/client';
 import { type InventoryDropdownOption } from '../../components/InventoryDropdown';
-import { loadInventoryDataset, mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, mockSuppliers, mockReplenishmentItems } from '../../lib/mockData';
 
 interface POLineItem {
   id: string;
-  productId: string;
+  productId: string; // empty string means "unselected row"
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -20,12 +20,40 @@ interface POLineItem {
 }
 
 const getLineItemId = (productId: string) => `line-${productId}`;
+const getDraftLineItemId = () => `draft-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+const createEmptyLine = (): POLineItem => ({
+  id: getDraftLineItemId(),
+  productId: '',
+  productName: '',
+  quantity: 1,
+  unitPrice: 0,
+  unit: 'pcs',
+});
+
+const normalizeSearch = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
 
 function CreatePurchaseOrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prePopItemId = searchParams.get('itemId');
   const [, setRefreshTick] = useState(0);
+  const [showCreateItemModal, setShowCreateItemModal] = useState(false);
+  const [isCreatingItem, setIsCreatingItem] = useState(false);
+  const [createItemTargetLineId, setCreateItemTargetLineId] = useState<string | null>(null);
+  const [createItemForm, setCreateItemForm] = useState({
+    name: '',
+    sku: '',
+    unit: 'pcs',
+    category: ITEM_CATEGORIES[0] ?? 'Other',
+    itemType: 'consumable' as 'consumable' | 'reusable',
+    reorderLevel: '0',
+    unitCost: '0',
+  });
 
   const [form, setForm] = useState({
     supplierId: '',
@@ -34,14 +62,17 @@ function CreatePurchaseOrderPageContent() {
   });
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showAddItemDropdown, setShowAddItemDropdown] = useState(false);
-  const addItemButtonRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
+  const [submitError, setSubmitError] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdPoId, setCreatedPoId] = useState<string | null>(null);
   const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
   const supplierButtonRef = useRef<HTMLButtonElement>(null);
   const [supplierDropdownPosition, setSupplierDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
   const hasPrepopulatedRef = useRef(false);
   const isClient = typeof window !== 'undefined';
+  const [activeItemPickerLineId, setActiveItemPickerLineId] = useState<string | null>(null);
+  const [itemPickerQuery, setItemPickerQuery] = useState('');
+  const [itemPickerPosition, setItemPickerPosition] = useState({ top: 0, left: 0, width: 420 });
 
   useEffect(() => {
     void loadInventoryDataset()
@@ -63,6 +94,7 @@ function CreatePurchaseOrderPageContent() {
                 unitPrice: item.unitCost,
                 unit: item.unit,
               },
+              createEmptyLine(),
             ]);
 
             hasPrepopulatedRef.current = true;
@@ -85,24 +117,44 @@ function CreatePurchaseOrderPageContent() {
     };
   }, [prePopItemId]);
 
-  // Close dropdown when clicking outside
+  // Keep the item picker popover anchored to the active row input while scrolling/resizing.
   useEffect(() => {
-    if (showAddItemDropdown) {
-      const handleClick = () => setShowAddItemDropdown(false);
-      document.addEventListener('click', handleClick);
-      return () => document.removeEventListener('click', handleClick);
+    if (!activeItemPickerLineId) return;
+
+    const updatePosition = () => {
+      const el = document.querySelector<HTMLInputElement>(
+        `input[data-item-picker-line="${activeItemPickerLineId}"]`
+      );
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setItemPickerPosition({
+        top: rect.bottom,
+        left: rect.left,
+        width: Math.max(320, rect.width),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [activeItemPickerLineId]);
+
+  // Always keep at least one editable empty row (Excel-like).
+  useEffect(() => {
+    if (lineItems.length === 0) {
+      setLineItems([createEmptyLine()]);
     }
-  }, [showAddItemDropdown]);
+  }, [lineItems.length]);
 
   // Keep fixed dropdowns aligned with triggers on scroll/resize
   const updateDropdownPositions = () => {
     if (supplierButtonRef.current && showSupplierDropdown) {
       const rect = supplierButtonRef.current.getBoundingClientRect();
       setSupplierDropdownPosition({ top: rect.bottom, left: rect.left, width: rect.width });
-    }
-    if (addItemButtonRef.current && showAddItemDropdown) {
-      const rect = addItemButtonRef.current.getBoundingClientRect();
-      setDropdownPosition({ top: rect.bottom, left: Math.max(8, rect.right - 320) });
     }
   };
   useEffect(() => {
@@ -112,7 +164,7 @@ function CreatePurchaseOrderPageContent() {
       window.removeEventListener('scroll', updateDropdownPositions, true);
       window.removeEventListener('resize', updateDropdownPositions);
     };
-  }, [showSupplierDropdown, showAddItemDropdown]);
+  }, [showSupplierDropdown]);
 
   const supplierOptions: InventoryDropdownOption<string>[] = [
     { value: '', label: 'Select supplier', disabled: true },
@@ -122,28 +174,124 @@ function CreatePurchaseOrderPageContent() {
     })),
   ];
 
-  const availableProducts = mockReplenishmentItems.filter(
-    (item) => !lineItems.some((line) => line.productId === item.id)
-  );
+  const usedProductIds = new Set(lineItems.map((line) => line.productId).filter(Boolean));
 
-  const handleAddLineItem = (productId: string) => {
-    const product = mockReplenishmentItems.find((i) => i.id === productId);
-    if (!product) return;
+  const resetCreateItemForm = () => {
+    setCreateItemForm({
+      name: '',
+      sku: '',
+      unit: 'pcs',
+      category: ITEM_CATEGORIES[0] ?? 'Other',
+      itemType: 'consumable',
+      reorderLevel: '0',
+      unitCost: '0',
+    });
+  };
 
-    const newLine: POLineItem = {
-      id: getLineItemId(product.id),
-      productId: product.id,
-      productName: product.name,
-      quantity: product.shortfall || 1,
-      unitPrice: product.unitCost,
-      unit: product.unit,
-    };
-    setLineItems([...lineItems, newLine]);
-    setShowAddItemDropdown(false);
+  const handleCreateNewItem = async () => {
+    if (!createItemForm.name.trim()) return;
+    setIsCreatingItem(true);
+    try {
+      const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
+        '/api/product-categories'
+      );
+      const normalized = createItemForm.category.toLowerCase();
+      const existing = categories.find((c) => c.name.toLowerCase() === normalized);
+      const categoryId =
+        existing?.id ??
+        (await apiClient.post<{ id: string }>('/api/product-categories', {
+          code: createItemForm.category.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
+          name: createItemForm.category,
+          description: `Auto-created for category ${createItemForm.category}`,
+        })).id;
+
+      const skuValue = createItemForm.sku.trim() || `SKU-${Date.now()}`;
+      const reorderLevel = Math.max(0, Math.floor(Number(createItemForm.reorderLevel || 0)));
+      const unitCost = Math.max(0, Number(createItemForm.unitCost || 0));
+
+      const created = await apiClient.post<{ id: string }>('/api/products', {
+        sku: skuValue,
+        name: createItemForm.name.trim(),
+        unit: createItemForm.unit.trim() || 'pcs',
+        itemType: createItemForm.itemType === 'consumable' ? 'consumable' : 'non_consumable',
+        reorderLevel,
+        categoryId,
+      });
+
+      await loadInventoryDataset(true);
+
+      const newRow: POLineItem = {
+        id: getLineItemId(created.id),
+        productId: created.id,
+        productName: createItemForm.name.trim(),
+        quantity: 1,
+        unitPrice: Number.isFinite(unitCost) ? unitCost : 0,
+        unit: createItemForm.unit.trim() || 'pcs',
+      };
+
+      setLineItems((prev) => {
+        const targetId = createItemTargetLineId;
+        if (targetId) {
+          return prev.map((line) => (line.id === targetId ? newRow : line));
+        }
+        return [...prev, newRow, createEmptyLine()];
+      });
+
+      setShowCreateItemModal(false);
+      setCreateItemTargetLineId(null);
+      resetCreateItemForm();
+    } finally {
+      setIsCreatingItem(false);
+    }
+  };
+
+  const ensureTrailingEmptyRow = () => {
+    setLineItems((prev) => {
+      const hasEmpty = prev.some((line) => !line.productId);
+      return hasEmpty ? prev : [...prev, createEmptyLine()];
+    });
   };
 
   const handleRemoveLineItem = (lineId: string) => {
     setLineItems(lineItems.filter((line) => line.id !== lineId));
+  };
+
+  const handleSelectProductForLine = (lineId: string, productId: string) => {
+    const product = mockReplenishmentItems.find((entry) => entry.id === productId);
+    if (!product) return;
+
+    setLineItems((prev) => {
+      const existingIndex = prev.findIndex((line) => line.productId === product.id && line.id !== lineId);
+      const targetIndex = prev.findIndex((line) => line.id === lineId);
+      if (targetIndex === -1) return prev;
+
+      // If already exists in another row, merge quantities into the existing row.
+      if (existingIndex !== -1) {
+        const targetQty = prev[targetIndex].quantity || 1;
+        return prev
+          .map((line, idx) =>
+            idx === existingIndex ? { ...line, quantity: Math.max(1, line.quantity) + Math.max(1, targetQty) } : line
+          )
+          .map((line, idx) => (idx === targetIndex ? { ...createEmptyLine(), id: prev[targetIndex].id } : line));
+      }
+
+      return prev.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              productId: product.id,
+              productName: product.name,
+              unit: product.unit,
+              unitPrice: Math.max(0, Number(product.unitCost || 0)),
+              quantity: Math.max(1, line.quantity || 1),
+            }
+          : line
+      );
+    });
+
+    setActiveItemPickerLineId(null);
+    setItemPickerQuery('');
+    ensureTrailingEmptyRow();
   };
 
   const handleUpdateLineItem = (lineId: string, field: 'quantity' | 'unitPrice', rawValue: number | string) => {
@@ -163,17 +311,18 @@ function CreatePurchaseOrderPageContent() {
     );
   };
 
-  const totalAmount = lineItems.reduce(
-    (sum, line) => sum + line.quantity * line.unitPrice,
-    0
-  );
+  const totalAmount = lineItems.reduce((sum, line) => sum + (line.productId ? line.quantity * line.unitPrice : 0), 0);
+
+  // Keep the order items table height stable (Notion-like).
+  const ORDER_ITEMS_MIN_ROWS = 7;
+  const realRows = lineItems.filter((line) => line.productId);
+  const fillerRowCount = Math.max(0, ORDER_ITEMS_MIN_ROWS - realRows.length);
 
   const validate = () => {
     const nextErrors: Record<string, string> = {};
     if (!form.supplierId) nextErrors.supplierId = 'Supplier is required';
-    if (!form.orderDate) nextErrors.orderDate = 'Order date is required';
     if (!form.expectedDelivery) nextErrors.expectedDelivery = 'Expected delivery is required';
-    if (lineItems.length === 0) nextErrors.lineItems = 'At least one item is required';
+    if (realRows.length === 0) nextErrors.lineItems = 'At least one item is required';
     
     // Validate that expected delivery is after order date
     if (form.orderDate && form.expectedDelivery && form.expectedDelivery <= form.orderDate) {
@@ -184,25 +333,35 @@ function CreatePurchaseOrderPageContent() {
   };
 
   const handleSubmit = async () => {
+    setSubmitError('');
+    setIsSubmitting(true);
     const nextErrors = validate();
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
+      setIsSubmitting(false);
       return;
     }
 
-    await apiClient.post('/api/purchase-orders', {
-      supplierId: form.supplierId,
-      notes: `Ordered: ${form.orderDate} | Expected: ${form.expectedDelivery}`,
-      items: lineItems.map((line) => ({
-        productId: line.productId,
-        quantityOrdered: line.quantity,
-        unitCost: line.unitPrice,
-      })),
-    });
+    try {
+      const created = await apiClient.post<{ id: string }>('/api/purchase-orders', {
+        supplierId: form.supplierId,
+        notes: `Ordered: ${form.orderDate} | Expected: ${form.expectedDelivery}`,
+        items: realRows.map((line) => ({
+          productId: line.productId,
+          quantityOrdered: line.quantity,
+          // Backend requires unitCost (if provided) to be positive. Omit when unknown/zero.
+          ...(line.unitPrice > 0 ? { unitCost: line.unitPrice } : {}),
+        })),
+      });
 
-    await loadInventoryDataset(true);
-
-    router.push('/sales-report/inventory/purchase-orders');
+      await loadInventoryDataset(true);
+      setCreatedPoId(created.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'We couldn’t create the purchase order. Please try again.';
+      setSubmitError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -344,22 +503,20 @@ function CreatePurchaseOrderPageContent() {
           {/* Order Date */}
           <div>
             <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2" style={{ fontFamily: 'Poppins' }}>
-              Order Date {errors.orderDate && <span className="text-red-600">*</span>}
+              Order Date
             </label>
-            <SingleDatePicker
-              value={form.orderDate}
-              onChange={(value) => {
-                setForm({ ...form, orderDate: value });
-                setErrors({ ...errors, orderDate: '' });
-              }}
-              placeholder="Order date"
-              className="w-full"
-            />
-            {errors.orderDate && (
-              <p className="text-xs text-red-600 mt-1" style={{ fontFamily: 'Poppins' }}>
-                {errors.orderDate}
-              </p>
-            )}
+            <div className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 bg-gray-50 text-[13px] text-gray-700 flex items-center justify-between">
+              <span style={{ fontFamily: 'Poppins' }}>
+                {new Date(form.orderDate).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: '2-digit',
+                  year: 'numeric',
+                })}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>
+              Set automatically when you create the purchase order.
+            </p>
           </div>
 
           {/* Expected Delivery */}
@@ -375,6 +532,7 @@ function CreatePurchaseOrderPageContent() {
               }}
               placeholder="Expected delivery"
               className="w-full"
+              minDate={form.orderDate}
             />
             {errors.expectedDelivery && (
               <p className="text-xs text-red-600 mt-1" style={{ fontFamily: 'Poppins' }}>
@@ -391,67 +549,6 @@ function CreatePurchaseOrderPageContent() {
           <h2 className="text-lg font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             Order Items {errors.lineItems && <span className="text-red-600 text-sm">*</span>}
           </h2>
-          <div className="relative z-[100]">
-            <button
-              ref={addItemButtonRef}
-              type="button"
-              onClick={() => {
-                if (!showAddItemDropdown && addItemButtonRef.current) {
-                  const rect = addItemButtonRef.current.getBoundingClientRect();
-                  setDropdownPosition({
-                    top: rect.bottom,
-                    left: Math.max(8, rect.right - 320),
-                  });
-                }
-                setShowAddItemDropdown(!showAddItemDropdown);
-              }}
-              disabled={availableProducts.length === 0}
-              className="px-4 py-2 bg-white border-[1.5px] border-[#0B5858] text-[#0B5858] rounded-lg text-[13px] font-semibold hover:bg-[#e8f4f4] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ fontFamily: 'Poppins' }}
-            >
-              + Add Item
-            </button>
-
-            {isClient && showAddItemDropdown && createPortal(
-              <div
-                className="fixed bg-white border-[1.5px] border-gray-200 rounded-lg shadow-lg z-[10000] max-h-64 overflow-y-auto w-80"
-                style={{
-                  top: `${dropdownPosition.top + 8}px`,
-                  left: `${dropdownPosition.left}px`,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                  {availableProducts.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                      All items added
-                    </div>
-                  ) : (
-                    availableProducts.map((product) => (
-                      <button
-                        key={product.id}
-                        type="button"
-                        onClick={() => handleAddLineItem(product.id)}
-                        className="w-full px-4 py-2.5 text-left hover:bg-[#e8f4f4] transition-colors border-b border-gray-100 last:border-b-0"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-[13px] font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>
-                              {product.name}
-                            </p>
-                            <p className="text-[11px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                              Current: {product.currentStock} {product.unit} • Min: {product.minStock} {product.unit}
-                            </p>
-                          </div>
-                          <span className="text-[12px] text-[#0B5858] font-semibold" style={{ fontFamily: 'Poppins' }}>
-                            PHP {product.unitCost}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-            , document.body)}
-          </div>
         </div>
 
         {errors.lineItems && (
@@ -459,119 +556,565 @@ function CreatePurchaseOrderPageContent() {
             {errors.lineItems}
           </p>
         )}
+        {submitError && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-[12px] text-red-700" style={{ fontFamily: 'Poppins' }}>
+            {submitError}
+          </div>
+        )}
 
         {lineItems.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <p className="text-sm" style={{ fontFamily: 'Poppins' }}>
-              No items added yet. Click &quot;Add Item&quot; to start building your order.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left px-3 py-2.5 text-xs font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                    Product
-                  </th>
-                  <th className="text-right px-3 py-2.5 text-xs font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                    Quantity
-                  </th>
-                  <th className="text-right px-3 py-2.5 text-xs font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                    Unit Price
-                  </th>
-                  <th className="text-right px-3 py-2.5 text-xs font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                    Subtotal
-                  </th>
-                  <th className="w-12"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lineItems.map((line) => (
-                  <tr key={line.id} className="border-b border-gray-100">
-                    <td className="px-3 py-3">
-                      <p className="text-[13px] font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>
-                        {line.productName}
-                      </p>
-                      <p className="text-[11px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                        Unit: {line.unit}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <input
-                        type="number"
-                        value={line.quantity}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => {
-                          if (line.quantity === 0 && /^\d$/.test(e.key)) {
-                            e.currentTarget.select();
-                          }
-                        }}
-                        onChange={(e) => handleUpdateLineItem(line.id, 'quantity', e.target.value)}
-                        min="1"
-                        className="w-24 px-[12px] py-[10px] border-[1.5px] border-gray-200 rounded-[10px] text-[14px] text-gray-700 text-right outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
-                        style={{ fontFamily: 'Poppins' }}
-                      />
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <input
-                        type="number"
-                        value={line.unitPrice}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => {
-                          if (line.unitPrice === 0 && /^\d$/.test(e.key)) {
-                            e.currentTarget.select();
-                          }
-                        }}
-                        onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', e.target.value)}
-                        min="0"
-                        step="1"
-                        className="w-32 px-[12px] py-[10px] border-[1.5px] border-gray-200 rounded-[10px] text-[14px] text-gray-700 text-right outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
-                        style={{ fontFamily: 'Poppins' }}
-                      />
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <span className="text-[13px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>
-                        PHP {(line.quantity * line.unitPrice).toLocaleString('en-PH')}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLineItem(line.id)}
-                        className="remove-btn p-1.5 rounded hover:bg-red-50 transition-colors"
-                        title="Remove item"
-                      >
-                        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-[#f8fbfb] border-b border-gray-200">
+                    <th className="w-10 text-left px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      #
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Item name
+                    </th>
+                    <th className="w-24 text-left px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Unit
+                    </th>
+                    <th className="text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Unit price
+                    </th>
+                    <th className="text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Quantity
+                    </th>
+                    <th className="text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Subtotal
+                    </th>
+                    <th className="w-12 text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Act
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-gray-100">
+                    <td colSpan={7} className="px-3 py-3">
+                      <div className="text-[12px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                        Click the <strong className="text-gray-700">Item name</strong> cell below and start typing to search. Press <strong className="text-gray-700">Enter</strong> to add rows like Excel.
+                      </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-gray-300">
-                  <td colSpan={3} className="px-3 py-4 text-right">
-                    <span className="text-sm font-bold text-gray-700 uppercase tracking-wide" style={{ fontFamily: 'Poppins' }}>
-                      Total Amount:
-                    </span>
-                  </td>
-                  <td className="px-3 py-4 text-right">
-                    <span className="text-lg font-bold text-[#0B5858]" style={{ fontFamily: 'Poppins' }}>
-                      PHP {totalAmount.toLocaleString('en-PH')}
-                    </span>
-                  </td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <tr key={`empty-row-${idx}`} className="border-b border-gray-100">
+                      <td className="px-3 py-2.5">
+                        <div className="h-3 w-6 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="h-3 w-40 rounded bg-gray-100" />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="h-3 w-12 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-3 w-20 rounded bg-gray-100" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-3 w-14 rounded bg-gray-100" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-3 w-24 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-7 w-7 rounded bg-gray-50" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-white">
+                    <td colSpan={5} className="px-3 py-3 text-right">
+                      <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wide" style={{ fontFamily: 'Poppins' }}>
+                        Grand total
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-[16px] font-black text-[#0B5858]" style={{ fontFamily: 'Poppins' }}>
+                        PHP 0
+                      </span>
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-[#f8fbfb] border-b border-gray-200">
+                    <th className="w-10 text-left px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      #
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Item name
+                    </th>
+                    <th className="w-24 text-left px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Unit
+                    </th>
+                    <th className="text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Unit price
+                    </th>
+                    <th className="text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Quantity
+                    </th>
+                    <th className="text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Subtotal
+                    </th>
+                    <th className="w-12 text-right px-3 py-2.5 text-[11px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      Act
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineItems.map((line, rowIndex) => (
+                    <tr key={line.id} className="border-b border-gray-100 hover:bg-[#f8fbfb]">
+                      <td className="px-3 py-2.5">
+                        <span className="text-[12px] text-gray-400" style={{ fontFamily: 'Poppins' }}>
+                          {line.productId ? rowIndex + 1 : ''}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <input
+                          value={activeItemPickerLineId === line.id ? itemPickerQuery : (line.productName || '')}
+                          data-item-picker-line={line.id}
+                          onChange={(e) => {
+                            setActiveItemPickerLineId(line.id);
+                            setItemPickerQuery(e.target.value);
+                            setLineItems((prev) =>
+                              prev.map((row) => (row.id === line.id ? { ...row, productName: e.target.value } : row))
+                            );
+                          }}
+                          onFocus={(e) => {
+                            setActiveItemPickerLineId(line.id);
+                            setItemPickerQuery(line.productName || '');
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              // Excel-like: ensure there's always an empty row at the bottom.
+                              e.preventDefault();
+                              ensureTrailingEmptyRow();
+                            }
+                          }}
+                          placeholder="Type to search item…"
+                          className="w-full bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-900 outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e]"
+                          style={{ fontFamily: 'Poppins' }}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="text-[12px] text-gray-600" style={{ fontFamily: 'Poppins' }}>
+                          {line.productId ? line.unit : '—'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <input
+                          type="number"
+                          value={line.unitPrice}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', e.target.value)}
+                          min="0"
+                          step="1"
+                          className="w-28 bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-700 text-right outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e] disabled:opacity-50"
+                          style={{ fontFamily: 'Poppins' }}
+                          disabled={!line.productId}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <input
+                          type="number"
+                          value={line.quantity}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => handleUpdateLineItem(line.id, 'quantity', e.target.value)}
+                          min="1"
+                          className="w-20 bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-700 text-right outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e] disabled:opacity-50"
+                          style={{ fontFamily: 'Poppins' }}
+                          disabled={!line.productId}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <span className="text-[13px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+                          {line.productId ? `PHP ${(line.quantity * line.unitPrice).toLocaleString('en-PH')}` : '—'}
+                        </span>
+                      </td>
+                      <td className="px-2 py-2.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLineItem(line.id)}
+                          className="remove-btn p-1.5 rounded-md hover:bg-red-50 transition-colors"
+                          title="Remove item"
+                          disabled={!line.productId && lineItems.filter((row) => !row.productId).length <= 1}
+                        >
+                          <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Filler rows to keep table height stable */}
+                  {Array.from({ length: fillerRowCount }).map((_, idx) => (
+                    <tr key={`filler-row-${idx}`} className="border-b border-gray-100">
+                      <td className="px-3 py-2.5">
+                        <div className="h-3 w-6 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="h-3 w-40 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="h-3 w-12 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-3 w-20 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-3 w-14 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-3 w-24 rounded bg-gray-50" />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <div className="ml-auto h-7 w-7 rounded bg-gray-50" />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-white">
+                    <td colSpan={5} className="px-3 py-3 text-right">
+                      <span className="text-[12px] font-bold text-gray-500 uppercase tracking-wide" style={{ fontFamily: 'Poppins' }}>
+                        Grand total
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className="text-[16px] font-black text-[#0B5858]" style={{ fontFamily: 'Poppins' }}>
+                        PHP {totalAmount.toLocaleString('en-PH')}
+                      </span>
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Create new item modal */}
+      {isClient && showCreateItemModal && createPortal(
+        <div
+          className="fixed inset-0 z-[10020] flex items-center justify-center p-4"
+          style={{ background: 'rgba(17, 24, 39, 0.38)', fontFamily: 'Poppins' }}
+          onClick={() => {
+            if (isCreatingItem) return;
+            setShowCreateItemModal(false);
+            setCreateItemTargetLineId(null);
+            resetCreateItemForm();
+          }}
+        >
+          <div
+            className="w-full max-w-[640px] bg-white rounded-2xl shadow-2xl overflow-hidden border border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="px-6 py-5 text-white flex items-center justify-between"
+              style={{ background: 'linear-gradient(135deg, #0b5858 0%, #05807e 100%)' }}
+            >
+              <div>
+                <div className="text-[10px] font-bold tracking-widest text-white/55">NEW PRODUCT</div>
+                <div className="text-[18px] font-black">Create item for this PO</div>
+              </div>
+              <button
+                type="button"
+                className="w-9 h-9 rounded-lg bg-white/15 hover:bg-white/25 transition-colors"
+                onClick={() => {
+                  if (isCreatingItem) return;
+                  setShowCreateItemModal(false);
+                  setCreateItemTargetLineId(null);
+                  resetCreateItemForm();
+                }}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Item name *</label>
+                  <input
+                    value={createItemForm.name}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="e.g. Towels"
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">SKU (optional)</label>
+                  <input
+                    value={createItemForm.sku}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, sku: e.target.value }))}
+                    placeholder="Auto-generated if blank"
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Unit</label>
+                  <select
+                    value={createItemForm.unit}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, unit: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] bg-white"
+                  >
+                    {ITEM_UNITS.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Category</label>
+                  <select
+                    value={createItemForm.category}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, category: e.target.value as any }))}
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] bg-white"
+                  >
+                    {ITEM_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Type</label>
+                  <select
+                    value={createItemForm.itemType}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, itemType: e.target.value as any }))}
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] bg-white"
+                  >
+                    <option value="consumable">Consumable</option>
+                    <option value="reusable">Reusable</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Min stock</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={createItemForm.reorderLevel}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, reorderLevel: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold tracking-wider uppercase text-gray-500 mb-2">Unit price (for this PO)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={createItemForm.unitCost}
+                    onChange={(e) => setCreateItemForm((p) => ({ ...p, unitCost: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8]"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] text-amber-900">
+                Creating an item here does <strong>not</strong> add stock. Stock-in happens only via <strong>Goods Receipt</strong>.
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isCreatingItem}
+                className="px-5 py-2.5 rounded-lg border-[1.5px] border-gray-200 bg-white text-gray-600 text-[13px] font-semibold hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={() => {
+                  if (isCreatingItem) return;
+                  setShowCreateItemModal(false);
+                  resetCreateItemForm();
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isCreatingItem || !createItemForm.name.trim()}
+                className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white text-[13px] font-semibold hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={() => void handleCreateNewItem()}
+              >
+                {isCreatingItem ? 'Creating…' : 'Create & add to order'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Item picker popover (Excel-like autocomplete) */}
+      {isClient && activeItemPickerLineId && createPortal(
+        <div
+          className="fixed inset-0 z-[10015]"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setActiveItemPickerLineId(null);
+              setItemPickerQuery('');
+            }
+          }}
+        >
+          <div
+            className="absolute bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
+            style={{
+              top: `${itemPickerPosition.top + 6}px`,
+              left: `${itemPickerPosition.left}px`,
+              width: `${itemPickerPosition.width}px`,
+              maxHeight: '320px',
+            }}
+          >
+            {(() => {
+              const query = normalizeSearch(itemPickerQuery);
+              const activeLine = lineItems.find((l) => l.id === activeItemPickerLineId);
+              const activeProductId = activeLine?.productId || '';
+
+              const candidates = mockReplenishmentItems
+                .filter((item) => {
+                  if (!query) return true;
+                  const hay = normalizeSearch(`${item.name} ${item.sku}`);
+                  return hay.includes(query);
+                })
+                .filter((item) => !usedProductIds.has(item.id) || item.id === activeProductId)
+                .slice(0, 30);
+
+              const canCreate = Boolean(query) && candidates.length === 0;
+
+              return (
+                <div>
+                  <div className="px-3 py-2 border-b border-gray-100 bg-[#f8fbfb] text-[11px] text-gray-600" style={{ fontFamily: 'Poppins' }}>
+                    {query ? `Results for "${itemPickerQuery}"` : 'Start typing to search…'}
+                  </div>
+                  <div className="max-h-[280px] overflow-auto">
+                    {candidates.length === 0 && !canCreate ? (
+                      <div className="px-3 py-3 text-[12px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                        No matches.
+                      </div>
+                    ) : (
+                      candidates.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectProductForLine(activeItemPickerLineId, item.id);
+                          }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-[#e8f4f4] border-b border-gray-50 last:border-b-0"
+                          style={{ fontFamily: 'Poppins' }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-semibold text-gray-900 truncate">{item.name}</div>
+                              <div className="text-[11px] text-gray-500 truncate">{item.sku} · {item.unit} · min {item.minStock}</div>
+                            </div>
+                            <div className="text-[11px] font-semibold text-[#0B5858] whitespace-nowrap">
+                              PHP {item.unitCost}
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+
+                    {canCreate && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setCreateItemTargetLineId(activeItemPickerLineId);
+                          setCreateItemForm((p) => ({ ...p, name: itemPickerQuery, unitCost: '0' }));
+                          setShowCreateItemModal(true);
+                          setActiveItemPickerLineId(null);
+                          setItemPickerQuery('');
+                        }}
+                        className="w-full text-left px-3 py-3 hover:bg-[#e8f4f4]"
+                        style={{ fontFamily: 'Poppins' }}
+                      >
+                        <div className="text-[13px] font-semibold text-gray-900">+ Create “{itemPickerQuery}”</div>
+                        <div className="text-[11px] text-gray-500">Create a new product and add it to this row</div>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Global submitting overlay */}
+      {isSubmitting && !createdPoId && (
+        <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/20">
+          <div className="rounded-2xl bg-white px-5 py-4 shadow-xl border border-white/20 flex items-center gap-3" style={{ fontFamily: 'Poppins' }}>
+            <div className="w-5 h-5 border-2 border-[#0B5858]/30 border-t-[#0B5858] rounded-full animate-spin" />
+            <div className="text-sm text-gray-800 font-medium">
+              Submitting purchase order…
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success modal */}
+      {createdPoId && (
+        <div className="fixed inset-0 z-[10040] flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-white/20 p-6" style={{ fontFamily: 'Poppins' }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-[16px] font-semibold text-gray-900">
+                  Purchase order submitted
+                </h2>
+                <p className="text-[12px] text-gray-600 mt-0.5">
+                  Reference ID: <span className="font-mono text-gray-800">{createdPoId}</span>
+                </p>
+              </div>
+            </div>
+            <p className="text-[13px] text-gray-700 mb-5">
+              You can review receipts and status in the Purchase Orders list.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 text-[13px] rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setCreatedPoId(null);
+                }}
+              >
+                Stay here
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-[13px] rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold hover:opacity-95"
+                onClick={() => router.push('/sales-report/inventory/purchase-orders')}
+              >
+                Go to Purchase Orders
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex items-center justify-end gap-3 inventory-reveal" style={{ animationDelay: '280ms' }}>
@@ -586,10 +1129,11 @@ function CreatePurchaseOrderPageContent() {
         <button
           type="button"
           onClick={handleSubmit}
-          className="create-po-btn flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white rounded-lg text-[13px] font-semibold transition-all hover:shadow-lg hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0B5858]"
+          disabled={isSubmitting}
+          className="create-po-btn flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white rounded-lg text-[13px] font-semibold transition-all hover:shadow-lg hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0B5858] disabled:opacity-60 disabled:cursor-not-allowed"
           style={{ fontFamily: 'Poppins', boxShadow: '0 2px 8px rgba(11,88,88,0.2)' }}
         >
-          Create Purchase Order
+          {isSubmitting ? 'Submitting…' : 'Create Purchase Order'}
         </button>
       </div>
     </>

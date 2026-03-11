@@ -219,6 +219,15 @@ let datasetLoadPromise: Promise<void> | null = null;
 
 export const isInventoryDatasetLoaded = () => isDatasetLoaded;
 
+const hasMeaningfulDataset = (dataset: InventoryDatasetResponse) => {
+  if (dataset.dashboardSummary) return true;
+  if (Array.isArray(dataset.replenishmentItems) && dataset.replenishmentItems.length > 0) return true;
+  if (Array.isArray(dataset.purchaseOrders) && dataset.purchaseOrders.length > 0) return true;
+  if (Array.isArray(dataset.warehouseDirectoryData) && dataset.warehouseDirectoryData.length > 0) return true;
+  if (Array.isArray(dataset.stockMovements) && dataset.stockMovements.length > 0) return true;
+  return false;
+};
+
 const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockWarehouseDirectoryData, dataset.warehouseDirectoryData);
   replaceArray(mockSuppliers, dataset.suppliers);
@@ -269,7 +278,10 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
   datasetLoadPromise = (async () => {
     const dataset = await fetchInventoryDataset();
     applyDataset(dataset);
-    isDatasetLoaded = true;
+    // Only mark as loaded if the API returned something meaningful.
+    // This prevents "empty fallback" responses from blocking future fetches,
+    // which can make the dashboard appear blank until another page forces refresh.
+    isDatasetLoaded = hasMeaningfulDataset(dataset);
     emitInventoryDatasetUpdated();
   })()
     .catch((error) => {
