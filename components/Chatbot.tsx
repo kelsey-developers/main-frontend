@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 
 type Message = {
   id: string;
@@ -15,7 +16,11 @@ const BOT_GREETINGS = [
   "Welcome! Ask me about listings, rewards, or support.",
 ];
 
+/** Hide on cleaning job detail so the sticky "Mark as Done" is the only CTA and no visual distraction */
+const HIDE_CHATBOT_PREFIX = '/cleaning/';
+
 export default function Chatbot() {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>(() => [
     {
@@ -76,6 +81,8 @@ export default function Chatbot() {
       sendMessage();
     }
   };
+
+  if (pathname?.startsWith(HIDE_CHATBOT_PREFIX)) return null;
 
   return (
     <>
