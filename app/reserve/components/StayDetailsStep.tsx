@@ -3,6 +3,7 @@ import type { BookingFormData, BookingAvailability } from '@/types/booking';
 import type { Listing } from '@/types/listing';
 import { BookingService } from '@/services/bookingService';
 import { CalendarService } from '@/services/calendarService';
+import { NeedHelpCard } from './NeedHelpCard';
 
 interface StayDetailsStepProps {
   formData: BookingFormData;
@@ -12,11 +13,12 @@ interface StayDetailsStepProps {
   onNext: () => void;
   onCancel: () => void;
   onBookingsReady?: () => void;
+  maxCapacity?: number;
 }
 
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, listing, onUpdate, onNext, onCancel, onBookingsReady }) => {
+const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, listing, onUpdate, onNext, onCancel, onBookingsReady, maxCapacity }) => {
   const parseYMD = (s?: string): Date | null => {
     if (!s) return null;
     // Handle ISO strings that may include a time (e.g., "2025-11-06T00:00:00Z")
@@ -196,7 +198,8 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
   }, [formData.checkInDate, formData.checkOutDate, minAllowedDate]);
 
 
-  const baseGuests: number = (formData as any).baseGuests ?? 2;
+  const baseGuests: number = maxCapacity ?? formData.baseGuests ?? 2;
+  const maxTotalGuests: number = baseGuests + 20;
   const handleGuestChange = (field: 'numberOfGuests' | 'extraGuests', value: number) => {
     if (field === 'numberOfGuests') {
       const clamped = Math.min(Math.max(1, Math.floor(value)), baseGuests);
@@ -207,16 +210,20 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
     }
   };
   const incrementGuest = (field: 'numberOfGuests' | 'extraGuests') => {
+    const currPrimary = formData.numberOfGuests ?? 1;
+    const currExtra = formData.extraGuests ?? 0;
+    const total = currPrimary + currExtra;
+    if (total >= maxTotalGuests) return;
+
     if (field === 'numberOfGuests') {
       const curr = formData.numberOfGuests ?? 1;
       if (curr >= baseGuests) return;
       handleGuestChange('numberOfGuests', curr + 1);
     } else {
-      const currPrimary = formData.numberOfGuests ?? 1;
       if (currPrimary < baseGuests) {
         handleGuestChange('numberOfGuests', currPrimary + 1);
       } else {
-        handleGuestChange('extraGuests', (formData.extraGuests ?? 0) + 1);
+        handleGuestChange('extraGuests', currExtra + 1);
       }
     }
   };
@@ -551,6 +558,7 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
 
   const currentPrimaryGuests = formData.numberOfGuests ?? 1;
   const reachedPrimaryMax = currentPrimaryGuests >= baseGuests;
+  const reachedTotalMax = (currentPrimaryGuests + (formData.extraGuests ?? 0)) >= maxTotalGuests;
 
   const formatCurrency = (v: number) =>
     v.toLocaleString('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 0 });
@@ -736,10 +744,10 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
 
                     <button
                       onClick={() => incrementGuest('numberOfGuests')}
-                      className={`w-8 h-8 rounded-md border border-[#0B5858] text-[#0B5858] text-base flex items-center justify-center bg-white hover:bg-[#f1fefa] ${reachedPrimaryMax ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`w-8 h-8 rounded-md border border-[#0B5858] text-[#0B5858] text-base flex items-center justify-center bg-white hover:bg-[#f1fefa] ${reachedPrimaryMax || reachedTotalMax ? 'opacity-50 cursor-not-allowed' : ''}`}
                       aria-label="Increase guests"
-                      disabled={reachedPrimaryMax}
-                      title={reachedPrimaryMax ? `Maximum ${baseGuests} primary guest(s). Add extra guests instead.` : 'Add guest'}
+                      disabled={reachedPrimaryMax || reachedTotalMax}
+                      title={reachedTotalMax ? `Maximum ${maxTotalGuests} guests total.` : reachedPrimaryMax ? `Maximum ${baseGuests} primary guest(s). Add extra guests instead.` : 'Add guest'}
                     >
                       +
                     </button>
@@ -790,9 +798,10 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
 
                     <button
                       onClick={() => incrementGuest('extraGuests')}
-                      className="w-8 h-8 rounded-md border border-[#0B5858] text-[#0B5858] text-base flex items-center justify-center bg-white hover:bg-[#f1fefa]"
+                      className={`w-8 h-8 rounded-md border border-[#0B5858] text-[#0B5858] text-base flex items-center justify-center bg-white hover:bg-[#f1fefa] ${reachedTotalMax ? 'opacity-50 cursor-not-allowed' : ''}`}
                       aria-label="Increase extra guests"
-                      title={currentPrimaryGuests < baseGuests ? `Will add to primary guests until reaching ${baseGuests}` : 'Add extra guest'}
+                      disabled={reachedTotalMax}
+                      title={reachedTotalMax ? `Maximum ${maxTotalGuests} guests total.` : currentPrimaryGuests < baseGuests ? `Will add to primary guests until reaching ${baseGuests}` : 'Add extra guest'}
                     >
                       +
                     </button>
@@ -912,7 +921,7 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
           </div>
 
           <aside className="lg:col-span-1">
-            <div className="lg:sticky lg:top-20 lg:self-start space-y-3">
+            <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
               <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm text-xs sm:text-sm">
                 <h4 className="text-sm font-semibold text-gray-800 mb-2" style={{ fontFamily: 'Poppins' }}>Booking Summary</h4>
 
@@ -961,19 +970,7 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
                 </div>
               </div>
 
-              <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm text-xs sm:text-sm">
-                <h4 className="text-sm font-semibold text-gray-800 mb-1" style={{ fontFamily: 'Poppins' }}>Need help?</h4>
-                <p className="text-xs sm:text-sm text-gray-600 mb-2" style={{ fontFamily: 'Poppins' }}>
-                  If you have questions about availability or special requests, contact us and we'll assist.
-                </p>
-                <button
-                  className="w-full px-3 py-2 bg-[#E8F8F7] text-[#0B5858] rounded-md text-sm font-medium"
-                  style={{ fontFamily: 'Poppins' }}
-                  onClick={() => alert('Contact support (placeholder)')}
-                >
-                  Contact Support
-                </button>
-              </div>
+              <NeedHelpCard />
             </div>
           </aside>
         </div>

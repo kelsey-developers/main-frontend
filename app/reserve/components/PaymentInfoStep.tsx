@@ -1,8 +1,11 @@
 import React from 'react';
 import type { BookingFormData, BookingSummary } from '@/types/booking';
+import { BookingSummarySidebar } from './BookingSummarySidebar';
+import { NeedHelpCard } from './NeedHelpCard';
 
 interface PaymentInfoStepProps {
   formData: BookingFormData;
+  listingId?: string;
   onUpdate: (data: Partial<BookingFormData>) => void;
   onNext: () => void;
   onBack: () => void;
@@ -34,6 +37,7 @@ type PaymentMethod = 'bank_transfer' | 'credit_card' | 'company_account' | 'cash
 
 const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
   formData,
+  listingId,
   onUpdate,
   onNext,
   onBack,
@@ -588,18 +592,20 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
 
   return (
     <div
-      className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 pb-16 md:pb-6 text-xs sm:text-sm md:text-base"
+      className="p-4 sm:p-6 pb-16 md:pb-6 text-xs sm:text-sm md:text-base"
       style={{ fontFamily: 'Poppins' }}
     >
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-        <div>
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-[#0B5858] mb-2 sm:mb-3">
-            Payment Method
-          </h2>
-          <p className="text-xs sm:text-sm text-gray-600 mb-4" style={{ lineHeight: 1.5 }}>
-            Choose a payment channel. After selecting, fill the fields specific to that method.
-          </p>
+      <div className="max-w-6xl mx-auto">
+      <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-[#0B5858] mb-2 sm:mb-3">
+        Payment Method
+      </h2>
+      <p className="text-xs sm:text-sm text-gray-600 mb-4" style={{ lineHeight: 1.5 }}>
+        Choose a payment channel. After selecting, fill the fields specific to that method.
+      </p>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="lg:col-span-2">
+          <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm">
           <div className="space-y-3 mb-4">
             {/* Only show cash option for now. Other options are commented out for easy re-enable later. */}
             <label
@@ -1079,88 +1085,7 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
           )}
 
           <div className="mt-6">
-            <p className="text-xs sm:text-sm text-gray-600 mb-3">
-              Please review your booking and payment details before proceeding. By clicking 'Confirm Payment,' you agree to the terms and conditions of this transaction.
-            </p>
-
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={!!formData.agreeToTerms}
-                onChange={(e) => handleTermsChange(e.target.checked)}
-                className="w-4 h-4 text-[#0B5858] border-gray-300 rounded focus:ring-[#0B5858] disabled:opacity-50"
-                disabled={!isPaymentMethodComplete(methodToValidate)}
-                title={!isPaymentMethodComplete(methodToValidate) ? 'Complete payment method details first' : 'I agree to the payment terms and conditions'}
-              />
-              <span className={`ml-2 text-xs sm:text-sm ${!isPaymentMethodComplete(methodToValidate) ? 'text-gray-400' : 'text-gray-700'}`}>
-                I agree to the payment terms and conditions
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {/* Right Panel - Summary */}
-        <div className="lg:pl-4">
-          <div className="bg-gray-50 rounded-lg p-3 sm:p-6">
-            <h3 className="text-sm sm:text-base font-semibold text-gray-800 mb-3">
-              Summary Charges
-            </h3>
-
-            <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Unit Charge (per night)</span>
-                <span className="text-gray-800">₱{displaySummary.unitCharge.toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Base guests included</span>
-                <span className="text-gray-800">{displaySummary.baseGuests}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Extra Guests (one-time)</span>
-                <span className="text-gray-800">{displaySummary.extraGuests}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Nights</span>
-                <span className="text-gray-800">{displaySummary.nights}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal (base rate × nights)</span>
-                <span className="text-gray-800">₱{displaySummary.subtotal.toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Amenities Charge</span>
-                <span className="text-gray-800">₱{displaySummary.amenitiesCharge.toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Extra guest fees (one-time)</span>
-                <span className="text-gray-800">₱{displaySummary.extraGuestFees.toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Service Charges</span>
-                <span className="text-gray-800">₱{displaySummary.serviceCharge.toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-gray-600">Discounts</span>
-                <span className="text-gray-800">-₱{displaySummary.discount.toFixed(2)}</span>
-              </div>
-
-              <div className="border-t border-gray-300 pt-3">
-                <div className="flex justify-between">
-                  <span className="font-semibold text-gray-800">Total Charges</span>
-                  <span className="font-bold text-lg text-gray-800">₱{displaySummary.totalCharges.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 text-center">
+            <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200 text-center">
               {hasInteracted && selectedMethod === 'bank_transfer' && (
                 <div className="text-xs text-gray-700">
                   Bank transfer selected. Please transfer the exact amount and upload the receipt using the highlighted upload area.
@@ -1186,25 +1111,44 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
                   No payment method selected yet.
                 </div>
               )}
-
-              <div className="mt-4">
-                <div className="bg-white p-3 sm:p-4 rounded-lg inline-block">
-                  <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-200 rounded flex items-center justify-center">
-                    <svg className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 2V5h1v1H5zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm2 2v-1h1v1H5zM13 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1V4zm2 2V5h1v1h-1z" clipRule="evenodd" />
-                    </svg>
-                  </div>
+              <div className="mt-3 flex justify-center">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-200 rounded flex items-center justify-center">
+                  <svg className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 2V5h1v1H5zM3 13a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1H4a1 1 0 01-1-1v-3zm2 2v-1h1v1H5zM13 4a1 1 0 011-1h3a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1V4zm2 2V5h1v1h-1z" clipRule="evenodd" />
+                  </svg>
                 </div>
               </div>
-
-              <div className="mt-4 text-center">
-                <p className="text-xs text-gray-500">
-                  Payment Status: Pending
-                </p>
-              </div>
+              <p className="text-xs text-gray-500 mt-2">Payment Status: Pending</p>
             </div>
+
+            <p className="text-xs sm:text-sm text-gray-600 mb-3">
+              Please review your booking and payment details before proceeding. By clicking 'Confirm Payment,' you agree to the terms and conditions of this transaction.
+            </p>
+
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={!!formData.agreeToTerms}
+                onChange={(e) => handleTermsChange(e.target.checked)}
+                className="w-4 h-4 text-[#0B5858] border-gray-300 rounded focus:ring-[#0B5858] disabled:opacity-50"
+                disabled={!isPaymentMethodComplete(methodToValidate)}
+                title={!isPaymentMethodComplete(methodToValidate) ? 'Complete payment method details first' : 'I agree to the payment terms and conditions'}
+              />
+              <span className={`ml-2 text-xs sm:text-sm ${!isPaymentMethodComplete(methodToValidate) ? 'text-gray-400' : 'text-gray-700'}`}>
+                I agree to the payment terms and conditions
+              </span>
+            </label>
           </div>
         </div>
+        </div>
+
+        {/* Right Panel - Booking Summary + Need Help only (like Stay Details) */}
+        <aside className="lg:col-span-1">
+          <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
+            <BookingSummarySidebar formData={formData} listingId={listingId} />
+            <NeedHelpCard />
+          </div>
+        </aside>
       </div>
 
       {/* Desktop actions: visible on lg and up */}
@@ -1231,6 +1175,7 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
         </button>
         </div>
       )}
+      </div>
 
       {/* Mobile fixed footer: Cancel + Back + Next */}
       {!hideActions && (

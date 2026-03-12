@@ -27,6 +27,9 @@ export interface Listing {
   longitude?: number;
   check_in_time?: string;
   check_out_time?: string;
+  min_pax?: number;
+  max_capacity?: number;
+  excess_pax_fee?: number;
   created_at: string;
   updated_at: string;
   owner?: ListingOwner | null;

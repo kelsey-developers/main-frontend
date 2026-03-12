@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookingFormData, AdditionalService } from '@/types/booking';
+import { BookingSummarySidebar } from './BookingSummarySidebar';
+import { NeedHelpCard } from './NeedHelpCard';
 
 interface AdditionalServicesStepProps {
   formData: BookingFormData;
+  listingId?: string;
   onUpdate: (data: Partial<BookingFormData>) => void;
   onNext: () => void;
   onBack: () => void;
@@ -11,6 +14,7 @@ interface AdditionalServicesStepProps {
 
 const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
   formData,
+  listingId,
   onUpdate,
   onNext,
   onBack,
@@ -202,13 +206,14 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
   const isStepValid = true;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 pb-16 md:pb-6 text-xs sm:text-sm md:text-base">
+    <div className="p-4 sm:p-6 pb-16 md:pb-6 text-xs sm:text-sm md:text-base">
+      <div className="max-w-6xl mx-auto">
       <h2 className="text-xl sm:text-2xl font-bold text-[#0B5858] mb-1">Additional Services</h2>
       <p className="text-sm text-gray-500 mb-4 sm:mb-6">Please fill in your additional services to continue</p>
 
-      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
-        <div className="flex-1 min-w-0">
-          <div className="space-y-4 pr-0 sm:pr-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="lg:col-span-2 space-y-4">
+          <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm space-y-4 pr-0 sm:pr-4">
             <div
               className="grid grid-cols-3 gap-3 text-sm font-semibold text-gray-700 border-b border-gray-200 pb-2"
               style={{ fontFamily: 'Poppins' }}
@@ -300,25 +305,30 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
               <span className="font-bold text-lg text-gray-800" style={{ fontFamily: 'Poppins' }}>{formatCurrency(total)}</span>
             </div>
           </div>
-        </div>
 
-        <div className="w-full lg:w-1/2 min-w-0">
-          <h3 className="text-lg font-semibold text-gray-800 mb-3" style={{ fontFamily: 'Poppins' }}>Request Description</h3>
-
-          <textarea
-            value={formData.requestDescription || ''}
-            onChange={(e) => handleRequestDescriptionChange(e.target.value)}
-            placeholder="Type here..."
-            rows={8}
-            className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858] focus:border-transparent resize-none text-sm"
-            style={{ fontFamily: 'Poppins' }}
-            aria-describedby="request-char-count"
-          />
-
-          <div id="request-char-count" className="mt-2 text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
-            {requestCharCount} / {MAX_REQUEST_CHARS} characters
+          <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3" style={{ fontFamily: 'Poppins' }}>Request Description</h3>
+            <textarea
+              value={formData.requestDescription || ''}
+              onChange={(e) => handleRequestDescriptionChange(e.target.value)}
+              placeholder="Type here..."
+              rows={8}
+              className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858] focus:border-transparent resize-none text-sm"
+              style={{ fontFamily: 'Poppins' }}
+              aria-describedby="request-char-count"
+            />
+            <div id="request-char-count" className="mt-2 text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
+              {requestCharCount} / {MAX_REQUEST_CHARS} characters
+            </div>
           </div>
         </div>
+
+        <aside className="lg:col-span-1">
+          <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
+            <BookingSummarySidebar formData={formData} listingId={listingId} />
+            <NeedHelpCard />
+          </div>
+        </aside>
       </div>
 
       <div className="hidden lg:flex justify-end space-x-4 mt-6 pt-4 border-t border-gray-200">
@@ -344,6 +354,7 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
         >
           Next
         </button>
+      </div>
       </div>
 
       <div

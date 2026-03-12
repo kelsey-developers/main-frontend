@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Listing } from '@/types/listing';
-import { listUnitsForManage, updateUnit, createUnit } from '@/lib/api/units';
+import { listUnitsForManage, updateUnit, createUnit, deleteUnit, getUnitById, updateUnitFull } from '@/lib/api/units';
 import { useAuth } from '@/contexts/AuthContext';
 import NewListingForm, { type NewListingFormPayload } from '@/components/NewListingForms';
 
@@ -31,6 +31,8 @@ const ManageUnits: React.FC = () => {
   const [pageToast, setPageToast] = useState<{ visible: boolean; message: string }>({ visible: false, message: '' });
   const pageToastRef = useRef<HTMLDivElement | null>(null);
   const [showNewListing, setShowNewListing] = useState(false);
+  const [unitToEdit, setUnitToEdit] = useState<Listing | null>(null);
+  const [isLoadingEdit, setIsLoadingEdit] = useState(false);
 
   const fetchUnits = useCallback(async () => {
     if (!canAccess) return;
@@ -109,6 +111,34 @@ const ManageUnits: React.FC = () => {
       showToast('Listing created successfully!');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to create listing.');
+    }
+  };
+
+  const handleEditClick = async (unit: Listing) => {
+    setIsLoadingEdit(true);
+    try {
+      const full = await getUnitById(unit.id);
+      if (full) {
+        setUnitToEdit(full);
+      } else {
+        showToast('Failed to load unit details.');
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to load unit.');
+    } finally {
+      setIsLoadingEdit(false);
+    }
+  };
+
+  const handleUpdateListing = async (data: NewListingFormPayload) => {
+    if (!unitToEdit) return;
+    try {
+      const updated = await updateUnitFull(unitToEdit.id, data);
+      setUnits(prev => prev.map(u => u.id === updated.id ? { ...u, ...updated } : u));
+      setUnitToEdit(null);
+      showToast('Listing updated successfully!');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to update listing.');
     }
   };
 
@@ -385,7 +415,7 @@ const ManageUnits: React.FC = () => {
                 </div>
               </div>
 
-              {!showNewListing && (
+              {!showNewListing && !unitToEdit && (
               <div className="mb-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex flex-col md:flex-row gap-4 items-center w-full">
@@ -480,13 +510,23 @@ const ManageUnits: React.FC = () => {
               </div>
               )}
 
-              {showNewListing ? (
+              {(showNewListing || unitToEdit) ? (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                  <NewListingForm
-                    onSubmit={handleCreateListing}
-                    onCancel={() => setShowNewListing(false)}
-                    showToast={showToast}
-                  />
+                  {unitToEdit ? (
+                    <NewListingForm
+                      mode="edit"
+                      initialListing={unitToEdit}
+                      onSubmit={handleUpdateListing}
+                      onCancel={() => setUnitToEdit(null)}
+                      showToast={showToast}
+                    />
+                  ) : (
+                    <NewListingForm
+                      onSubmit={handleCreateListing}
+                      onCancel={() => setShowNewListing(false)}
+                      showToast={showToast}
+                    />
+                  )}
                 </div>
               ) : viewMode === 'list' ? (
                 <>
@@ -780,13 +820,14 @@ const ManageUnits: React.FC = () => {
                                       )}
                                     </button>
                                     
-                                    <button className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer" onClick={() => showToast('Edit flow is mocked in this demo.')}
+                                    <button className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer" onClick={(e) => { e.stopPropagation(); handleEditClick(unit); }} disabled={isLoadingEdit}
                                     >
                                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                       </svg>
                                     </button>
                                     
+                                    {isAdmin && (
                                     <button 
                                       className="text-gray-400 transition-colors cursor-pointer" 
                                       style={{'--hover-color': '#B84C4C'} as React.CSSProperties} 
@@ -798,6 +839,7 @@ const ManageUnits: React.FC = () => {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                       </svg>
                                     </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -1051,12 +1093,13 @@ const ManageUnits: React.FC = () => {
                                   )}
                                 </button>
                                 
-                                <div title="Edit Unit" onClick={() => showToast('Edit flow is mocked in this demo.')} className="cursor-pointer">
+                                <div title="Edit Unit" onClick={(e) => { e.stopPropagation(); handleEditClick(unit); }} className="cursor-pointer">
                                   <svg className="w-5 h-5 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                   </svg>
                                 </div>
                                 
+                                {isAdmin && (
                                 <div title="Delete Unit" onClick={() => openDeleteModal(unit)} className="cursor-pointer">
                                   <svg 
                                     className="w-5 h-5 text-gray-400 transition-colors cursor-pointer" 
@@ -1070,6 +1113,7 @@ const ManageUnits: React.FC = () => {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                   </svg>
                                 </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1120,17 +1164,22 @@ const ManageUnits: React.FC = () => {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!unitToDelete) return;
                     setIsDeleting(true);
-                    setUnits(prev => prev.filter(u => u.id !== unitToDelete.id));
-                    setShowDeleteModal(false);
-                    setUnitToDelete(null);
-                    showToast('Listing deleted.');
-                    setTimeout(() => {
-                      window.scrollTo(0, 0);
-                    }, 0);
-                    setIsDeleting(false);
+                    try {
+                      await deleteUnit(unitToDelete.id);
+                      setUnits(prev => prev.filter(u => u.id !== unitToDelete.id));
+                      setShowDeleteModal(false);
+                      setUnitToDelete(null);
+                      showToast('Listing deleted.');
+                      setTimeout(() => window.scrollTo(0, 0), 0);
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : 'Failed to delete listing.';
+                      showToast(msg);
+                    } finally {
+                      setIsDeleting(false);
+                    }
                   }}
                   disabled={isDeleting}
                   className="px-4 py-2 text-white rounded-lg transition-colors hover:opacity-90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
