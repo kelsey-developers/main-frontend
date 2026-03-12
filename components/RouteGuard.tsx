@@ -23,7 +23,13 @@ function AuthLoadingScreen() {
 }
 
 /** Shown when the user is logged in but doesn't have the required role. */
-function UnauthorizedScreen({ allowedRoles }: { allowedRoles: NormalizedRole[] }) {
+function UnauthorizedScreen({
+  allowedRoles,
+  dashboardHome,
+}: {
+  allowedRoles: NormalizedRole[];
+  dashboardHome?: { href: string; label: string };
+}) {
   const router = useRouter();
   const roleLabels: Record<NormalizedRole, string> = {
     admin: 'Admin',
@@ -64,15 +70,33 @@ function UnauthorizedScreen({ allowedRoles }: { allowedRoles: NormalizedRole[] }
           </button>
           <button
             type="button"
-            onClick={() => router.push('/')}
+            onClick={() => router.push(dashboardHome?.href ?? '/')}
             className="px-4 py-2 rounded-lg bg-[#0B5858] text-white text-sm font-semibold hover:bg-[#0a4a4a]"
           >
-            Go to Home
+            {dashboardHome?.label ?? 'Go to Home'}
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+function getDashboardHome(
+  isInventory: boolean,
+  isFinance: boolean,
+  isHousekeeping: boolean,
+  hasAnyRole: (...roles: NormalizedRole[]) => boolean
+): { href: string; label: string } | undefined {
+  if (isInventory && !hasAnyRole('admin', 'agent', 'finance', 'housekeeping')) {
+    return { href: '/sales-report/inventory', label: 'Go to Inventory Dashboard' };
+  }
+  if (isFinance && !hasAnyRole('admin', 'agent', 'inventory', 'housekeeping')) {
+    return { href: '/sales-report/finance', label: 'Go to Finance Dashboard' };
+  }
+  if (isHousekeeping && !hasAnyRole('admin', 'agent', 'inventory', 'finance')) {
+    return { href: '/sales-report/housekeeping', label: 'Go to Housekeeping Dashboard' };
+  }
+  return undefined;
 }
 
 /**
@@ -83,27 +107,35 @@ function UnauthorizedScreen({ allowedRoles }: { allowedRoles: NormalizedRole[] }
  * - Logged in, correct role → render children
  */
 export function RouteGuard({ allowedRoles, children }: RouteGuardProps) {
-  const { user, hasAnyRole, roleLoading } = useAuth();
+  const { user, hasAnyRole, isInventory, isFinance, isHousekeeping, roleLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [mounted, setMounted] = React.useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isLoggedIn = user !== null;
   const isAuthorized = isLoggedIn && hasAnyRole(...allowedRoles);
+  const dashboardHome = getDashboardHome(isInventory, isFinance, isHousekeeping, hasAnyRole);
 
   useEffect(() => {
+    if (!mounted) return;
     if (!roleLoading && !isLoggedIn) {
       router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
-  }, [roleLoading, isLoggedIn, router, pathname]);
+  }, [mounted, roleLoading, isLoggedIn, router, pathname]);
 
-  // Still resolving auth state
-  if (roleLoading) return <AuthLoadingScreen />;
+  // Always show loading until mounted to avoid hydration mismatch (server vs client auth state)
+  if (!mounted || roleLoading) return <AuthLoadingScreen />;
 
-  // Not logged in — show loading while redirect fires
   if (!isLoggedIn) return <AuthLoadingScreen />;
 
-  // Logged in but wrong role
-  if (!isAuthorized) return <UnauthorizedScreen allowedRoles={allowedRoles} />;
+  if (!isAuthorized)
+    return (
+      <UnauthorizedScreen allowedRoles={allowedRoles} dashboardHome={dashboardHome} />
+    );
 
   return <>{children}</>;
 }

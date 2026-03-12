@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ITEM_CATEGORIES,
   inventoryItems,
@@ -10,6 +10,7 @@ import {
   inventoryUnitItems,
 } from '../../inventory/lib/inventoryDataStore';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
+import { apiClient } from '@/lib/api/client';
 
 const STOCK_OUT_REASONS = [
   { label: 'Room preparation',        icon: '🛏️' },
@@ -27,10 +28,30 @@ export default function AdminInventorySetupPage() {
   const [allowedReasons, setAllowedReasons] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(STOCK_OUT_REASONS.map((r) => [r.label, true]))
   );
+  const [reasonsLoading, setReasonsLoading] = useState(true);
+  const [reasonsSaving, setReasonsSaving] = useState(false);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
 
-  const toggleReason = (reason: string) =>
-    setAllowedReasons((prev) => ({ ...prev, [reason]: !prev[reason] }));
+  useEffect(() => {
+    apiClient
+      .get<Record<string, boolean>>('/api/inventory-settings/stock-out-reasons')
+      .then((data) => setAllowedReasons((prev) => ({ ...prev, ...data })))
+      .catch(() => {})
+      .finally(() => setReasonsLoading(false));
+  }, []);
+
+  const toggleReason = async (reason: string) => {
+    const next = { ...allowedReasons, [reason]: !allowedReasons[reason] };
+    setAllowedReasons(next);
+    setReasonsSaving(true);
+    try {
+      await apiClient.patch('/api/inventory-settings/stock-out-reasons', { reasons: next });
+    } catch {
+      setAllowedReasons(allowedReasons);
+    } finally {
+      setReasonsSaving(false);
+    }
+  };
 
   const enabledCount = Object.values(allowedReasons).filter(Boolean).length;
 
@@ -144,7 +165,7 @@ export default function AdminInventorySetupPage() {
         {/* ALLOWED STOCK-OUT REASONS */}
         <AdminSection
           title="Allowed Stock-Out Reasons"
-          subtitle={`${enabledCount} of ${STOCK_OUT_REASONS.length} reasons enabled`}
+          subtitle={`${reasonsLoading ? 'Loading…' : `${enabledCount} of ${STOCK_OUT_REASONS.length} reasons enabled`}${reasonsSaving ? ' (saving…)' : ''}`}
         >
           <div className="p-5 space-y-2">
             {STOCK_OUT_REASONS.map(({ label, icon }) => {
@@ -154,7 +175,7 @@ export default function AdminInventorySetupPage() {
                   key={label}
                   className={`flex items-center justify-between rounded-xl border px-4 py-3 cursor-pointer transition-all ${
                     active ? 'border-[#0b5858]/30 bg-[#f0fafa]' : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}
+                  } ${reasonsSaving ? 'opacity-70 pointer-events-none' : ''}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="text-base flex-shrink-0">{icon}</span>
@@ -164,7 +185,7 @@ export default function AdminInventorySetupPage() {
                   </div>
                   <div className="flex-shrink-0 ml-3">
                     <div
-                      onClick={() => toggleReason(label)}
+                      onClick={() => void toggleReason(label)}
                       className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${active ? 'bg-[#0b5858]' : 'bg-gray-200'}`}
                     >
                       <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${active ? 'translate-x-4' : 'translate-x-0'}`} />

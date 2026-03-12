@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { inventoryDamageAdjustments, inventoryItems, inventoryStockMovements } from '../../inventory/lib/inventoryDataStore';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
+import { apiClient } from '@/lib/api/client';
 
 type ApprovalKind = 'stock-out' | 'write-off' | 'adjustment' | 'negative-override';
 type ApprovalRisk = 'low' | 'medium' | 'high';
@@ -15,89 +15,60 @@ interface ApprovalRequest {
   itemName: string;
   quantity: number;
   reason: string;
-  requestedBy: string;
+  requestedBy: string | null;
   requestedAt: string;
-  referenceId?: string;
+  referenceId?: string | null;
+  referenceType?: string | null;
   status: ApprovalStatus;
-  reviewedBy?: string;
-  reviewedAt?: string;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
 }
 
-const initialRequests: ApprovalRequest[] = [
-  {
-    id: 'aq-001',
-    kind: 'stock-out',
-    risk: 'high',
-    itemName: inventoryItems[0]?.name ?? 'Towels',
-    quantity: 28,
-    reason: 'Bulk room turnover for long-stay block booking.',
-    requestedBy: 'Housekeeping Lead',
-    requestedAt: '2025-03-08 10:15',
-    referenceId: 'BK-2025-011',
-    status: 'pending',
-  },
-  {
-    id: 'aq-002',
-    kind: 'write-off',
-    risk: 'high',
-    itemName: inventoryItems[14]?.name ?? 'Iron',
-    quantity: 1,
-    reason: 'Unit failed safety check and cannot be repaired.',
-    requestedBy: 'Maintenance Officer',
-    requestedAt: '2025-03-08 09:30',
-    referenceId: 'DI-2025-010',
-    status: 'pending',
-  },
-  {
-    id: 'aq-003',
-    kind: 'adjustment',
-    risk: 'medium',
-    itemName: inventoryItems[12]?.name ?? 'Air freshener',
-    quantity: 3,
-    reason: 'Physical count mismatch after shelf recount.',
-    requestedBy: 'Warehouse Staff',
-    requestedAt: '2025-03-08 08:40',
-    referenceId: inventoryDamageAdjustments[2]?.id,
-    status: 'pending',
-  },
-  {
-    id: 'aq-004',
-    kind: 'negative-override',
-    risk: 'high',
-    itemName: inventoryItems[9]?.name ?? 'Laundry detergent',
-    quantity: 2,
-    reason: 'Urgent service use while stock is currently zero.',
-    requestedBy: 'Operations Supervisor',
-    requestedAt: '2025-03-07 18:20',
-    referenceId: 'OPS-OVR-002',
-    status: 'pending',
-  },
-  {
-    id: 'aq-005',
-    kind: 'stock-out',
-    risk: 'low',
-    itemName: inventoryItems[1]?.name ?? 'Soap (bars)',
-    quantity: 6,
-    reason: 'Regular unit refill.',
-    requestedBy: 'Housekeeping Staff',
-    requestedAt: '2025-03-07 14:10',
-    referenceId: inventoryStockMovements.find((entry) => entry.type === 'out')?.id,
-    status: 'approved',
-    reviewedBy: 'Admin Team A',
-    reviewedAt: '2025-03-07 14:30',
-  },
-];
-
 export default function ApprovalQueuePage() {
-  const [requests, setRequests] = useState<ApprovalRequest[]>(initialRequests);
+  const [requests, setRequests] = useState<ApprovalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | ApprovalStatus>('pending');
   const [riskFilter, setRiskFilter] = useState<'all' | ApprovalRisk>('all');
   const [approvalSearch, setApprovalSearch] = useState('');
+
+  const loadRequests = useCallback(async () => {
+    setLoading(true);
+    try {
+      const statusParam = statusFilter === 'all' ? '?status=all' : '';
+      const data = await apiClient.get<ApprovalRequest[]>(`/api/approval-requests${statusParam}`);
+      setRequests(Array.isArray(data) ? data : []);
+    } catch {
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    void loadRequests();
+  }, [loadRequests]);
 
   const resetFilters = () => {
     setStatusFilter('pending');
     setRiskFilter('all');
     setApprovalSearch('');
+  };
+
+  const reviewRequest = async (requestId: string, status: Extract<ApprovalStatus, 'approved' | 'rejected'>) => {
+    setReviewingId(requestId);
+    try {
+      await apiClient.patch(`/api/approval-requests/${requestId}`, { status });
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === requestId ? { ...r, status, reviewedAt: new Date().toISOString(), reviewedBy: 'Admin' } : r
+        )
+      );
+    } catch {
+      // keep UI state on error
+    } finally {
+      setReviewingId(null);
+    }
   };
 
   const filteredRequests = useMemo(
@@ -133,22 +104,6 @@ export default function ApprovalQueuePage() {
   const highRiskPending = requests.filter((entry) => entry.status === 'pending' && entry.risk === 'high').length;
   const approvedToday = requests.filter((entry) => entry.status === 'approved').length;
 
-  const reviewRequest = (requestId: string, status: Extract<ApprovalStatus, 'approved' | 'rejected'>) => {
-    const timestamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    setRequests((prev) =>
-      prev.map((entry) =>
-        entry.id === requestId
-          ? {
-              ...entry,
-              status,
-              reviewedBy: 'Admin/Finance Reviewer',
-              reviewedAt: timestamp,
-            }
-          : entry
-      )
-    );
-  };
-
   return (
     <div style={{ fontFamily: 'Poppins' }}>
       <AdminPageHeader
@@ -157,9 +112,9 @@ export default function ApprovalQueuePage() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        <AdminStatCard label="Pending Requests" value={pendingCount} accent="amber" />
-        <AdminStatCard label="High Risk Pending" value={highRiskPending} accent="red" />
-        <AdminStatCard label="Approved (Sample)" value={approvedToday} accent="teal" />
+        <AdminStatCard label="Pending Requests" value={loading ? '—' : pendingCount} accent="amber" />
+        <AdminStatCard label="High Risk Pending" value={loading ? '—' : highRiskPending} accent="red" />
+        <AdminStatCard label="Approved" value={loading ? '—' : approvedToday} accent="teal" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
@@ -208,17 +163,31 @@ export default function ApprovalQueuePage() {
 
             <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <p className="text-xs text-gray-600">
-                Showing <span className="font-semibold text-gray-800">{filteredRequests.length}</span> of{' '}
-                <span className="font-semibold text-gray-800">{requests.length}</span> requests
+                {loading ? 'Loading…' : (
+                  <>
+                    Showing <span className="font-semibold text-gray-800">{filteredRequests.length}</span> of{' '}
+                    <span className="font-semibold text-gray-800">{requests.length}</span> requests
+                  </>
+                )}
               </p>
-              <button
-                type="button"
-                onClick={resetFilters}
-                disabled={!hasActiveFilters}
-                className="self-start sm:self-auto px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Reset filters
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => void loadRequests()}
+                  disabled={loading}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  disabled={!hasActiveFilters}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reset filters
+                </button>
+              </div>
             </div>
           </div>
 
@@ -261,8 +230,12 @@ export default function ApprovalQueuePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600">
-                      <div>{entry.requestedBy}</div>
-                      <div className="text-xs text-gray-500 mt-1">{entry.requestedAt}</div>
+                      <div>{entry.requestedBy ?? '—'}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {typeof entry.requestedAt === 'string'
+                          ? new Date(entry.requestedAt).toLocaleString()
+                          : entry.requestedAt}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -278,7 +251,10 @@ export default function ApprovalQueuePage() {
                       </span>
                       {entry.reviewedBy ? (
                         <div className="text-xs text-gray-500 mt-1">
-                          {entry.reviewedBy} at {entry.reviewedAt}
+                          {entry.reviewedBy} at{' '}
+                          {entry.reviewedAt
+                            ? new Date(entry.reviewedAt).toLocaleString()
+                            : '—'}
                         </div>
                       ) : null}
                     </td>
@@ -286,19 +262,19 @@ export default function ApprovalQueuePage() {
                       <div className="flex justify-end gap-1.5">
                         <button
                           type="button"
-                          disabled={entry.status !== 'pending'}
-                          onClick={() => reviewRequest(entry.id, 'approved')}
+                          disabled={entry.status !== 'pending' || reviewingId === entry.id}
+                          onClick={() => void reviewRequest(entry.id, 'approved')}
                           className="px-2.5 py-1.5 rounded border border-[#0B5858] text-xs text-[#0B5858] hover:bg-[#e8f4f4] disabled:opacity-40"
                         >
-                          Approve
+                          {reviewingId === entry.id ? '…' : 'Approve'}
                         </button>
                         <button
                           type="button"
-                          disabled={entry.status !== 'pending'}
-                          onClick={() => reviewRequest(entry.id, 'rejected')}
+                          disabled={entry.status !== 'pending' || reviewingId === entry.id}
+                          onClick={() => void reviewRequest(entry.id, 'rejected')}
                           className="px-2.5 py-1.5 rounded border border-red-200 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
                         >
-                          Reject
+                          {reviewingId === entry.id ? '…' : 'Reject'}
                         </button>
                       </div>
                     </td>

@@ -8,6 +8,10 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/charge-types',
   '/api/bookings',
   '/api/damage-incidents',
+  '/api/units',
+  '/api/user-roles',
+  '/api/inventory-settings',
+  '/api/approval-requests',
   '/api/market', // legacy prefix for market-backend routes
 ];
 

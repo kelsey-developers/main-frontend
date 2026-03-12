@@ -52,6 +52,22 @@ async function forwardToUpstream(
     if (cookieToken) headers.set('authorization', `Bearer ${cookieToken}`);
   }
 
+  // If no x-user-role but we have a logged-in user, add role from user cookie
+  // so backend auth guard can enforce inventory-only access.
+  if (!headers.has('x-user-role') && !headers.has('x-user-roles')) {
+    const userCookie = request.cookies.get('user')?.value;
+    if (userCookie) {
+      try {
+        const user = JSON.parse(userCookie) as { email?: string; roles?: string[] };
+        const role = user.roles?.[0];
+        if (role) headers.set('x-user-role', role);
+        if (user.email) headers.set('x-user-email', user.email);
+      } catch {
+        // ignore malformed cookie
+      }
+    }
+  }
+
   // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
   if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
     headers.set('ngrok-skip-browser-warning', 'true');

@@ -9,8 +9,8 @@ export default function SalesReportLayout({
   children: React.ReactNode;
 }) {
   return (
-    <RouteGuard allowedRoles={['admin', 'finance', 'inventory', 'operations', 'cleaner', 'frontdesk']}>
-      <div data-sales-report-root>{children}</div>
+    <RouteGuard allowedRoles={['admin', 'finance', 'inventory', 'operations', 'housekeeping', 'cleaner', 'frontdesk']}>
+      <div data-sales-report-root="true">{children}</div>
     </RouteGuard>
   );
 }

@@ -18,9 +18,6 @@ type InventoryDataset = {
   goodsReceipts: unknown[];
   stockMovements: unknown[];
   replenishmentItems: unknown[];
-  units?: unknown[];
-  unitItems?: unknown[];
-  unitStockMovements?: unknown[];
   dashboardSummary: {
     totalItems: number;
     totalStocks: number;
@@ -40,9 +37,6 @@ const emptyDataset: InventoryDataset = {
   goodsReceipts: [],
   stockMovements: [],
   replenishmentItems: [],
-  units: [],
-  unitItems: [],
-  unitStockMovements: [],
   dashboardSummary: {
     totalItems: 0,
     totalStocks: 0,
@@ -63,9 +57,6 @@ function ensureDatasetShape(raw: unknown): typeof emptyDataset {
       goodsReceipts: Array.isArray(o.goodsReceipts) ? o.goodsReceipts : emptyDataset.goodsReceipts,
       stockMovements: Array.isArray(o.stockMovements) ? o.stockMovements : emptyDataset.stockMovements,
       replenishmentItems: Array.isArray(o.replenishmentItems) ? o.replenishmentItems : emptyDataset.replenishmentItems,
-      units: Array.isArray(o.units) ? o.units : emptyDataset.units,
-      unitItems: Array.isArray(o.unitItems) ? o.unitItems : emptyDataset.unitItems,
-      unitStockMovements: Array.isArray(o.unitStockMovements) ? o.unitStockMovements : emptyDataset.unitStockMovements,
       dashboardSummary:
         o.dashboardSummary != null && typeof o.dashboardSummary === 'object' && !Array.isArray(o.dashboardSummary)
           ? { ...emptyDataset.dashboardSummary, ...(o.dashboardSummary as Record<string, unknown>) }
@@ -79,7 +70,6 @@ export async function GET() {
   const headers = { 'Content-Type': 'application/json' };
 
   if (!BACKEND_URL) {
-    // No backend configured – return an empty dataset and let the UI handle "no data" states.
     return NextResponse.json(emptyDataset, { headers });
   }
 
@@ -128,7 +118,6 @@ export async function GET() {
       const message = error instanceof Error ? error.message : String(error);
       console.warn('Inventory dataset backend unreachable:', message);
     }
-    // On error, return an empty dataset instead of injecting mock items.
     return NextResponse.json(emptyDataset, { headers });
   }
 }

@@ -58,17 +58,8 @@ function InventoryItemsPageContent() {
     return () => window.removeEventListener('inventory:movement-updated', onMovementUpdated);
   }, []);
 
-  const preferredWarehouseId = useMemo(() => {
-    if (warehouseIdFromQuery || selectedWarehouseId) return null;
-    return (
-      inventoryWarehouseDirectory.find(
-        (warehouse) => getWarehouseUnitAllocations(warehouse.id).length > 0
-      )?.id ?? null
-    );
-  }, [warehouseIdFromQuery, selectedWarehouseId, refreshTick]);
-
   // Combine query param with local state (query param takes precedence)
-  const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId || preferredWarehouseId;
+  const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId;
   const activeWarehouse = inventoryWarehouseDirectory.find((wh) => wh.id === activeWarehouseId);
   const activeWarehouseName = warehouseNameFromQuery || activeWarehouse?.name;
 
@@ -80,41 +71,25 @@ function InventoryItemsPageContent() {
     return buildWarehouseOptions(inventoryWarehouseDirectory);
   }, []);
 
-  const allWarehouseUnitAllocations = useMemo(() => {
-    return inventoryWarehouseDirectory.flatMap((warehouse) =>
-      getWarehouseUnitAllocations(warehouse.id).map((unit) => ({
-        ...unit,
-        __warehouseId: warehouse.id,
-      }))
-    );
-  }, [refreshTick]);
-
   const unitAllocations = useMemo(() => {
-    if (!activeWarehouseId) return allWarehouseUnitAllocations;
-    return getWarehouseUnitAllocations(activeWarehouseId).map((unit) => ({
-      ...unit,
-      __warehouseId: activeWarehouseId,
-    }));
-  }, [activeWarehouseId, allWarehouseUnitAllocations, refreshTick]);
-
+    if (!activeWarehouseId) return [];
+    return getWarehouseUnitAllocations(activeWarehouseId);
+  }, [activeWarehouseId, refreshTick]);
 
   const unitFilterOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
+    if (!activeWarehouseId) return [];
     if (unitAllocations.length === 0) return [];
     return [
       { value: 'all', label: 'All units' },
       ...unitAllocations.map((unit) => ({ value: unit.unitId, label: unit.unitName })),
     ];
-  }, [unitAllocations]);
-
-  const effectiveUnitFilter =
-    unitFilter === 'all' || unitAllocations.some((unit) => unit.unitId === unitFilter)
-      ? unitFilter
-      : 'all';
+  }, [activeWarehouseId, unitAllocations]);
 
   const filteredUnitAllocations = useMemo(() => {
-    if (effectiveUnitFilter === 'all') return unitAllocations;
-    return unitAllocations.filter((unit) => unit.unitId === effectiveUnitFilter);
-  }, [effectiveUnitFilter, unitAllocations]);
+    if (!activeWarehouseId) return [];
+    if (unitFilter === 'all') return unitAllocations;
+    return unitAllocations.filter((unit) => unit.unitId === unitFilter);
+  }, [activeWarehouseId, unitAllocations, unitFilter]);
 
   const handleWarehouseChange = (value: string) => {
     if (value === 'all') {
@@ -316,7 +291,7 @@ function InventoryItemsPageContent() {
               {activeWarehouseId && unitFilterOptions.length > 0 && (
                 <div className="w-full sm:w-auto">
                   <InventoryDropdown
-                    value={effectiveUnitFilter}
+                    value={unitFilter}
                     onChange={setUnitFilter}
                     options={unitFilterOptions}
                     minWidthClass="min-w-[200px]"
@@ -325,13 +300,13 @@ function InventoryItemsPageContent() {
               )}
             </div>
 
-            {unitAllocations.length === 0 ? (
+            {!activeWarehouseId ? (
+              <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                Select a warehouse from the dropdown above to see which units have items allocated from that location.
+              </div>
+            ) : unitAllocations.length === 0 ? (
               <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
                 No items have been allocated to units yet for this warehouse.
-              </div>
-            ) : filteredUnitAllocations.length === 0 ? (
-              <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                No allocations match the selected unit filter.
               </div>
             ) : (
               <div className="max-h-[420px] overflow-auto divide-y divide-gray-100">
