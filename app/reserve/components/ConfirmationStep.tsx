@@ -198,9 +198,8 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   const summary = useMemo<BookingSummary>(() => {
     const unitCharge = pricePerNight;
     const amenitiesCharge = services.reduce((total, service) => total + (service.quantity * service.charge), 0);
-    const serviceCharge = 100.0; // Fixed service charge
     const discount = 0.0;
-    const totalCharges = (unitCharge * Math.max(1, nights)) + amenitiesCharge + extraGuestChargeTotal + serviceCharge - discount;
+    const totalCharges = (unitCharge * Math.max(1, nights)) + amenitiesCharge + extraGuestChargeTotal - discount;
 
     return {
       nights,
@@ -208,7 +207,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       baseGuests,
       unitCharge,
       amenitiesCharge,
-      serviceCharge,
+      serviceCharge: 0,
       discount,
       totalCharges
     };
@@ -326,8 +325,7 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         check_out_date:
           toIsoFromDateAndTime(formData.checkOutDate, formData.checkOutTime) ||
           formData.checkOutDate,
-        num_guests: primaryGuests,
-        extra_guests: extraGuests,
+        total_guests: Math.max(1, totalGuests),
         add_ons: formData.additionalServices || [],
         landmark: formData.locationLandmark || undefined,
         parking_info: formData.locationParking || undefined,
@@ -502,10 +500,6 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
                 <div className="flex justify-between">
                   <span>Amenities / Additional Services</span>
                   <span>{formatCurrency(summary.amenitiesCharge)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Service Charges</span>
-                  <span>{formatCurrency(summary.serviceCharge)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Discounts</span>

@@ -14,15 +14,27 @@ import { logoutAction } from '@/lib/actions/auth';
 const PROTECTED_ROUTES = [
   '/admin',
   '/manage-units',
+  '/manage-users',
   '/booking',
   '/booking-details',
   '/reserve',
   '/rewards',
   '/profile',
   '/settings',
+  '/sales-report',
 ];
 
-type NormalizedRole = 'admin' | 'agent' | 'finance' | 'user' | 'cleaner';
+export type NormalizedRole =
+  | 'admin'
+  | 'agent'
+  | 'guest'
+  | 'finance'
+  | 'inventory'
+  | 'housekeeping'
+  | 'operations'
+  | 'frontdesk'
+  | 'cleaner'
+  | 'user';
 
 export interface AuthUserRole {
   role: NormalizedRole;
@@ -41,6 +53,14 @@ interface AuthContextValue {
   roleLoading: boolean;
   isAdmin: boolean;
   isAgent: boolean;
+  isGuest: boolean;
+  isFinance: boolean;
+  isInventory: boolean;
+  isHousekeeping: boolean;
+  isOperations: boolean;
+  isFrontdesk: boolean;
+  /** Returns true if the user has ANY of the given roles (admin always passes). */
+  hasAnyRole: (...roles: NormalizedRole[]) => boolean;
   signOut: () => Promise<void>;
 }
 
@@ -50,8 +70,13 @@ function normalizeRole(role: string): NormalizedRole {
   const lower = role.toLowerCase();
   if (lower === 'admin') return 'admin';
   if (lower === 'agent') return 'agent';
+  if (lower === 'guest') return 'guest';
   if (lower === 'finance') return 'finance';
+  if (lower === 'inventory') return 'inventory';
+  if (lower === 'operations' || lower === 'operation') return 'operations';
+  if (lower === 'frontdesk' || lower === 'front desk' || lower === 'front_desk') return 'frontdesk';
   if (lower === 'cleaner') return 'cleaner';
+  if (lower === 'housekeeping') return 'housekeeping';
   return 'user';
 }
 
@@ -94,6 +119,11 @@ export function AuthProvider({
     ? [user.firstName, user.lastName].filter(Boolean).join(' ')
     : '';
 
+  const hasAnyRole = (...roles: NormalizedRole[]) => {
+    if (primaryRole === 'admin') return true;
+    return primaryRole !== null && roles.includes(primaryRole);
+  };
+
   const value: AuthContextValue = {
     user,
     userRole: primaryRole ? { role: primaryRole, fullname } : null,
@@ -101,6 +131,13 @@ export function AuthProvider({
     roleLoading: false,
     isAdmin: primaryRole === 'admin',
     isAgent: primaryRole === 'agent',
+    isGuest: primaryRole === 'guest',
+    isFinance: primaryRole === 'finance',
+    isInventory: primaryRole === 'inventory',
+    isHousekeeping: primaryRole === 'housekeeping',
+    isOperations: primaryRole === 'operations',
+    isFrontdesk: primaryRole === 'frontdesk',
+    hasAnyRole,
     signOut,
   };
 
@@ -117,6 +154,13 @@ export function useAuth(): AuthContextValue {
       roleLoading: false,
       isAdmin: false,
       isAgent: false,
+      isGuest: false,
+      isFinance: false,
+      isInventory: false,
+      isHousekeeping: false,
+      isOperations: false,
+      isFrontdesk: false,
+      hasAnyRole: () => false,
       signOut: async () => {},
     };
   }

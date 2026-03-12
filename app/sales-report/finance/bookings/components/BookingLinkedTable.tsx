@@ -22,6 +22,8 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Agent</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Guest</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Check-in / Out</th>
+              <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Rate</th>
+              <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Add-ons</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Total</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Action</th>
             </tr>
@@ -29,7 +31,7 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
           <tbody>
             {isEmpty ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-gray-500 text-sm">
+                <td colSpan={9} className="px-4 py-12 text-center text-gray-500 text-sm">
                   No records detected
                 </td>
               </tr>
@@ -40,7 +42,25 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
                 <td className="px-3 py-3 text-sm text-gray-600 text-center">{row.agent}</td>
                 <td className="px-3 py-3 text-sm text-gray-600 text-center">{row.guest}</td>
                 <td className="px-3 py-3 text-sm text-gray-600 text-center">{formatDateNumeric(row.checkIn)} – {formatDateNumeric(row.checkOut)}</td>
-                <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-center">{formatPHP(getBookingTotal(row.rate, row.checkIn, row.checkOut, row.discounts, row.extraHeads, row.extraHours, row.addOnsAmount))}</td>
+                <td className="px-3 py-3 text-sm text-gray-700 text-center">
+                  {formatPHP(row.rate)}
+                </td>
+                <td className="px-3 py-3 text-sm text-gray-700 text-center">
+                  {formatPHP(row.addOnsAmount)}
+                </td>
+                <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-center">
+                  {formatPHP(
+                    getBookingTotal(
+                      row.rate,
+                      row.checkIn,
+                      row.checkOut,
+                      row.discounts,
+                      row.extraHeads,
+                      row.extraHours,
+                      row.addOnsAmount,
+                    )
+                  )}
+                </td>
                 <td className="px-3 py-3 text-sm text-gray-700 text-center">
                   <Link
                     href={`/sales-report/finance/bookings/${row.id}`}

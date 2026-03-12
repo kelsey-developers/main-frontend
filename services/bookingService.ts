@@ -51,8 +51,10 @@ function normalizeRecord(raw: any): BookingRecord {
     listing_id: String(raw?.listing_id ?? raw?.listingId ?? ''),
     check_in_date: checkIn,
     check_out_date: checkOut,
-    num_guests: parseNumber(raw?.num_guests ?? raw?.numGuests, 1),
-    extra_guests: parseNumber(raw?.extra_guests ?? raw?.extraGuests, 0),
+    total_guests: parseNumber(
+      raw?.total_guests ?? raw?.totalGuests ?? (raw?.num_guests ?? raw?.numGuests ?? 1) + (raw?.extra_guests ?? raw?.extraGuests ?? 0),
+      1
+    ),
     add_ons: addOns,
     landmark: raw?.landmark ? String(raw.landmark) : undefined,
     parking_info: raw?.parking_info ? String(raw.parking_info) : undefined,
@@ -141,8 +143,7 @@ export const BookingService = {
         listing_id: input.listing_id,
         check_in_date: input.check_in_date,
         check_out_date: input.check_out_date,
-        num_guests: input.num_guests,
-        extra_guests: input.extra_guests,
+        total_guests: input.total_guests,
         add_ons: input.add_ons,
         landmark: input.landmark,
         parking_info: input.parking_info,

@@ -9,7 +9,6 @@ import RightColumn from './components/RightColumn';
 import TabsSection from './components/TabsSection';
 import PropertiesInSameArea from './components/PropertiesInSameArea';
 import ShareModal from './components/ShareModal';
-import Footer from '@/components/Footer';
 import { getUnitById, listUnits } from '@/lib/api/units';
 
 function UnitViewContent() {
@@ -237,8 +236,6 @@ function UnitViewContent() {
         isLoading={isLoading}
         onCardClick={handleSameAreaListingClick}
       />
-
-      <Footer />
     </div>
   );
 }

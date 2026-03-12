@@ -15,6 +15,7 @@ interface BookingFormProps {
   priceUnit?: string;
   extraGuestFeePerPerson?: number;
   baseGuests?: number;
+  maxCapacity?: number;
   onCancel: () => void;
   onComplete: (formData: BookingFormData) => void;
   /**
@@ -25,7 +26,7 @@ interface BookingFormProps {
   onBookingsReady?: () => void;
 }
 
-const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerNight, priceUnit, extraGuestFeePerPerson, baseGuests, onCancel, onComplete, requirePayment = true, onBookingsReady }) => {
+const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerNight, priceUnit, extraGuestFeePerPerson, baseGuests, maxCapacity, onCancel, onComplete, requirePayment = true, onBookingsReady }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
   // Initial form data filled out with all commonly-referenced fields so child steps
@@ -37,6 +38,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
     priceUnit: priceUnit,
     extraGuestFeePerPerson: extraGuestFeePerPerson,
     baseGuests: baseGuests,
+    maxCapacity: maxCapacity,
     checkInDate: '',
     checkInTime: '12:00',
     checkOutDate: '',
@@ -115,9 +117,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
       pricePerNight,
       priceUnit,
       extraGuestFeePerPerson,
-      baseGuests
+      baseGuests,
+      maxCapacity
     }));
-  }, [listingId, pricePerNight, priceUnit, extraGuestFeePerPerson, baseGuests]);
+  }, [listingId, pricePerNight, priceUnit, extraGuestFeePerPerson, baseGuests, maxCapacity]);
 
   const nextStep = () => {
     if (currentStep < steps.length - 1) {
@@ -150,6 +153,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
             onNext={nextStep}
             onCancel={onCancel}
             onBookingsReady={onBookingsReady}
+            maxCapacity={maxCapacity}
           />
         );
 
@@ -157,6 +161,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
         return (
           <ClientInfoStep
             formData={formData}
+            listingId={listingId}
             onUpdate={updateFormData}
             onNext={nextStep}
             onBack={prevStep}
@@ -168,6 +173,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
         return (
           <AdditionalServicesStep
             formData={formData}
+            listingId={listingId}
             onUpdate={updateFormData}
             onNext={nextStep}
             onBack={prevStep}
@@ -179,6 +185,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
         return (
           <PaymentInfoStep
             formData={formData}
+            listingId={listingId}
             onUpdate={updateFormData}
             onNext={nextStep}
             onBack={prevStep}

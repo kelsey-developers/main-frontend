@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Tooltip from '@/components/Tooltip';
 import CalendarSettingsModal from './components/CalendarSettingsModal';
+import { getMyBookings, type MyBookingItem } from '@/lib/api/bookings';
 
 type Booking = {
   date: Date;
@@ -12,6 +13,7 @@ type Booking = {
   checkInDateString: string;
   checkOutDateString: string;
   title: string;
+  location?: string;
   time: string;
   startHour: number;
   endHour: number;
@@ -31,8 +33,7 @@ type DrawerBooking = {
   listing?: { title?: string; location?: string };
   check_in_date: string;
   check_out_date: string;
-  num_guests?: number;
-  extra_guests?: number;
+  total_guests?: number;
   total_amount?: number;
   request_description?: string;
 };
@@ -53,76 +54,26 @@ function addDays(d: Date, n: number): Date {
   return c;
 }
 
-function generateMockBookings(): Booking[] {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  return [
-    {
-      date: new Date(y, m, 15),
-      checkInDate: new Date(y, m, 15),
-      checkOutDate: new Date(y, m, 18),
-      checkInDateString: new Date(y, m, 15).toISOString().slice(0, 10),
-      checkOutDateString: new Date(y, m, 18).toISOString().slice(0, 10),
-      title: 'Ocean View Villa',
-      time: '2:00 PM – 12:00 PM',
-      startHour: 14,
-      endHour: 12,
-      bookingId: 'mock-1',
-      status: 'booked',
-      totalAmount: 1200,
-      mainImageUrl: undefined,
-      clientFirstName: 'John',
-    },
-    {
-      date: new Date(y, m, 20),
-      checkInDate: new Date(y, m, 20),
-      checkOutDate: new Date(y, m, 25),
-      checkInDateString: new Date(y, m, 20).toISOString().slice(0, 10),
-      checkOutDateString: new Date(y, m, 25).toISOString().slice(0, 10),
-      title: 'Mountain Cabin',
-      time: '2:00 PM – 12:00 PM',
-      startHour: 14,
-      endHour: 12,
-      bookingId: 'mock-2',
-      status: 'pending',
-      totalAmount: 800,
-      mainImageUrl: undefined,
-      clientFirstName: 'Sarah',
-    },
-    {
-      date: new Date(y, m, 10),
-      checkInDate: new Date(y, m, 10),
-      checkOutDate: new Date(y, m, 12),
-      checkInDateString: new Date(y, m, 10).toISOString().slice(0, 10),
-      checkOutDateString: new Date(y, m, 12).toISOString().slice(0, 10),
-      title: 'City Apartment',
-      time: '2:00 PM – 12:00 PM',
-      startHour: 14,
-      endHour: 12,
-      bookingId: 'mock-3',
-      status: 'booked',
-      totalAmount: 600,
-      mainImageUrl: undefined,
-      clientFirstName: 'Mike',
-    },
-    {
-      date: new Date(y, m, 28),
-      checkInDate: new Date(y, m, 28),
-      checkOutDate: new Date(y, m + 1, 2),
-      checkInDateString: new Date(y, m, 28).toISOString().slice(0, 10),
-      checkOutDateString: new Date(y, m + 1, 2).toISOString().slice(0, 10),
-      title: 'Beach House',
-      time: '2:00 PM – 12:00 PM',
-      startHour: 14,
-      endHour: 12,
-      bookingId: 'mock-4',
-      status: 'pending',
-      totalAmount: 1500,
-      mainImageUrl: undefined,
-      clientFirstName: 'Emma',
-    },
-  ];
+function myBookingToCalendarBooking(item: MyBookingItem): Booking {
+  const checkIn = new Date(item.check_in_date + 'T12:00:00');
+  const checkOut = new Date(item.check_out_date + 'T12:00:00');
+  return {
+    date: checkIn,
+    checkInDate: checkIn,
+    checkOutDate: checkOut,
+    checkInDateString: item.check_in_date,
+    checkOutDateString: item.check_out_date,
+    title: item.listing?.title || 'Unit',
+    location: item.listing?.location,
+    time: '2:00 PM – 12:00 PM',
+    startHour: 14,
+    endHour: 12,
+    bookingId: item.reference_code || item.id,
+    status: item.status,
+    totalAmount: item.total_amount,
+    mainImageUrl: item.listing?.main_image_url,
+    clientFirstName: item.client?.first_name || 'Guest',
+  };
 }
 
 function bookingToDrawerBooking(b: Booking): DrawerBooking {
@@ -130,12 +81,12 @@ function bookingToDrawerBooking(b: Booking): DrawerBooking {
     id: b.bookingId || '',
     status: b.status || 'pending',
     client: { first_name: b.clientFirstName || 'Guest', last_name: '' },
-    agent: { fullname: 'Sample Agent' },
-    listing: { title: b.title, location: 'Sample Location' },
+    agent: { fullname: '' },
+    listing: { title: b.title, location: b.location || '' },
     check_in_date: b.checkInDateString,
     check_out_date: b.checkOutDateString,
     total_amount: b.totalAmount,
-    num_guests: 2,
+    total_guests: 2,
   };
 }
 
@@ -163,8 +114,8 @@ export function CalendarView({ embedded }: CalendarViewProps) {
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({ visible: false, message: '', type: 'success' });
   const toastRef = useRef<HTMLDivElement | null>(null);
 
-  const [bookings, setBookings] = useState<Booking[]>(generateMockBookings);
-  const [loading, setLoading] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [globalBlockedRanges, setGlobalBlockedRanges] = useState<BlockedDateRange[]>([]);
@@ -185,6 +136,23 @@ export function CalendarView({ embedded }: CalendarViewProps) {
   const [headerAnimating, setHeaderAnimating] = useState(false);
   const headerAnimTimer = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+
+  const fetchBookings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const items = await getMyBookings();
+      setBookings(items.map(myBookingToCalendarBooking));
+      setHasInitiallyLoaded(true);
+    } catch {
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
 
   useEffect(() => {
     setVisibleMonth(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
@@ -335,6 +303,8 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     if (s === 'blocked') return 'bg-blocked';
     if (s === 'available') return 'bg-available';
     if (s === 'booked') return 'bg-booked';
+    if (s === 'cancelled') return 'bg-blocked';
+    if (s === 'completed') return 'bg-available';
     return 'bg-booked';
   };
 

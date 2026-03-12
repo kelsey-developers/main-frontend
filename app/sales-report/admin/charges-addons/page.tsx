@@ -46,7 +46,7 @@ export default function AdminChargesAddonsPage() {
   });
 
   const load = async () => {
-    const data = await apiClient.get<ListResponse>('/api/market/charge-types?includeInactive=true');
+    const data = await apiClient.get<ListResponse>('/api/charge-types?includeInactive=true');
     setRows(data.chargeTypes ?? []);
   };
 
@@ -69,7 +69,7 @@ export default function AdminChargesAddonsPage() {
   const toggleActive = async (row: ChargeTypeRow) => {
     setSavingId(row.id);
     try {
-      await apiClient.patch(`/api/market/charge-types/${row.id}`, { isActive: !row.isActive });
+      await apiClient.patch(`/api/charge-types/${row.id}`, { isActive: !row.isActive });
       await load();
     } finally {
       setSavingId(null);
@@ -84,7 +84,7 @@ export default function AdminChargesAddonsPage() {
       if (updates.description !== undefined) payload.description = updates.description;
       if (updates.defaultAmount !== undefined) payload.defaultAmount = updates.defaultAmount;
       if (updates.pricingModel !== undefined) payload.pricingModel = updates.pricingModel;
-      await apiClient.patch(`/api/market/charge-types/${row.id}`, payload);
+      await apiClient.patch(`/api/charge-types/${row.id}`, payload);
       await load();
     } finally {
       setSavingId(null);
@@ -96,7 +96,7 @@ export default function AdminChargesAddonsPage() {
     try {
       const defaultAmount =
         form.defaultAmount.trim().length > 0 ? Number(form.defaultAmount) : undefined;
-      await apiClient.post('/api/market/charge-types', {
+      await apiClient.post('/api/charge-types', {
         code: form.code.trim(),
         name: form.name.trim(),
         description: form.description.trim() || undefined,
@@ -216,77 +216,118 @@ export default function AdminChargesAddonsPage() {
           </div>
         </AdminSection>
 
-        <AdminSection title="Charge types" subtitle="Toggle active, edit amount/model. Changes affect new bookings only (auto charges).">
+        <AdminSection title="Charge types" subtitle="Toggle active, edit amount/model. Changes affect new bookings only.">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Code', 'Name', 'Default', 'Model', 'Active', 'Actions'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
+            <table className="w-full text-sm" style={{ minWidth: 640 }}>
+              <colgroup>
+                <col style={{ width: 160 }} />
+                <col />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 168 }} />
+                <col style={{ width: 96 }} />
+                <col style={{ width: 112 }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-gradient-to-r from-[#0b5858] to-[#05807e]">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Code</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Default</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">Pricing Model</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-white uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-white uppercase tracking-wider">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
                 {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-700">{row.code}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-gray-900">{row.name}</div>
-                      {row.description ? <div className="text-xs text-gray-500 mt-0.5">{row.description}</div> : null}
+                  <tr key={row.id} className="hover:bg-[#f8fffe] transition-colors align-middle">
+
+                    {/* Code */}
+                    <td className="px-4 py-3.5">
+                      <code className="block font-mono text-[11px] bg-gray-100 text-[#0b5858] px-2 py-0.5 rounded w-fit max-w-[136px] truncate">
+                        {row.code}
+                      </code>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <input
-                        defaultValue={row.defaultAmount ?? ''}
-                        onBlur={(e) => {
-                          const v = String(e.target.value ?? '').trim();
-                          const parsed = v.length ? Number(v) : null;
-                          if (v.length && !Number.isFinite(parsed)) return;
-                          if ((row.defaultAmount ?? null) === parsed) return;
-                          void saveRow(row, { defaultAmount: parsed });
-                        }}
-                        className="w-28 rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
-                        placeholder="0"
-                      />
+
+                    {/* Name + description */}
+                    <td className="px-4 py-3.5 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm leading-tight truncate capitalize">
+                        {row.name}
+                      </p>
+                      {row.description && (
+                        <p className="text-xs text-gray-400 mt-0.5 truncate">{row.description}</p>
+                      )}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+
+                    {/* Default amount — inline editable */}
+                    <td className="px-4 py-3.5">
+                      <div className="relative w-24">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 select-none pointer-events-none">
+                          &#8369;
+                        </span>
+                        <input
+                          key={row.id}
+                          defaultValue={row.defaultAmount ?? ''}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            const parsed = v.length ? Number(v) : null;
+                            if (v.length && !Number.isFinite(parsed)) return;
+                            if ((row.defaultAmount ?? null) === parsed) return;
+                            void saveRow(row, { defaultAmount: parsed });
+                          }}
+                          className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] bg-white"
+                          placeholder="0"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    </td>
+
+                    {/* Pricing model */}
+                    <td className="px-4 py-3.5">
                       <select
                         value={row.pricingModel}
                         onChange={(e) => void saveRow(row, { pricingModel: e.target.value as PricingModel })}
-                        className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                        className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
                       >
                         {Object.entries(PRICING_LABEL).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
+                          <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${row.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+
+                    {/* Status */}
+                    <td className="px-4 py-3.5 text-center">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        row.isActive ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'bg-gray-100 text-gray-500 ring-1 ring-gray-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${row.isActive ? 'bg-green-500' : 'bg-gray-400'}`} />
                         {row.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
+
+                    {/* Toggle */}
+                    <td className="px-4 py-3.5 text-center">
                       <button
                         type="button"
                         onClick={() => void toggleActive(row)}
                         disabled={savingId === row.id}
-                        className="px-2.5 py-1.5 rounded border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-40 whitespace-nowrap ${
+                          row.isActive
+                            ? 'border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-300'
+                            : 'border-[#0B5858]/30 bg-white text-[#0B5858] hover:bg-[#e8f4f4]'
+                        }`}
                       >
                         {savingId === row.id ? 'Saving…' : row.isActive ? 'Deactivate' : 'Activate'}
                       </button>
                     </td>
                   </tr>
                 ))}
-                {rows.length === 0 ? (
+                {rows.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">
                       {loading ? 'Loading…' : 'No charge types yet. Create one on the left.'}
                     </td>
                   </tr>
-                ) : null}
+                )}
               </tbody>
             </table>
           </div>

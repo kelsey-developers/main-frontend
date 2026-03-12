@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-const ROLES = ['Guest', 'Agent', 'Admin'] as const;
+const ROLES = ['Guest', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Admin'] as const;
 type RoleType = (typeof ROLES)[number];
 
 interface User {
@@ -35,14 +35,33 @@ interface EditForm {
 }
 
 const roleColors: Record<string, { bg: string; text: string; label: string }> = {
-  Admin: { bg: '#B84C4C', text: '#fff', label: 'Admin' },
-  Agent: { bg: '#FACC15', text: '#0B5858', label: 'Agent' },
-  Guest: { bg: '#558B8B', text: '#fff', label: 'Guest' },
+  Admin:        { bg: '#B84C4C', text: '#fff',     label: 'Admin' },
+  Agent:        { bg: '#FACC15', text: '#0B5858',  label: 'Agent' },
+  Guest:        { bg: '#558B8B', text: '#fff',     label: 'Guest' },
+  Finance:      { bg: '#6366F1', text: '#fff',     label: 'Finance' },
+  Inventory:    { bg: '#0891B2', text: '#fff',     label: 'Inventory' },
+  Housekeeping: { bg: '#059669', text: '#fff',     label: 'Housekeeping' },
 };
 
+/** Convert a Prisma/market-backend role string to the display name used in ROLES. */
+function toDisplayRole(role: string): RoleType {
+  const map: Record<string, RoleType> = {
+    finance:      'Finance',
+    inventory:    'Inventory',
+    operations:   'Housekeeping',
+    frontdesk:    'Agent', // closest public-facing role
+    admin:        'Admin',
+    agent:        'Agent',
+  };
+  return map[role.toLowerCase()] ?? 'Guest';
+}
+
 function getRoleDisplay(roles: string[]) {
-  for (const r of ['Admin', 'Agent', 'Guest']) {
-    if (roles.includes(r)) return r;
+  for (const r of ['Admin', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Operations', 'Guest']) {
+    if (roles.map((x) => x.toLowerCase()).includes(r.toLowerCase())) {
+      // Normalize "Operations" → "Housekeeping" for display
+      return r === 'Operations' ? 'Housekeeping' : r;
+    }
   }
   return roles[0] ?? 'Guest';
 }
@@ -102,6 +121,9 @@ export default function ManageUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Internal roles stored in market-backend, keyed by email
+  const [internalRoles, setInternalRoles] = useState<Record<string, string>>({});
+
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,6 +162,14 @@ export default function ManageUsers() {
     }
   }, [search, roleFilter]);
 
+  // Fetch internal role mappings from market-backend on mount
+  useEffect(() => {
+    fetch('/market-api/user-roles')
+      .then((r) => r.ok ? r.json() as Promise<Record<string, string>> : Promise.resolve({}))
+      .then((data) => setInternalRoles(data))
+      .catch(() => {/* non-fatal */});
+  }, []);
+
   useEffect(() => {
     fetchUsers(1);
   }, []);
@@ -158,8 +188,12 @@ export default function ManageUsers() {
   };
 
   const openEdit = (user: User) => {
-    const role = getRoleDisplay(user.roles) as RoleType;
-    setEditForm({ firstName: user.firstName, lastName: user.lastName, email: user.email, role });
+    // Prefer internal role (from market-backend) if one exists for this email
+    const internalRole = internalRoles[user.email];
+    const displayRole = internalRole
+      ? toDisplayRole(internalRole)
+      : (getRoleDisplay(user.roles) as RoleType) ?? 'Guest';
+    setEditForm({ firstName: user.firstName, lastName: user.lastName, email: user.email, role: displayRole });
     setEditError(null);
     setEditingUser(user);
   };
@@ -189,16 +223,22 @@ export default function ManageUsers() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Update failed');
 
+      // Refresh internal roles so the table badge updates immediately
+      const updatedInternal = await fetch('/market-api/user-roles')
+        .then((r) => r.ok ? r.json() as Promise<Record<string, string>> : Promise.resolve(internalRoles))
+        .catch(() => internalRoles);
+      setInternalRoles(updatedInternal);
+
       setUsers((prev) =>
         prev.map((u) =>
           u.id === editingUser.id
             ? {
                 ...u,
-                firstName: data.firstName,
-                lastName: data.lastName,
-                fullname: data.fullname,
-                email: data.email,
-                roles: data.roles,
+                firstName: (data as Record<string, unknown>).firstName as string ?? u.firstName,
+                lastName:  (data as Record<string, unknown>).lastName  as string ?? u.lastName,
+                fullname:  (data as Record<string, unknown>).fullname  as string ?? u.fullname,
+                email:     (data as Record<string, unknown>).email     as string ?? u.email,
+                roles:     (data as Record<string, unknown>).roles     as string[] ?? u.roles,
               }
             : u
         )
@@ -348,7 +388,8 @@ export default function ManageUsers() {
                     </tr>
                   ) : (
                     users.map((user, idx) => {
-                      const role = getRoleDisplay(user.roles);
+                      const internalRole = internalRoles[user.email];
+                      const role = internalRole ? toDisplayRole(internalRole) : getRoleDisplay(user.roles);
                       return (
                         <tr
                           key={user.id}
@@ -477,21 +518,22 @@ export default function ManageUsers() {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3" style={{ fontFamily: 'Poppins' }}>
               Role Permissions
             </p>
-            <div className="flex flex-wrap gap-6">
-              {ROLES.map((r) => {
-                const cfg = roleColors[r];
-                const desc: Record<string, string> = {
-                  Guest: 'Can browse and make bookings',
-                  Agent: 'Can manage bookings and clients',
-                  Admin: 'Full access to all features',
-                };
-                return (
-                  <div key={r} className="flex items-center gap-2">
-                    <RoleBadge role={r} />
-                    <span className="text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>{desc[r]}</span>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {(
+                [
+                  { role: 'Guest',        desc: 'Can browse and make bookings' },
+                  { role: 'Agent',        desc: 'Can manage bookings and clients' },
+                  { role: 'Finance',      desc: 'Access to Finance section of Sales Report' },
+                  { role: 'Inventory',    desc: 'Access to Inventory section of Sales Report' },
+                  { role: 'Housekeeping', desc: 'Access to Housekeeping section of Sales Report' },
+                  { role: 'Admin',        desc: 'Full access to all features and dashboards' },
+                ] as { role: string; desc: string }[]
+              ).map(({ role, desc }) => (
+                <div key={role} className="flex items-start gap-2.5 p-2.5 rounded-lg border border-gray-100 bg-gray-50/60">
+                  <RoleBadge role={role} />
+                  <span className="text-xs text-gray-500 leading-relaxed" style={{ fontFamily: 'Poppins' }}>{desc}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -591,7 +633,7 @@ export default function ManageUsers() {
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {ROLES.map((r) => {
-                    const cfg = roleColors[r];
+                    const cfg = roleColors[r] ?? { bg: '#888', text: '#fff', label: r };
                     const selected = editForm.role === r;
                     return (
                       <button
@@ -612,6 +654,9 @@ export default function ManageUsers() {
                     );
                   })}
                 </div>
+                <p className="mt-2 text-[11px] text-gray-400" style={{ fontFamily: 'Poppins' }}>
+                  Finance, Inventory, and Housekeeping roles grant access to the Sales Report dashboard.
+                </p>
               </div>
 
               <div className="flex gap-3 pt-1">

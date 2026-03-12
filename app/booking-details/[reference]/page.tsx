@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams } from 'next/navigation';
-import Navbar from '../../../components/Navbar';
-import Footer from '../../../components/Footer';
 import { getBookingById } from '@/lib/api/bookings';
 
 interface BookingDetails {
@@ -13,9 +11,8 @@ interface BookingDetails {
   check_in_date: string;
   check_out_date: string;
   nights: number;
-  num_guests: number;
-  extra_guests: number;
-  extra_guest_charge?: number;
+  total_guests: number;
+  excess_pax_charge?: number;
   unit_charge: number;
   amenities_charge?: number;
   service_charge?: number;
@@ -111,14 +108,12 @@ function BookingDetailsContent() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
         <div className="pt-20 pb-8 flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block w-10 h-10 border-4 border-gray-200 border-t-[#0B5858] rounded-full animate-spin" />
             <p className="mt-3 text-sm text-gray-600" style={{ fontFamily: 'Poppins' }}>Loading booking...</p>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -128,7 +123,6 @@ function BookingDetailsContent() {
     const isNotFound = error?.status === 404;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
         <div className="pt-20 pb-8 flex-1 flex items-center justify-center px-4">
           <div className="max-w-md w-full bg-white border border-gray-200 rounded-lg p-8 text-center">
             <div className="flex justify-center mb-4">
@@ -157,7 +151,6 @@ function BookingDetailsContent() {
             </button>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -237,8 +230,6 @@ function BookingDetailsContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navbar />
-      
       <div className="pt-20 pb-8 flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header */}
@@ -306,7 +297,7 @@ function BookingDetailsContent() {
                         <path d="M6 22v-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path>
                         <path d="M18 22v-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path>
                       </svg>
-                      <span>{booking.num_guests} guest{booking.num_guests !== 1 ? 's' : ''}</span>
+                      <span>{booking.total_guests} guest{booking.total_guests !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
                 </div>
@@ -342,21 +333,16 @@ function BookingDetailsContent() {
                     <span>{formatCurrency(booking.unit_charge * booking.nights)}</span>
                   </div>
 
-                  {booking.extra_guests > 0 && (
+                  {(booking.excess_pax_charge ?? 0) > 0 && (
                     <div className="flex justify-between">
-                      <span>Extra guest charges ({booking.extra_guests})</span>
-                      <span>{formatCurrency(booking.extra_guest_charge || 0)}</span>
+                      <span>Excess guest charges (over capacity)</span>
+                      <span>{formatCurrency(booking.excess_pax_charge || 0)}</span>
                     </div>
                   )}
 
                   <div className="flex justify-between">
                     <span>Amenities / Additional Services</span>
                     <span>{formatCurrency(booking.amenities_charge || 0)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span>Service Charges</span>
-                    <span>{formatCurrency(booking.service_charge || 0)}</span>
                   </div>
                   
                   <div className="flex justify-between">
@@ -681,8 +667,6 @@ function BookingDetailsContent() {
           </div>
         </div>
       </div>
-
-      <Footer />
     </div>
   );
 }

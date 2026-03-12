@@ -266,75 +266,62 @@ export default function AdminReplenishmentPage() {
                 />
               </label>
             </div>
-            <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <p className="text-xs text-gray-600">
-                Showing{' '}
-                <span className="font-semibold text-gray-800">
-                  {filteredOrders.length}
-                </span>{' '}
-                of{' '}
-                <span className="font-semibold text-gray-800">{orders.length}</span>{' '}
-                purchase orders
-              </p>
+            <div className="mt-3 flex justify-end">
               <button
                 type="button"
                 onClick={resetWorkflowFilters}
                 disabled={!hasActiveWorkflowFilters}
-                className="self-start sm:self-auto px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Reset filters
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gradient-to-r from-[#0B5858] to-[#05807e]">
-                <tr>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">
-                    PO
-                  </th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">
-                    Supplier
-                  </th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">
-                    Expected
-                  </th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-right text-white/90 uppercase tracking-wider text-[10px] font-semibold">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredOrders.map((order) => {
-                  const supplier = inventorySuppliers.find(
-                    (s) => s.id === order.supplierId
-                  );
-                  const canReceive =
-                    order.status === 'pending' ||
-                    order.status === 'partially-received';
-                  const canCancel =
-                    order.status !== 'cancelled' && order.status !== 'received';
-                  return (
-                    <tr
-                      key={order.id}
-                      className="border-b border-gray-100 last:border-b-0"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {order.id.toUpperCase()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {supplier?.name ?? 'Unknown'}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {order.expectedDelivery}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
+          {/* Fixed-height scrollable table — header sticky, rows scroll */}
+          <div className="flex flex-col" style={{ height: 360 }}>
+            <div className="overflow-x-auto flex-1 overflow-y-auto">
+              <table className="w-full text-sm" style={{ minWidth: 520 }}>
+                <colgroup>
+                  <col style={{ width: 160 }} />
+                  <col style={{ width: 140 }} />
+                  <col style={{ width: 110 }} />
+                  <col style={{ width: 130 }} />
+                  <col style={{ width: 140 }} />
+                </colgroup>
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-gradient-to-r from-[#0B5858] to-[#05807e]">
+                    <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">PO</th>
+                    <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Supplier</th>
+                    <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Expected</th>
+                    <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Status</th>
+                    <th className="px-4 py-3 text-right text-white/90 uppercase tracking-wider text-[10px] font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {filteredOrders.map((order) => {
+                    const supplier = inventorySuppliers.find((s) => s.id === order.supplierId);
+                    const canReceive = order.status === 'pending' || order.status === 'partially-received';
+                    const canCancel = order.status !== 'cancelled' && order.status !== 'received';
+                    const shortId = order.id.slice(-8).toUpperCase();
+                    return (
+                      <tr key={order.id} className="hover:bg-[#f8fffe] transition-colors align-middle">
+                        <td className="px-4 py-3">
+                          <code
+                            className="block font-mono text-[11px] bg-gray-100 text-[#0b5858] px-2 py-0.5 rounded w-fit max-w-[136px] truncate"
+                            title={order.id.toUpperCase()}
+                          >
+                            …{shortId}
+                          </code>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700 truncate max-w-[136px]">
+                          {supplier?.name ?? 'Unknown'}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 text-xs tabular-nums whitespace-nowrap">
+                          {order.expectedDelivery}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
                             order.status === 'received'
                               ? 'bg-green-100 text-green-700'
                               : order.status === 'partially-received'
@@ -342,50 +329,48 @@ export default function AdminReplenishmentPage() {
                               : order.status === 'cancelled'
                               ? 'bg-red-100 text-red-700'
                               : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1.5">
-                          {canReceive && (
-                            <Link
-                              href={`/sales-report/inventory/purchase-orders?poId=${order.id}`}
-                              className="px-2.5 py-1.5 rounded border border-[#0B5858] text-xs text-[#0B5858] hover:bg-[#e8f4f4]"
-                            >
-                              Receive
-                            </Link>
-                          )}
-                          {canCancel && (
-                            <button
-                              type="button"
-                              onClick={() => handleCancelPO(order)}
-                              disabled={cancellingId === order.id}
-                              className="px-2.5 py-1.5 rounded border border-red-200 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                            >
-                              {cancellingId === order.id ? 'Cancelling…' : 'Cancel PO'}
-                            </button>
-                          )}
-                        </div>
+                          }`}>
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-1.5">
+                            {canReceive && (
+                              <Link
+                                href={`/sales-report/inventory/purchase-orders?poId=${order.id}`}
+                                className="px-2.5 py-1.5 rounded-lg border border-[#0B5858] text-[11px] font-semibold text-[#0B5858] hover:bg-[#e8f4f4] whitespace-nowrap"
+                              >
+                                Receive
+                              </Link>
+                            )}
+                            {canCancel && (
+                              <button
+                                type="button"
+                                onClick={() => handleCancelPO(order)}
+                                disabled={cancellingId === order.id}
+                                className="px-2.5 py-1.5 rounded-lg border border-red-200 text-[11px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {cancellingId === order.id ? 'Cancelling…' : 'Cancel'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredOrders.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">
+                        {loading ? 'Loading…' : 'No purchase orders match the selected filters.'}
                       </td>
                     </tr>
-                  );
-                })}
-                {filteredOrders.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-4 py-6 text-center text-sm text-gray-500"
-                    >
-                      {loading
-                        ? 'Loading…'
-                        : 'No purchase orders match the selected filters.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 flex-shrink-0">
+              {loading ? 'Loading…' : `Showing ${filteredOrders.length} of ${orders.length} purchase orders`}
+            </div>
           </div>
         </AdminSection>
       </div>

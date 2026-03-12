@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
+import { RouteGuard } from '@/components/RouteGuard';
 
 type AdminLink = {
   href: string;
@@ -28,6 +29,7 @@ export default function AdminLayout({
   const pathname = usePathname();
 
   return (
+    <RouteGuard allowedRoles={['admin']}>
     <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 ${LAYOUT_NAVBAR_OFFSET}`} style={{ fontFamily: 'Poppins' }}>
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
         <div className="mb-8">
@@ -62,5 +64,6 @@ export default function AdminLayout({
         {children}
       </div>
     </div>
+    </RouteGuard>
   );
 }
