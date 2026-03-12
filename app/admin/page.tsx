@@ -157,7 +157,6 @@ const AdminPage: React.FC = React.memo(() => {
           <AdminCharts userGrowth={userGrowth} bookingGrowth={bookingGrowth} />
         )}
 
-<<<<<<< HEAD
         {/* Agent Analytics Section */}
         {agentAnalytics && (
           <div className="mt-8 bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -233,9 +232,9 @@ const AdminPage: React.FC = React.memo(() => {
             </div>
           </div>
         )}
-=======
+
         {/* Cleaning mini-card */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 mt-6">
           <Link
             href="/admin/cleaning"
             className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
@@ -278,7 +277,6 @@ const AdminPage: React.FC = React.memo(() => {
             </svg>
           </Link>
         </div>
->>>>>>> 1e5ba1c (feat(admin): add cleaning to admin dashboard and navbar)
 
         {/* Calendar View Section */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
