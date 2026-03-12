@@ -208,7 +208,7 @@ const deriveDashboardSummary = (): InventoryDashboardSummary => {
 const emitInventoryDatasetUpdated = () => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(
-    new CustomEvent('inventory:movement-updated', {
+    new CustomEvent('inventory:dataset-updated', {
       detail: { source: 'recompute' },
     })
   );
@@ -237,6 +237,7 @@ export const mockUnitStockMovements: UnitStockMovementRow[] = [];
 
 let isDatasetLoaded = false;
 let datasetLoadPromise: Promise<void> | null = null;
+let lastDatasetFailure = { message: '', at: 0 };
 
 export const isInventoryDatasetLoaded = () => isDatasetLoaded;
 
@@ -304,7 +305,13 @@ const fetchInventoryDataset = async (): Promise<InventoryDatasetResponse & { _fe
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Request failed';
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('inventory:dataset-load-failed', { detail: { message } }));
+      const now = Date.now();
+      const isSameMessage = lastDatasetFailure.message === message;
+      const withinCooldown = now - lastDatasetFailure.at < 4000;
+      if (!(isSameMessage && withinCooldown)) {
+        lastDatasetFailure = { message, at: now };
+        window.dispatchEvent(new CustomEvent('inventory:dataset-load-failed', { detail: { message } }));
+      }
     }
     return { _fetchFailed: true, _message: message };
   }
@@ -314,8 +321,14 @@ const fetchExternalUnits = async (): Promise<ExternalUnitListing[] | null> => {
   try {
     return await apiClient.get<ExternalUnitListing[]>('/api/units?limit=200&offset=0');
   } catch (error) {
+    const isAbortLike =
+      error instanceof Error &&
+      (error.name === 'AbortError' ||
+        /aborted|abort|timed out|signal is aborted/i.test(error.message));
     if (process.env.NODE_ENV !== 'production') {
-      console.warn('External units request failed; inventory units list will stay empty.', error);
+      if (!isAbortLike) {
+        console.warn('External units request failed; inventory units list will stay empty.', error);
+      }
     }
     return null;
   }
@@ -358,7 +371,9 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
     emitInventoryDatasetUpdated();
     return;
   }
-  if (datasetLoadPromise && !force) return datasetLoadPromise;
+  // Prevent request storms when multiple listeners trigger refresh at once.
+  // Reuse any in-flight load (including force refresh callers).
+  if (datasetLoadPromise) return datasetLoadPromise;
 
   datasetLoadPromise = (async () => {
     const dataset = await fetchInventoryDataset();
