@@ -70,6 +70,17 @@ function isLikelyNetworkFetchError(error: unknown): boolean {
   return error.name === 'TypeError' || message.includes('failed to fetch') || message.includes('network');
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    error.name === 'AbortError' ||
+    message.includes('aborted') ||
+    message.includes('abort') ||
+    message.includes('signal is aborted')
+  );
+}
+
 function isHtmlErrorPage(text: string): boolean {
   const trimmed = text.trimStart();
   return (
@@ -144,14 +155,29 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   let res: Response;
   const controller = new AbortController();
-  const timeout = typeof timeoutMs === 'number' ? timeoutMs : 15000;
-  const timer = setTimeout(() => controller.abort(), Math.max(0, timeout));
+  const timeout = typeof timeoutMs === 'number' ? timeoutMs : 30000;
+  let didTimeout = false;
+  const timer = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, Math.max(0, timeout));
   const requestInitWithSignal: RequestInit = { ...requestInit, signal: controller.signal };
 
 
   try {
     res = await fetch(requestUrl, requestInitWithSignal);
   } catch (error) {
+    if (isAbortLikeError(error)) {
+      const err = new Error(
+        didTimeout
+          ? `Request timed out after ${timeout}ms.`
+          : 'Request was cancelled before completion.'
+      ) as Error & { status?: number };
+      err.name = 'AbortError';
+      err.status = 408;
+      throw err;
+    }
+
     if (canRetrySameOrigin && isLikelyNetworkFetchError(error)) {
       res = await fetch(endpoint, requestInitWithSignal);
     } else {

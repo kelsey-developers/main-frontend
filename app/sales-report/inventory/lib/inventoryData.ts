@@ -208,7 +208,7 @@ const deriveDashboardSummary = (): InventoryDashboardSummary => {
 const emitInventoryDatasetUpdated = () => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(
-    new CustomEvent('inventory:movement-updated', {
+    new CustomEvent('inventory:dataset-updated', {
       detail: { source: 'recompute' },
     })
   );
@@ -314,8 +314,14 @@ const fetchExternalUnits = async (): Promise<ExternalUnitListing[] | null> => {
   try {
     return await apiClient.get<ExternalUnitListing[]>('/api/units?limit=200&offset=0');
   } catch (error) {
+    const isAbortLike =
+      error instanceof Error &&
+      (error.name === 'AbortError' ||
+        /aborted|abort|timed out|signal is aborted/i.test(error.message));
     if (process.env.NODE_ENV !== 'production') {
-      console.warn('External units request failed; inventory units list will stay empty.', error);
+      if (!isAbortLike) {
+        console.warn('External units request failed; inventory units list will stay empty.', error);
+      }
     }
     return null;
   }
@@ -358,7 +364,9 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
     emitInventoryDatasetUpdated();
     return;
   }
-  if (datasetLoadPromise && !force) return datasetLoadPromise;
+  // Prevent request storms when multiple listeners trigger refresh at once.
+  // Reuse any in-flight load (including force refresh callers).
+  if (datasetLoadPromise) return datasetLoadPromise;
 
   datasetLoadPromise = (async () => {
     const dataset = await fetchInventoryDataset();
