@@ -181,10 +181,10 @@ export default function Homepage() {
             </div>
           </div>
         </RevealOnScroll>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 h-96px">
           {[
-            { title: 'Penthouse', image: '/heroimage.png', href: '/listings?type=Penthouse' },
-            { title: 'Condo', image: '/heroimage.png', href: '/listings?type=condo' },
+            { title: 'Penthouse', image: '/penthouse.jpg', href: '/listings?type=Penthouse' },
+            { title: 'Condo', image: '/condo.jpeg', href: '/listings?type=condo' },
             { title: 'Apartment', image: '/heroimage.png', href: '/listings?type=Apartment' },
           ].map((cat, index) => (
             <RevealOnScroll key={cat.title} delay={index * 120}>

@@ -1,10 +1,37 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import type { CleaningTask } from '../types';
-import { mockCleaningTasksToday } from '../lib/mockData';
+import { apiClient } from '@/lib/api/client';
+import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import { LostBrokenItemsTable, type ItemRow } from '../components/LostBrokenItemsTable';
+import {
+  inventoryItems,
+  loadInventoryDataset,
+} from '@/app/sales-report/inventory/lib/inventoryDataStore';
+
+/** Unit from GET /api/units (backend may use title or name) */
+type UnitOption = {
+  id: string;
+  title?: string;
+  name?: string;
+  location?: string;
+  city?: string;
+  property_type?: string;
+};
+
+/** Payload sent to POST /api/housekeeping/reports */
+type ReportPayload = {
+  unitId: string;
+  unit: string;
+  bookingId?: string;
+  location?: string;
+  reportedAt: string;
+  description?: string;
+  reasonOfDamage?: string;
+  reportedBy?: string;
+  items: Array<{ item: string; type: 'loss' | 'broken' }>;
+};
 
 function HousekeepingReportSkeleton() {
   return (
@@ -38,11 +65,10 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function taskOptionLabel(task: CleaningTask): string {
-  if (task.bookingId) {
-    return `${task.unit} — ${task.bookingId}`;
-  }
-  return task.unit;
+function unitDisplayLabel(unit: UnitOption): string {
+  const name = unit.title ?? unit.name ?? unit.id;
+  const loc = unit.location ?? unit.city;
+  return loc ? `${name} · ${loc}` : name;
 }
 
 type ProofFile = { file: File; preview?: string };
@@ -53,25 +79,83 @@ const emptyRow: ItemRow = { item: '', type: null };
 
 export default function HousekeepingReportPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [tasksToday, setTasksToday] = useState<CleaningTask[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [units, setUnits] = useState<UnitOption[]>([]);
+  const [unitsLoading, setUnitsLoading] = useState(true);
+  const [unitsError, setUnitsError] = useState<string | null>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(true);
+  const [inventoryRefreshTick, setInventoryRefreshTick] = useState(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setTasksToday(mockCleaningTasksToday.filter((t) => t.date === todayStr));
-      setIsLoading(false);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [todayStr]);
+    let cancelled = false;
+    async function fetchUnits() {
+      setUnitsError(null);
+      setUnitsLoading(true);
+      try {
+        const data = await apiClient.get<UnitOption[] | { units?: UnitOption[]; data?: UnitOption[]; results?: UnitOption[] }>(
+          '/api/units?limit=200&offset=0'
+        );
+        const list = Array.isArray(data) ? data : (data.units ?? data.data ?? data.results ?? []);
+        if (!cancelled) setUnits(Array.isArray(list) ? list : []);
+      } catch (err) {
+        if (!cancelled) {
+          setUnitsError(err instanceof Error ? err.message : 'Failed to load units');
+          setUnits([]);
+        }
+      } finally {
+        if (!cancelled) setUnitsLoading(false);
+      }
+    }
+    void fetchUnits();
+    return () => { cancelled = true; };
+  }, []);
 
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchInventory() {
+      setInventoryLoading(true);
+      try {
+        await loadInventoryDataset(true);
+        if (!cancelled) {
+          setInventoryRefreshTick((t) => t + 1);
+        }
+      } finally {
+        if (!cancelled) {
+          setInventoryLoading(false);
+        }
+      }
+    }
+    void fetchInventory();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [itemRows, setItemRows] = useState<ItemRow[]>([{ ...emptyRow }]);
   const [description, setDescription] = useState('');
   const [reason, setReason] = useState('');
   const [proofFiles, setProofFiles] = useState<ProofFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const selectedTask = tasksToday.find((t) => t.id === selectedTaskId);
+  const selectedUnit = units.find((u) => u.id === selectedUnitId);
+
+  const unitOptions = [
+    { value: '', label: unitsLoading ? 'Loading units…' : 'Select a unit' },
+    ...units.map((u) => ({ value: u.id, label: unitDisplayLabel(u) })),
+  ];
+
+  const itemOptions = useMemo(
+    () => [
+      { value: '', label: inventoryLoading ? 'Loading items…' : 'Select an item' },
+      ...inventoryItems.map((item) => ({
+        value: item.name,
+        label: item.name,
+      })),
+    ],
+    [inventoryLoading, inventoryRefreshTick]
+  );
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files?.length) return;
@@ -103,16 +187,43 @@ export default function HousekeepingReportPage() {
     (r) => r.item !== '' && (r.type === 'loss' || r.type === 'broken')
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTaskId || !hasValidItemEntry) return;
-    setSubmitted(true);
-    setSelectedTaskId('');
-    setItemRows([{ ...emptyRow }]);
-    setDescription('');
-    setReason('');
-    proofFiles.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
-    setProofFiles([]);
+    if (!selectedUnitId || !hasValidItemEntry || !selectedUnit) return;
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    const unitName = selectedUnit.title ?? selectedUnit.name ?? selectedUnit.id;
+    const payload: ReportPayload = {
+      unitId: selectedUnitId,
+      unit: unitName,
+      location: selectedUnit.location ?? selectedUnit.city,
+      reportedAt: todayStr,
+      description: description || undefined,
+      reasonOfDamage: reason || undefined,
+      items: itemRows
+        .filter((r) => r.item !== '' && (r.type === 'loss' || r.type === 'broken'))
+        .map((r) => ({ item: r.item, type: r.type! })),
+    };
+
+    try {
+      await apiClient.post<{ ok?: boolean; id?: string; message?: string }>(
+        '/api/housekeeping/reports',
+        payload
+      );
+      setSubmitted(true);
+      setSelectedUnitId('');
+      setItemRows([{ ...emptyRow }]);
+      setDescription('');
+      setReason('');
+      proofFiles.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
+      setProofFiles([]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to submit report';
+      setSubmitError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDrop = useCallback(
@@ -124,7 +235,7 @@ export default function HousekeepingReportPage() {
   );
   const handleDragOver = useCallback((e: React.DragEvent) => e.preventDefault(), []);
 
-  if (isLoading) {
+  if (unitsLoading && units.length === 0) {
     return <HousekeepingReportSkeleton />;
   }
 
@@ -155,6 +266,13 @@ export default function HousekeepingReportPage() {
         </div>
       )}
 
+      {submitError && (
+        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800">
+          <p className="font-medium">Could not submit report</p>
+          <p className="text-sm mt-1">{submitError}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <form id="housekeeping-report-form" onSubmit={handleSubmit} className="space-y-5">
@@ -162,27 +280,32 @@ export default function HousekeepingReportPage() {
               <label htmlFor="report-unit" className="block text-sm font-medium text-gray-700 mb-2">
                 Unit <span className="text-red-500">*</span>
               </label>
-              <select
-                id="report-unit"
-                required
-                value={selectedTaskId}
-                onChange={(e) => setSelectedTaskId(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
-              >
-                <option value="">Select a unit you were assigned to clean today</option>
-                {tasksToday.map((task) => (
-                  <option key={task.id} value={task.id}>
-                    {taskOptionLabel(task)}
-                  </option>
-                ))}
-              </select>
-              {tasksToday.length === 0 && (
-                <p className="mt-2 text-sm text-gray-500">No units assigned for today.</p>
+              <InventoryDropdown
+                value={selectedUnitId}
+                onChange={setSelectedUnitId}
+                options={unitOptions}
+                placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
+                placeholderWhen=""
+                hideIcon
+                fullWidth
+                minWidthClass="min-w-0"
+                align="left"
+                disabled={unitsLoading}
+              />
+              {unitsError && (
+                <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
               )}
-              {selectedTask && (
+              {units.length === 0 && !unitsLoading && !unitsError && (
+                <p className="mt-2 text-sm text-gray-500">No units available.</p>
+              )}
+              {selectedUnit && (
                 <p className="mt-2 text-xs text-gray-500">
-                  {selectedTask.location && `${selectedTask.location} · `}
-                  {selectedTask.bookingId && `Booking ${selectedTask.bookingId}`}
+                  {(selectedUnit.location ?? selectedUnit.city) && (
+                    <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
+                  )}
+                  {selectedUnit.property_type && (
+                    <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
+                  )}
                 </p>
               )}
             </div>
@@ -194,7 +317,7 @@ export default function HousekeepingReportPage() {
               <p className="text-xs text-gray-500 mb-2">
                 Select an item and choose either Loss or Broken per row. Add more rows as needed.
               </p>
-              <LostBrokenItemsTable rows={itemRows} onRowsChange={setItemRows} />
+              <LostBrokenItemsTable rows={itemRows} onRowsChange={setItemRows} itemOptions={itemOptions} />
             </div>
 
             <div>
@@ -299,10 +422,10 @@ export default function HousekeepingReportPage() {
         <button
           type="submit"
           form="housekeeping-report-form"
-          disabled={!selectedTaskId || !hasValidItemEntry}
+          disabled={!selectedUnitId || !hasValidItemEntry || isSubmitting}
           className="w-full sm:w-auto px-6 py-2.5 rounded-lg font-medium text-white bg-[#0B5858] hover:bg-[#0a4a4a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          Submit report
+          {isSubmitting ? 'Submitting…' : 'Submit report'}
         </button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import {
@@ -12,47 +12,76 @@ import {
 /** One line: product (from inventory) */
 type OutOfStockLine = { id: string; productId: string };
 
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 function createEmptyLine(): OutOfStockLine {
-  return { id: crypto.randomUUID(), productId: '' };
+  return { id: generateId(), productId: '' };
 }
 
 export default function HousekeepingOutOfStockPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [refreshTick, setRefreshTick] = useState(0);
-
-  const itemSelectOptions = useMemo(
-    () => [
-      { value: '', label: 'Select item…' },
-      ...inventoryItems.map((p) => ({
-        value: p.id,
-        label: `${p.sku} — ${p.name} (${p.currentStock} ${p.unit} available)`,
-      })),
-    ],
-    [refreshTick]
-  );
-
-  const warehouseOptions = useMemo(
-    () => [
-      { value: '', label: 'Select warehouse…' },
-      ...inventoryWarehouseDirectory
-        .filter((wh) => wh.isActive)
-        .map((w) => ({ value: w.id, label: w.name })),
-    ],
-    [refreshTick]
-  );
-
-  useEffect(() => {
-    void loadInventoryDataset();
-    const onUpdate = () => setRefreshTick((t) => t + 1);
-    window.addEventListener('inventory:movement-updated', onUpdate);
-    return () => window.removeEventListener('inventory:movement-updated', onUpdate);
-  }, []);
-
   const [warehouseId, setWarehouseId] = useState('');
   const [date, setDate] = useState(todayStr);
   const [lines, setLines] = useState<OutOfStockLine[]>(() => [createEmptyLine()]);
   const [notes, setNotes] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [, setRefreshKey] = useState(0);
+
+  const fetchInventory = useCallback(async (force = false) => {
+    setLoadError(null);
+    setLoading(true);
+    try {
+      await loadInventoryDataset(force);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load inventory');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // On first entry into the page, always force a fresh fetch from the inventory API
+    // so we show the most up-to-date items and warehouses.
+    void fetchInventory(true);
+  }, [fetchInventory]);
+
+  useEffect(() => {
+    const onFail = (e: Event) => {
+      const detail = (e as CustomEvent<{ message?: string }>)?.detail;
+      setLoadError(detail?.message ?? 'Failed to load inventory');
+      setLoading(false);
+    };
+    window.addEventListener('inventory:dataset-load-failed', onFail);
+    return () => window.removeEventListener('inventory:dataset-load-failed', onFail);
+  }, []);
+
+  useEffect(() => {
+    const onInventoryUpdated = () => setRefreshKey((k) => k + 1);
+    window.addEventListener('inventory:movement-updated', onInventoryUpdated);
+    return () => window.removeEventListener('inventory:movement-updated', onInventoryUpdated);
+  }, []);
+
+
+  const itemSelectOptions = [
+    { value: '', label: 'Select item…' },
+    ...inventoryItems.map((p) => ({
+      value: p.id,
+      label: `${p.sku} — ${p.name}`,
+    })),
+  ];
+
+  const warehouseOptions = [
+    { value: '', label: 'Select warehouse…' },
+    ...inventoryWarehouseDirectory
+      .filter((wh) => wh.isActive)
+      .map((w) => ({ value: w.id, label: w.name })),
+  ];
+
+
 
   const updateLine = (id: string, field: keyof OutOfStockLine, value: string) => {
     setLines((prev) =>
@@ -77,6 +106,37 @@ export default function HousekeepingOutOfStockPage() {
     setLines([createEmptyLine()]);
     setNotes('');
   };
+
+  if (loading) {
+    return (
+      <div style={{ fontFamily: 'Poppins' }} className="animate-pulse">
+        <div className="mb-4">
+          <div className="h-5 w-36 bg-gray-200 rounded mb-3" />
+          <div className="h-8 w-64 bg-gray-200 rounded mb-2" />
+          <div className="h-4 w-full max-w-xl bg-gray-100 rounded" />
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 max-w-4xl space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="h-10 w-full bg-gray-100 rounded-lg" />
+            <div className="h-10 w-full bg-gray-100 rounded-lg" />
+          </div>
+          <div className="border-t border-gray-200 pt-5 space-y-3">
+            <div className="h-4 w-40 bg-gray-100 rounded" />
+            <div className="space-y-2">
+              <div className="h-12 w-full bg-gray-50 rounded-lg border border-gray-100" />
+              <div className="h-12 w-full bg-gray-50 rounded-lg border border-gray-100" />
+            </div>
+            <div className="h-5 w-32 bg-gray-100 rounded" />
+          </div>
+          <div className="h-20 w-full bg-gray-50 rounded-lg border border-gray-100" />
+          <div className="flex gap-3">
+            <div className="h-10 w-32 bg-gray-200 rounded-lg" />
+            <div className="h-10 w-28 bg-gray-100 rounded-lg" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: 'Poppins' }}>
