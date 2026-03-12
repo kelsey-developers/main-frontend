@@ -17,6 +17,16 @@ export default async function RootPage() {
     : null;
 
   if (user) {
+    const roles = (user.roles ?? []).map((r) => r.toLowerCase());
+    if (roles.includes('inventory') && !roles.some((r) => ['admin', 'agent', 'finance', 'housekeeping', 'operations'].includes(r))) {
+      redirect('/sales-report/inventory');
+    }
+    if (roles.includes('finance') && !roles.some((r) => ['admin', 'agent', 'inventory', 'housekeeping', 'operations'].includes(r))) {
+      redirect('/sales-report/finance');
+    }
+    if ((roles.includes('housekeeping') || roles.includes('operations')) && !roles.some((r) => ['admin', 'agent', 'inventory', 'finance'].includes(r))) {
+      redirect('/sales-report/housekeeping');
+    }
     redirect('/home');
   }
 

@@ -19,15 +19,14 @@ type InventoryDataset = {
   stockMovements: unknown[];
   damageAdjustments: unknown[];
   replenishmentItems: unknown[];
-  units?: unknown[];
-  unitItems?: unknown[];
-  unitStockMovements?: unknown[];
+  units: unknown[];
+  unitItems: unknown[];
+  unitStockMovements: unknown[];
   dashboardSummary: {
     totalItems: number;
     totalStocks: number;
     lowStockCount: number;
     replenishmentNeeded: number;
-    // Allow extra properties from backend without failing the type
     [key: string]: unknown;
   };
 };
@@ -82,7 +81,6 @@ export async function GET() {
   const headers = { 'Content-Type': 'application/json' };
 
   if (!BACKEND_URL) {
-    // No backend configured – return an empty dataset and let the UI handle "no data" states.
     return NextResponse.json(emptyDataset, { headers });
   }
 
@@ -131,7 +129,6 @@ export async function GET() {
       const message = error instanceof Error ? error.message : String(error);
       console.warn('Inventory dataset backend unreachable:', message);
     }
-    // On error, return an empty dataset instead of injecting mock items.
     return NextResponse.json(emptyDataset, { headers });
   }
 }

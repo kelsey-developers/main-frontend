@@ -8,6 +8,10 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/charge-types',
   '/api/bookings',
   '/api/damage-incidents',
+  '/api/units',
+  '/api/user-roles',
+  '/api/inventory-settings',
+  '/api/approval-requests',
   '/api/market', // market-backend routes (finance dashboard, bookings, etc.)
 ];
 

@@ -17,7 +17,6 @@ import {
   isWarehouseActive,
 } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
-import { apiClient } from '@/lib/api/client';
 import { listDamageIncidents, createDamageIncident } from '@/lib/api/damageIncidents';
 
 // ─── Brand colors ────────────────────────────────────────────────
@@ -72,6 +71,11 @@ const REASONS_UN = [
   'Other',
 ];
 
+const BOOKINGS = [
+  { id: 'b1', code: 'BK-2025-001', guest: 'Juan dela Cruz', checkIn: 'Mar 08', checkOut: 'Mar 12', unit: 'Unit 101' },
+  { id: 'b2', code: 'BK-2025-002', guest: 'Maria Santos', checkIn: 'Mar 09', checkOut: 'Mar 11', unit: 'Unit 201' },
+  { id: 'b3', code: 'BK-2025-003', guest: 'Robert Kim', checkIn: 'Mar 10', checkOut: 'Mar 14', unit: 'Unit 301' },
+];
 const CREATE_DAMAGE_INCIDENT_OPTION = '__create__';
 
 // ─── Shared input style ───────────────────────────────────────────
@@ -666,10 +670,6 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const [idNumber, setIdNumber] = useState(prefill?.idNumber || authState.user?.id || '');
   const [unit, setUnit] = useState(prefill?.unitId || '');
   const [booking, setBooking] = useState('');
-  const [bookingOptions, setBookingOptions] = useState<
-    Array<{ id: string; code: string; guestName: string; checkIn: string; checkOut: string }>
-  >([]);
-  const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [reason, setReason] = useState('');
   const [srcWarehouse, setSrcWarehouse] = useState(itemFromPrefill?.warehouseId || '');
   const [date, setDate] = useState(getTodayInPhilippineTime());
@@ -684,6 +684,8 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
+  const bk = BOOKINGS.find((b) => b.id === booking);
+
   // Auto-fill warehouse from item when prefill.itemId is set and data loads
   useEffect(() => {
     if (prefill?.itemId) {
@@ -693,55 +695,6 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
       }
     }
   }, [prefill?.itemId, inventoryItems]);
-
-  // Load bookings for selected unit (listingId) when unit changes.
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (!unit) {
-        setBooking('');
-        setBookingOptions([]);
-        return;
-      }
-      setIsBookingLoading(true);
-      try {
-        const rows = await apiClient.get<
-          Array<{
-            id: string;
-            reference_code?: string;
-            check_in_date?: string;
-            check_out_date?: string;
-            client?: { first_name?: string; last_name?: string };
-          }>
-        >(`/api/bookings?listingId=${encodeURIComponent(unit)}`);
-        if (cancelled) return;
-        const mapped = rows.map((b) => ({
-          id: b.id,
-          code: b.reference_code || b.id,
-          guestName: [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ').trim() || 'Guest',
-          checkIn: b.check_in_date || '',
-          checkOut: b.check_out_date || '',
-        }));
-        setBookingOptions(mapped);
-        // Reset selection if current booking no longer exists
-        if (booking && !mapped.some((b) => b.id === booking)) {
-          setBooking('');
-        }
-      } catch {
-        if (!cancelled) {
-          setBookingOptions([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsBookingLoading(false);
-        }
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [unit, booking]);
 
   useEffect(() => {
     setDamageIncidentId('');
@@ -783,8 +736,6 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const damageIncidentOptions = unitDamageIncidents.length > 0 ? unitDamageIncidents : damageIncidents;
 
   const warehouses = inventoryWarehouseDirectory.filter((wh) => isWarehouseActive(wh));
-
-  const selectedBooking = bookingOptions.find((b) => b.id === booking);
 
   return (
     <>
@@ -849,13 +800,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             value={booking}
             onChange={(value) => setBooking(value)}
             options={[
-              { value: '', label: isBookingLoading ? 'Loading bookings…' : 'Select booking…' },
-              ...bookingOptions.map((b) => ({
-                value: b.id,
-                label: `${b.code} · ${b.guestName}`,
-              })),
+              { value: '', label: 'Select booking…' },
+              ...BOOKINGS.map((b) => ({ value: b.id, label: `${b.code} · ${b.guest}` })),
             ]}
-            placeholder={isBookingLoading ? 'Loading bookings…' : 'Select booking…'}
+            placeholder="Select booking…"
             placeholderWhen=""
             hideIcon={true}
             fullWidth={true}
@@ -910,7 +858,7 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
         </div>
       )}
 
-      {selectedBooking && (
+      {bk && (
         <div
           style={{
             marginBottom: 16,
@@ -924,9 +872,9 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
           }}
         >
           {[
-            { l: 'Guest', v: selectedBooking.guestName },
-            { l: 'Stay', v: `${selectedBooking.checkIn} → ${selectedBooking.checkOut}` },
-            { l: 'Booking Ref', v: selectedBooking.code },
+            { l: 'Guest', v: bk.guest },
+            { l: 'Stay', v: `${bk.checkIn} → ${bk.checkOut}` },
+            { l: 'Unit', v: bk.unit },
           ].map((m) => (
             <div key={m.l}>
               <div
@@ -1007,7 +955,7 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
           <input 
             value={reference}
             onChange={(e) => setReference(e.target.value)}
-            placeholder="e.g. booking reference" 
+            placeholder="e.g. BK-2025-001" 
             style={inputStyle} 
           />
         </Field>
@@ -1095,10 +1043,12 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('inventory:dataset-updated', refresh);
     window.addEventListener('focus', refresh);
 
     return () => {
       window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('inventory:dataset-updated', refresh);
       window.removeEventListener('focus', refresh);
     };
   }, []);

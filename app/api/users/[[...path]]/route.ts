@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-// Roles handled by the Auth Service (auth-service-backend)
-const AUTH_SERVICE_ROLES = new Set(['Guest', 'Agent', 'Admin', 'Finance', 'Inventory', 'Housekeeping']);
+// Roles the Auth Service (kelsey.idateph.com) supports
+const AUTH_SERVICE_ROLES = new Set(['Guest', 'Agent', 'Admin']);
 
-// Roles stored in market-backend only (Auth Service doesn't have these)
-const INTERNAL_ROLES = new Set(['Operations', 'Frontdesk']);
+// Roles stored in market-backend only — Auth Service returns "Unknown role" for these
+const INTERNAL_ROLES = new Set(['Finance', 'Inventory', 'Housekeeping', 'Operations', 'Frontdesk']);
 
 async function getToken(): Promise<string | null> {
   const cookieStore = await cookies();
