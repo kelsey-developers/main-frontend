@@ -7,6 +7,8 @@ import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import { getAgentAnalytics } from '@/services/agentDashboardService';
 import type { AgentAnalytics } from '@/services/agentDashboardService';
 import { getCleaningJobs } from '@/services/cleaningService';
+import { getLendingSummary } from '@/services/lendingService';
+import type { LendingSummary } from '@/types/lending';
 
 const TODAY = new Date().toISOString().split('T')[0];
 const AdminPage: React.FC = React.memo(() => {
@@ -14,6 +16,7 @@ const AdminPage: React.FC = React.memo(() => {
   const [loading, setLoading] = useState(true);
   const [cleaningTodayCount, setCleaningTodayCount] = useState(0);
   const [cleaningPendingVerify, setCleaningPendingVerify] = useState(0);
+  const [lendingSummary, setLendingSummary] = useState<LendingSummary | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +48,10 @@ const AdminPage: React.FC = React.memo(() => {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    getLendingSummary().then(setLendingSummary);
   }, []);
 
   if (loading) {
@@ -178,7 +185,7 @@ const AdminPage: React.FC = React.memo(() => {
           </div>
         )}
 
-        {/* Cleaning mini-card */}
+        {/* Cleaning mini-cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 mt-6">
           <Link
             href="/admin/cleaning"
@@ -222,6 +229,36 @@ const AdminPage: React.FC = React.memo(() => {
             </svg>
           </Link>
         </div>
+
+        {/* Money Lending mini-card */}
+        {lendingSummary && (
+          <div className="mb-6">
+            <Link
+              href="/admin/lending"
+              className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-[#0B5858]/10 flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-[#0B5858]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Money Lending</p>
+                  <p className="text-2xl font-bold text-gray-900">{lendingSummary.totalLoansActive}</p>
+                  <p className="text-xs text-gray-400">
+                    active loans · {lendingSummary.totalLoansOverdue > 0 ? (
+                      <span className="text-red-500">{lendingSummary.totalLoansOverdue} overdue</span>
+                    ) : 'none overdue'}
+                  </p>
+                </div>
+              </div>
+              <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+        )}
 
         {/* Calendar View Section */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200/80">
