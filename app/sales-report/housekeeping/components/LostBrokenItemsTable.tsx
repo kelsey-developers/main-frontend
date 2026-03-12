@@ -3,7 +3,7 @@
 import React from 'react';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 
-/** One row: item name + either loss or broken (mutually exclusive) */
+/** One row: item id/name + either loss or broken (mutually exclusive) */
 export type ItemRow = { item: string; type: 'loss' | 'broken' | null };
 
 const emptyRow: ItemRow = { item: '', type: null };
@@ -11,10 +11,12 @@ const emptyRow: ItemRow = { item: '', type: null };
 // Fallback list for report items when no itemOptions are provided
 const REPORT_ITEMS: string[] = [];
 
+export type ItemOption = { value: string; label: string };
+
 interface LostBrokenItemsTableProps {
   rows: ItemRow[];
   onRowsChange: (rows: ItemRow[]) => void;
-  itemOptions: { value: string; label: string }[];
+  itemOptions: ItemOption[];
   disabled?: boolean;
 }
 
@@ -43,17 +45,12 @@ export function LostBrokenItemsTable({
     updateRow(index, 'type', type);
   };
 
-  const options =
-    itemOptions && itemOptions.length > 0
-      ? itemOptions
-      : [{ value: '', label: 'Select item' }, ...REPORT_ITEMS.map((name) => ({ value: name, label: name }))];
+  const options = itemOptions && itemOptions.length > 0
+    ? itemOptions
+    : [{ value: '', label: 'Select item' }, ...REPORT_ITEMS.map((name) => ({ value: name, label: name }))];
 
   return (
-    <div
-      className={`border border-gray-200 rounded-lg overflow-hidden flex flex-col shadow-sm border border-gray-100 ${
-        disabled ? 'opacity-60 pointer-events-none' : ''
-      }`}
-    >
+    <div className={`border border-gray-200 rounded-lg overflow-hidden flex flex-col shadow-sm border-gray-100 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
       <div className="max-h-40 overflow-y-auto overflow-x-auto flex-1 min-h-40">
         <table className="min-w-full divide-y divide-gray-200 min-w-[420px]">
           <thead className="bg-gradient-to-r from-[#0b5858] to-[#05807e] rounded-t-xl sticky top-0 z-10">

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { mockBookingLinkedRows } from '../../lib/mockData';
+import type { BookingLinkedRow } from '../../types';
 import { formatPHP, formatDateLong, formatTime, getNights, getBasePrice, getBookingTotal } from '../../lib/format';
 
 function BookingDetailSkeleton() {
@@ -57,7 +57,7 @@ export default function BookingDetailPage() {
   const params = useParams();
   const id = params?.id as string | undefined;
   const [isLoading, setIsLoading] = useState(true);
-  const [booking, setBooking] = useState<typeof mockBookingLinkedRows[0] | null>(null);
+  const [booking, setBooking] = useState<BookingLinkedRow | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -67,8 +67,7 @@ export default function BookingDetailPage() {
     let mounted = true;
     const timer = setTimeout(() => {
       if (mounted) {
-        const found = mockBookingLinkedRows.find((r) => r.id === id) ?? null;
-        setBooking(found);
+        setBooking(null);
       }
       if (mounted) setIsLoading(false);
     }, 350);

@@ -6,6 +6,9 @@ import { defaultSalesReportFilters } from '../types';
 interface HorizontalFilterProps {
   filters: SalesReportFilters;
   onFiltersChange: (filters: SalesReportFilters) => void;
+  filterEnabled: boolean;
+  onFilterEnabledChange: (enabled: boolean) => void;
+  onApplyFilters: () => void;
 }
 
 const PROPERTY_TYPES = ['All', 'Condo', 'Apartment', 'Penthouse', 'House'];
@@ -25,6 +28,9 @@ const inputClass =
 const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
   filters,
   onFiltersChange,
+  filterEnabled,
+  onFilterEnabledChange,
+  onApplyFilters,
 }) => {
   const update = (key: keyof SalesReportFilters, value: string) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -40,12 +46,35 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
   return (
     <div className="w-full space-y-3">
       <section className="w-full p-3 min-[921px]:p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
-      <h2
-        className="text-sm min-[921px]:text-base font-bold text-gray-900 mb-2 min-[921px]:mb-3"
-        style={{ fontFamily: 'Poppins' }}
-      >
-        Filters
-      </h2>
+      <div className="flex items-center justify-between mb-2 min-[921px]:mb-3 gap-2">
+        <h2
+          className="text-sm min-[921px]:text-base font-bold text-gray-900"
+          style={{ fontFamily: 'Poppins' }}
+        >
+          Filters
+        </h2>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-xs font-medium text-gray-600 select-none"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            {filterEnabled ? 'On' : 'Off'}
+          </span>
+          <button
+            type="button"
+            onClick={() => onFilterEnabledChange(!filterEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              filterEnabled ? 'bg-[#0B5858]' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                filterEnabled ? 'translate-x-5' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
       <div className="flex flex-col min-[921px]:flex-row min-[921px]:flex-wrap items-stretch min-[921px]:items-end gap-3 min-[921px]:gap-4">
         {/* Unit Type */}
         <div className="flex flex-col gap-1 w-full min-w-0 min-[921px]:w-auto min-[921px]:min-w-[25vh]">
@@ -58,16 +87,22 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
           </label>
           <select
             id="horizontal-filter-unit-type"
-            value={filters.propertyType}
+            value={filterEnabled ? filters.propertyType : ''}
             onChange={(e) => update('propertyType', e.target.value)}
-            className={inputClass + ' w-full'}
+            disabled={!filterEnabled}
+            className={
+              inputClass +
+              ' w-full disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed'
+            }
             style={{ fontFamily: 'Poppins' }}
           >
-            {PROPERTY_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
+            {!filterEnabled && <option value="">Filters off</option>}
+            {filterEnabled &&
+              PROPERTY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
           </select>
         </div>
 
@@ -82,16 +117,22 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
           </label>
           <select
             id="horizontal-filter-location"
-            value={filters.location}
+            value={filterEnabled ? filters.location : ''}
             onChange={(e) => update('location', e.target.value)}
-            className={inputClass + ' w-full'}
+            disabled={!filterEnabled}
+            className={
+              inputClass +
+              ' w-full disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed'
+            }
             style={{ fontFamily: 'Poppins' }}
           >
-            {LOCATIONS.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc}
-              </option>
-            ))}
+            {!filterEnabled && <option value="">Filters off</option>}
+            {filterEnabled &&
+              LOCATIONS.map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
           </select>
         </div>
 
@@ -99,13 +140,25 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
         <div className="flex flex-col gap-3 w-full min-w-0 min-[921px]:flex-1">
           <div className="flex flex-col min-[921px]:flex-row min-[921px]:flex-wrap items-stretch min-[921px]:items-center gap-3 min-[921px]:gap-2">
             <div className="flex flex-col gap-1 w-full min-[921px]:w-auto">
-              <span className="text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins' }}>Time Period</span>
+              <span
+                className={`text-sm font-medium ${
+                  filterEnabled ? 'text-gray-700' : 'text-gray-400'
+                }`}
+                style={{ fontFamily: 'Poppins' }}
+              >
+                Time Period
+              </span>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
-                  onClick={() => updateQuick({ filterMethod: 'quick' })}
+                  onClick={() => filterEnabled && updateQuick({ filterMethod: 'quick' })}
+                  disabled={!filterEnabled}
                   className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
-                    filters.filterMethod === 'quick' ? btnActive : btnInactive
+                    !filterEnabled
+                      ? 'bg-gray-200 border-gray-200 text-gray-400 cursor-not-allowed'
+                      : filters.filterMethod === 'quick'
+                      ? btnActive
+                      : btnInactive
                   }`}
                   style={{ fontFamily: 'Poppins' }}
                 >
@@ -113,9 +166,14 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => updateQuick({ filterMethod: 'custom' })}
+                  onClick={() => filterEnabled && updateQuick({ filterMethod: 'custom' })}
+                  disabled={!filterEnabled}
                   className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
-                    filters.filterMethod === 'custom' ? btnActive : btnInactive
+                    !filterEnabled
+                      ? 'bg-gray-200 border-gray-200 text-gray-400 cursor-not-allowed'
+                      : filters.filterMethod === 'custom'
+                      ? btnActive
+                      : btnInactive
                   }`}
                   style={{ fontFamily: 'Poppins' }}
                 >
@@ -124,7 +182,7 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
               </div>
             </div>
 
-            {filters.filterMethod === 'custom' ? (
+            {filterEnabled && filters.filterMethod === 'custom' ? (
               <div className="flex flex-col min-[921px]:flex-row flex-wrap items-stretch min-[921px]:items-end gap-3 min-[921px]:gap-2 w-full min-[921px]:flex-1 min-w-0">
                 <div className="flex flex-col gap-1 w-full min-[921px]:flex-1 min-w-0 min-[921px]:min-w-[70px]">
                   <span className="text-sm font-medium text-gray-600">Start</span>
@@ -184,28 +242,76 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
             ) : (
               <div className="flex flex-col min-[921px]:flex-row flex-wrap items-stretch min-[921px]:items-center gap-3 min-[921px]:gap-2 w-full min-[921px]:flex-1 min-w-0">
                 <div className="flex flex-col gap-1 w-full min-[921px]:flex-1 min-w-0 min-[921px]:min-w-[80px]">
-                  <span className="text-sm font-medium text-gray-600">View by</span>
+                  <span
+                    className={`text-sm font-medium ${
+                      filterEnabled ? 'text-gray-600' : 'text-gray-400'
+                    }`}
+                  >
+                    View by
+                  </span>
                   <select
-                    value={filters.timePeriod}
-                    onChange={(e) => updateQuick({ timePeriod: e.target.value as 'week' | 'month' | 'year' })}
-                    className={inputClass + ' w-full'}
+                    value={filterEnabled ? filters.timePeriod : ''}
+                    onChange={(e) =>
+                      updateQuick({ timePeriod: e.target.value as 'week' | 'month' | 'year' })
+                    }
+                    disabled={!filterEnabled}
+                    className={
+                      inputClass +
+                      ' w-full disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed'
+                    }
                     style={{ fontFamily: 'Poppins' }}
                   >
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                    <option value="year">Year</option>
+                    {!filterEnabled && <option value="">Filters off</option>}
+                    {filterEnabled && (
+                      <>
+                        <option value="week">Week</option>
+                        <option value="month">Month</option>
+                        <option value="year">Year</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div className="flex flex-col gap-1 w-full min-[921px]:flex-1 min-w-0 min-[921px]:min-w-[80px]">
-                  <span className="text-sm font-medium text-gray-600">Scope</span>
+                  <span
+                    className={`text-sm font-medium ${
+                      filterEnabled ? 'text-gray-600' : 'text-gray-400'
+                    }`}
+                  >
+                    Scope
+                  </span>
                   <select
-                    value={filters.timePeriodScope}
-                    onChange={(e) => updateQuick({ timePeriodScope: e.target.value as 'this' | 'last' })}
-                    className={inputClass + ' w-full'}
+                    value={filterEnabled ? filters.timePeriodScope : ''}
+                    onChange={(e) =>
+                      updateQuick({ timePeriodScope: e.target.value as 'this' | 'last' })
+                    }
+                    disabled={!filterEnabled}
+                    className={
+                      inputClass +
+                      ' w-full disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed'
+                    }
                     style={{ fontFamily: 'Poppins' }}
                   >
-                    <option value="this">This {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
-                    <option value="last">Last {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
+                    {!filterEnabled && <option value="">Filters off</option>}
+                    {filterEnabled && (
+                      <>
+                        <option value="this">
+                          This{' '}
+                          {filters.timePeriod === 'week'
+                            ? 'week'
+                            : filters.timePeriod === 'month'
+                            ? 'month'
+                            : 'year'}
+                        </option>
+                        <option value="last">
+                          Last{' '}
+                          {filters.timePeriod === 'week'
+                            ? 'week'
+                            : filters.timePeriod === 'month'
+                            ? 'month'
+                            : 'year'}
+                        </option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -218,6 +324,7 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
         <button
           type="button"
           onClick={() => onFiltersChange({ ...defaultSalesReportFilters })}
+          disabled={!filterEnabled}
           className="px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors"
           style={{ fontFamily: 'Poppins' }}
         >
@@ -225,8 +332,9 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => onFiltersChange({ ...filters })}
-          className="px-4 py-2.5 rounded-lg border border-transparent bg-[#0B5858] text-white text-sm font-medium shadow-sm hover:bg-[#0B5858]/90 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors"
+          onClick={onApplyFilters}
+          disabled={!filterEnabled}
+          className="px-4 py-2.5 rounded-lg border border-transparent bg-[#0B5858] text-white text-sm font-medium shadow-sm hover:bg-[#0B5858]/90 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors disabled:bg-gray-300 disabled:text-gray-100 disabled:cursor-not-allowed"
           style={{ fontFamily: 'Poppins' }}
         >
           Set filter
