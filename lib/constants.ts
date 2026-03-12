@@ -28,9 +28,11 @@ export const BRAND = {
 
 /** Role badge background colors (same as oop-dev) */
 export const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
-  admin:   { bg: '#B84C4C', text: 'white' },
-  agent:   { bg: '#FACC15', text: '#0B5858' },
-  finance: { bg: '#1E3A8A', text: 'white' },
-  user:    { bg: '#558B8B', text: 'white' },
-  cleaner: { bg: '#6366F1', text: 'white' },
+  admin:       { bg: '#B84C4C', text: 'white' },
+  agent:       { bg: '#FACC15', text: '#0B5858' },
+  finance:     { bg: '#6366F1', text: 'white' },
+  inventory:   { bg: '#0891B2', text: 'white' },
+  housekeeping: { bg: '#059669', text: 'white' },
+  user:        { bg: '#558B8B', text: 'white' },
+  cleaner:     { bg: '#6366F1', text: 'white' },
 };

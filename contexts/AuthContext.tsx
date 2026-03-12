@@ -14,6 +14,7 @@ import { logoutAction } from '@/lib/actions/auth';
 const PROTECTED_ROUTES = [
   '/admin',
   '/manage-units',
+  '/manage-users',
   '/booking',
   '/booking-details',
   '/reserve',
@@ -28,6 +29,7 @@ export type NormalizedRole =
   | 'agent'
   | 'finance'
   | 'inventory'
+  | 'housekeeping'
   | 'operations'
   | 'frontdesk'
   | 'cleaner'
@@ -52,6 +54,7 @@ interface AuthContextValue {
   isAgent: boolean;
   isFinance: boolean;
   isInventory: boolean;
+  isHousekeeping: boolean;
   isOperations: boolean;
   isFrontdesk: boolean;
   /** Returns true if the user has ANY of the given roles (admin always passes). */
@@ -69,7 +72,8 @@ function normalizeRole(role: string): NormalizedRole {
   if (lower === 'inventory') return 'inventory';
   if (lower === 'operations' || lower === 'operation') return 'operations';
   if (lower === 'frontdesk' || lower === 'front desk' || lower === 'front_desk') return 'frontdesk';
-  if (lower === 'cleaner' || lower === 'housekeeping') return 'cleaner';
+  if (lower === 'cleaner') return 'cleaner';
+  if (lower === 'housekeeping') return 'housekeeping';
   return 'user';
 }
 
@@ -126,6 +130,7 @@ export function AuthProvider({
     isAgent: primaryRole === 'agent',
     isFinance: primaryRole === 'finance',
     isInventory: primaryRole === 'inventory',
+    isHousekeeping: primaryRole === 'housekeeping',
     isOperations: primaryRole === 'operations',
     isFrontdesk: primaryRole === 'frontdesk',
     hasAnyRole,
@@ -147,6 +152,7 @@ export function useAuth(): AuthContextValue {
       isAgent: false,
       isFinance: false,
       isInventory: false,
+      isHousekeeping: false,
       isOperations: false,
       isFrontdesk: false,
       hasAnyRole: () => false,

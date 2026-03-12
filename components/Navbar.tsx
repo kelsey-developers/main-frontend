@@ -17,7 +17,7 @@ const HIDE_NAVBAR_ROUTES = ['/login', '/signup'];
 export default function Navbar() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  const { user, signOut, userRole, userProfile, isAdmin, isAgent, roleLoading } =
+  const { user, signOut, userRole, userProfile, isAdmin, isAgent, isFinance, isInventory, isHousekeeping, roleLoading } =
     useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -346,13 +346,53 @@ export default function Navbar() {
                         </Link>
                       )}
                       {isAdmin && (
+                        <>
+                          <Link
+                            href="/manage-users"
+                            onClick={() => setIsDropdownOpen(false)}
+                            className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            Manage Users
+                          </Link>
+                          <Link
+                            href="/admin/cleaning"
+                            onClick={() => setIsDropdownOpen(false)}
+                            className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            Cleaning
+                          </Link>
+                        </>
+                      )}
+                      {isFinance && (
                         <Link
-                          href="/admin/cleaning"
+                          href="/sales-report/finance"
                           onClick={() => setIsDropdownOpen(false)}
-                          className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
                           style={{ fontFamily: 'var(--font-poppins)' }}
                         >
-                          Cleaning
+                          Sales Report (Finance)
+                        </Link>
+                      )}
+                      {isInventory && (
+                        <Link
+                          href="/sales-report/inventory"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          Sales Report (Inventory)
+                        </Link>
+                      )}
+                      {isHousekeeping && (
+                        <Link
+                          href="/sales-report/housekeeping"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          Sales Report (Housekeeping)
                         </Link>
                       )}
                       {userRole?.role === 'cleaner' && (
@@ -544,13 +584,53 @@ export default function Navbar() {
                   </div>
                 </Link>
                 {isAdmin && (
+                  <>
+                    <Link
+                      href="/manage-users"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                      style={{ fontFamily: 'var(--font-poppins)' }}
+                    >
+                      Manage Users
+                    </Link>
+                    <Link
+                      href="/admin/cleaning"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                      style={{ fontFamily: 'var(--font-poppins)' }}
+                    >
+                      Cleaning
+                    </Link>
+                  </>
+                )}
+                {isFinance && (
                   <Link
-                    href="/admin/cleaning"
+                    href="/sales-report/finance"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                    className="block px-3 py-2 text-sm font-semibold text-[#0B5858] hover:bg-gray-50 rounded-md transition-colors text-left"
                     style={{ fontFamily: 'var(--font-poppins)' }}
                   >
-                    Cleaning
+                    Sales Report (Finance)
+                  </Link>
+                )}
+                {isInventory && (
+                  <Link
+                    href="/sales-report/inventory"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm font-semibold text-[#0B5858] hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    Sales Report (Inventory)
+                  </Link>
+                )}
+                {isHousekeeping && (
+                  <Link
+                    href="/sales-report/housekeeping"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm font-semibold text-[#0B5858] hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    Sales Report (Housekeeping)
                   </Link>
                 )}
                 {userRole?.role === 'cleaner' && (
