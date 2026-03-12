@@ -82,11 +82,11 @@ export default function Navbar() {
     'text-black font-sans font-medium uppercase text-sm hover:text-teal-900 transition-colors px-4 py-2 mx-1';
   const mobileNavLinkClass =
     'block px-3 py-2 text-black font-sans font-medium uppercase text-sm hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors text-left cursor-pointer';
-  const hideNavbar = HIDE_NAVBAR_ROUTES.some((route) =>
+  const hideNavbarByRoute = HIDE_NAVBAR_ROUTES.some((route) =>
     pathname?.startsWith(route)
   );
 
-  if (hideNavbar) {
+  if (hideNavbarByRoute || hideNavbarByDataset) {
     return null;
   }
 
@@ -335,6 +335,14 @@ export default function Navbar() {
                       {isAdmin && (
                         <>
                           <Link
+                            href="/admin/cleaning"
+                            onClick={() => setIsDropdownOpen(false)}
+                            className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            Cleaning
+                          </Link>
+                          <Link
                             href="/admin/lending"
                             onClick={() => setIsDropdownOpen(false)}
                             className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
@@ -343,6 +351,16 @@ export default function Navbar() {
                             Money Lending
                           </Link>
                         </>
+                      )}
+                      {!roleLoading && userRole?.role === 'cleaner' && (
+                        <Link
+                          href="/cleaning"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm text-black hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          My Jobs
+                        </Link>
                       )}
                     {(isAdmin || isAgent) && (
                         <>
@@ -533,13 +551,33 @@ export default function Navbar() {
                   </div>
                 </Link>
                 {isAdmin && (
+                  <>
+                    <Link
+                      href="/admin/cleaning"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                      style={{ fontFamily: 'var(--font-poppins)' }}
+                    >
+                      Cleaning
+                    </Link>
+                    <Link
+                      href="/admin/lending"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
+                      style={{ fontFamily: 'var(--font-poppins)' }}
+                    >
+                      Money Lending
+                    </Link>
+                  </>
+                )}
+                {!roleLoading && userRole?.role === 'cleaner' && (
                   <Link
-                    href="/admin/lending"
+                    href="/cleaning"
                     onClick={() => setIsMobileMenuOpen(false)}
                     className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md transition-colors text-left"
                     style={{ fontFamily: 'var(--font-poppins)' }}
                   >
-                    Money Lending
+                    My Jobs
                   </Link>
                 )}
                 {(isAdmin || isAgent) && (

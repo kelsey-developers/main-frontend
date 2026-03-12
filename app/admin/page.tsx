@@ -8,6 +8,9 @@ import CalendarWidget from '../../components/CalendarWidget';
 import type { AdminStats, ChartData } from './types';
 import { getLendingSummary } from '@/services/lendingService';
 import type { LendingSummary } from '@/types/lending';
+import { getCleaningJobs } from '@/services/cleaningService';
+
+const TODAY = new Date().toISOString().split('T')[0];
 
 // Generate mock data for admin stats
 const generateMockStats = (): AdminStats => {
@@ -55,6 +58,8 @@ const AdminPage: React.FC = React.memo(() => {
   const [agentAnalytics, setAgentAnalytics] = useState<AgentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [lendingSummary, setLendingSummary] = useState<LendingSummary | null>(null);
+  const [cleaningTodayCount, setCleaningTodayCount] = useState(0);
+  const [cleaningPendingVerify, setCleaningPendingVerify] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -74,7 +79,18 @@ const AdminPage: React.FC = React.memo(() => {
 
     getLendingSummary().then(setLendingSummary);
 
-    return () => clearTimeout(timer);
+    let mounted = true;
+    getCleaningJobs().then((jobs) => {
+      if (!mounted) return;
+      const todayJobs = jobs.filter((j) => j.scheduledDate === TODAY);
+      setCleaningTodayCount(todayJobs.filter((j) => j.status === 'scheduled' || j.status === 'in_progress').length);
+      setCleaningPendingVerify(jobs.filter((j) => j.status === 'completed').length);
+    });
+
+    return () => {
+      clearTimeout(timer);
+      mounted = false;
+    };
   }, []);
 
   if (loading) {
@@ -140,9 +156,56 @@ const AdminPage: React.FC = React.memo(() => {
         )}
 
         {/* Mini-System Cards */}
-        {lendingSummary && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Money Lending mini-card */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+          {/* Cleaning Services mini-card */}
+          <Link
+            href="/admin/cleaning"
+            className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-[#0B5858]/20 transition-all p-5 block"
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#FACC15]/20 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>Cleaning Services</p>
+                  <p className="text-xs text-gray-500">Property maintenance</p>
+                </div>
+              </div>
+              <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Today</p>
+                <p className="text-lg font-bold text-[#0B5858]">{cleaningTodayCount}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Verify</p>
+                <p className={`text-lg font-bold ${cleaningPendingVerify > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>
+                  {cleaningPendingVerify}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Status</p>
+                <p className="text-sm font-bold text-gray-900">Active</p>
+              </div>
+            </div>
+            {cleaningPendingVerify > 0 && (
+              <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-yellow-700 bg-yellow-50 rounded-lg px-2.5 py-1.5 border border-yellow-100">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {cleaningPendingVerify} job{cleaningPendingVerify > 1 ? 's' : ''} awaiting verification
+              </div>
+            )}
+          </Link>
+
+          {/* Money Lending mini-card */}
+          {lendingSummary && (
             <Link
               href="/admin/lending"
               className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-[#0B5858]/20 transition-all p-5 block"
@@ -190,8 +253,8 @@ const AdminPage: React.FC = React.memo(() => {
                 </div>
               )}
             </Link>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Calendar View Section */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
