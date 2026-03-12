@@ -115,14 +115,17 @@ export async function getUnitById(id: string): Promise<Listing | null> {
 }
 
 function toListingView(u: Record<string, unknown>): ListingView {
-  const price = Number(u.price ?? 0);
+  const price = Number(u.price ?? u.base_price ?? 0);
+  const rawCurrency = String(u.currency ?? '₱');
+  // External API sometimes returns garbled currency symbol due to encoding — normalise to ₱
+  const currency = rawCurrency === '?' || rawCurrency.trim() === '' ? '₱' : rawCurrency;
   return {
     id: String(u.id),
     title: String(u.title ?? ''),
     description: u.description ? String(u.description) : undefined,
     price,
     price_unit: String(u.price_unit ?? 'night'),
-    currency: String(u.currency ?? '₱'),
+    currency,
     location: String(u.location ?? ''),
     city: u.city ? String(u.city) : undefined,
     bedrooms: Number(u.bedrooms ?? 0),

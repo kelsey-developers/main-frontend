@@ -115,7 +115,7 @@ function toDamagePenalty(d: MarketDamageIncident): DamagePenalty {
 
 export async function fetchFinanceBookings(): Promise<BookingLinkedRow[]> {
   try {
-    const data = await apiClient.get<MarketBookingItem[] | { message?: string }>('/api/market/bookings/my');
+    const data = await apiClient.get<MarketBookingItem[] | { message?: string }>('/api/bookings/my');
     if (Array.isArray(data)) return data.map(toBookingLinkedRow);
     return [];
   } catch {
@@ -125,7 +125,7 @@ export async function fetchFinanceBookings(): Promise<BookingLinkedRow[]> {
 
 export async function fetchFinanceDamageIncidents(): Promise<DamagePenalty[]> {
   try {
-    const data = await apiClient.get<DamageIncidentsResponse>('/api/market/damage-incidents');
+    const data = await apiClient.get<DamageIncidentsResponse>('/api/damage-incidents');
     const list = data?.damageIncidents ?? [];
     return list.map(toDamagePenalty);
   } catch {
