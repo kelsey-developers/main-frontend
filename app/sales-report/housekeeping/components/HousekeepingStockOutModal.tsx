@@ -16,6 +16,7 @@ import {
 } from '@/app/sales-report/inventory/lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
+// ─── Brand colors (unit mode from inventory StockOutModal) ─────────
 const C = {
   darkTeal: '#0b5858',
   teal: '#05807e',
@@ -573,6 +574,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
     setMounted(true);
   }, []);
 
+  // Same data loading as inventory StockOutModal: loadInventoryDataset + refresh on movement/focus
   useEffect(() => {
     void loadInventoryDataset()
       .finally(() => {

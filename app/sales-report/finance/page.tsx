@@ -7,10 +7,6 @@ import FinanceSummaryCards from './components/FinanceSummaryCards';
 import SalesTrendChart from './components/SalesTrendChart';
 import RevenueByTypeChart from './components/RevenueByTypeChart';
 
-import {
-  mockBookingLinkedRows,
-  mockDamagePenalty,
-} from './lib/mockData';
 import { filterBookingRows, filterDamageIncidents } from './lib/filters';
 import {
   buildSummary,
@@ -28,6 +24,8 @@ import type {
   RevenueByChannel,
   RevenueByAgent,
   RevenueByTypeItem,
+  BookingLinkedRow,
+  DamagePenalty,
 } from './types';
 import { defaultSalesReportFilters } from './types';
 
@@ -65,23 +63,42 @@ function FinanceDashboardSkeleton() {
   );
 }
 
+function getDefaultViewFilters(): SalesReportFilters {
+  return {
+    ...defaultSalesReportFilters,
+    filterMethod: 'quick',
+    timePeriod: 'month',
+    timePeriodScope: 'this',
+    searchName: '',
+    propertyType: 'All',
+    location: 'All',
+
+  };
+}
+
 export default function SalesReportPage() {
-  const [filters, setFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
+  const [draftFilters, setDraftFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
+  const [appliedFilters, setAppliedFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [filterEnabled, setFilterEnabled] = useState(false);
+  const [bookingRows, setBookingRows] = useState<BookingLinkedRow[]>([]);
+  const [damagePenalty, setDamagePenalty] = useState<DamagePenalty[]>([]);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
 
+  const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
+
   const filteredBookings = useMemo(
-    () => filterBookingRows(mockBookingLinkedRows, filters),
-    [filters],
+    () => filterBookingRows(bookingRows, effectiveFilters),
+    [bookingRows, effectiveFilters],
   );
   const filteredDamage = useMemo(
-    () => filterDamageIncidents(mockDamagePenalty, filters),
-    [filters],
+    () => filterDamageIncidents(damagePenalty, effectiveFilters),
+    [damagePenalty, effectiveFilters],
   );
 
   const summary: FinanceDashboardSummary = useMemo(
@@ -143,7 +160,17 @@ export default function SalesReportPage() {
             className={`w-full lg:w-72 flex-shrink-0 ${filtersPanelOpen ? 'block' : 'hidden lg:block'}`}
           >
             <div className="space-y-6">
-              <FilterSidebar filters={filters} onFiltersChange={setFilters} />
+              <FilterSidebar
+                filters={draftFilters}
+                onFiltersChange={setDraftFilters}
+                filterEnabled={filterEnabled}
+                onFilterEnabledChange={setFilterEnabled}
+                onApplyFilters={() => {
+                  if (filterEnabled) {
+                    setAppliedFilters(draftFilters);
+                  }
+                }}
+              />
               {/* Feature links only in sidebar on desktop; hidden in aside on mobile */}
               <div className="max-lg:hidden lg:block">
                 <FinanceDashboardLinks />
