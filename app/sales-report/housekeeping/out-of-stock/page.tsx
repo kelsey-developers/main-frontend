@@ -7,6 +7,7 @@ import {
   loadInventoryDataset,
   inventoryItems,
   inventoryWarehouseDirectory,
+  isWarehouseActive,
 } from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 /** One line: product (from inventory) */
@@ -77,7 +78,7 @@ export default function HousekeepingOutOfStockPage() {
   const warehouseOptions = [
     { value: '', label: 'Select warehouse…' },
     ...inventoryWarehouseDirectory
-      .filter((wh) => wh.isActive)
+      .filter((wh) => isWarehouseActive(wh))
       .map((w) => ({ value: w.id, label: w.name })),
   ];
 
@@ -158,7 +159,7 @@ export default function HousekeepingOutOfStockPage() {
       </p>
 
       {loadError &&
-        (inventoryItems.length > 0 || inventoryWarehouseDirectory.some((w) => w.isActive)) && (
+        (inventoryItems.length > 0 || inventoryWarehouseDirectory.some((w) => isWarehouseActive(w))) && (
         <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800">
           <p className="font-medium">Could not load inventory</p>
           <p className="text-sm mt-1">{loadError}</p>

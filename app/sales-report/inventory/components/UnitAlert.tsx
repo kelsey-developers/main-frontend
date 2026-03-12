@@ -17,7 +17,7 @@ interface UnitWithAlerts {
 const UnitAlert: React.FC<UnitAlertProps> = ({ units, unitItems, onUnitClick }) => {
   const unitsWithAlerts = useMemo(() => {
     const lowStock = unitItems.filter((item) => item.currentStock < item.minStock && item.assignedToUnit);
-    const byUnit = new Map<string, InventoryItem[]>();
+    const byUnit = new Map<string, UnitItemDisplay[]>();
     for (const item of lowStock) {
       const id = item.assignedToUnit!;
       if (!byUnit.has(id)) byUnit.set(id, []);

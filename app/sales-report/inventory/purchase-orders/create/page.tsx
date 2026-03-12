@@ -10,7 +10,7 @@ import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
 import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems, inventoryPurchaseOrders, inventoryPurchaseOrderLines, updateInventoryItem } from '../../lib/inventoryDataStore';
 import { useProductDetails, useAllProducts } from '../../hooks/useProductNames';
-import type { ReplenishmentItem } from '../../types';
+import type { ItemCategory, ReplenishmentItem } from '../../types';
 import { getLastUnitPriceForProduct } from '../../helpers/purchaseOrderHelpers';
 import { useToast } from '../../hooks/useToast';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
@@ -51,12 +51,21 @@ function CreatePurchaseOrderPageContent() {
   const [showCreateItemModal, setShowCreateItemModal] = useState(false);
   const [isCreatingItem, setIsCreatingItem] = useState(false);
   const [createItemTargetLineId, setCreateItemTargetLineId] = useState<string | null>(null);
-  const [createItemForm, setCreateItemForm] = useState({
+  const [createItemForm, setCreateItemForm] = useState<{
+    name: string;
+    sku: string;
+    unit: string;
+    category: ItemCategory | '__create_new__';
+    itemType: 'consumable' | 'reusable';
+    reorderLevel: string;
+    unitCost: string;
+    customCategoryName: string;
+  }>({
     name: '',
     sku: '',
     unit: 'pcs',
-    category: ITEM_CATEGORIES[0] ?? 'Other',
-    itemType: 'consumable' as 'consumable' | 'reusable',
+    category: (ITEM_CATEGORIES[0] ?? 'Other') as ItemCategory,
+    itemType: 'consumable',
     reorderLevel: '0',
     unitCost: '0',
     customCategoryName: '',
@@ -319,7 +328,7 @@ function CreatePurchaseOrderPageContent() {
       name: '',
       sku: '',
       unit: 'pcs',
-      category: ITEM_CATEGORIES[0] ?? 'Other',
+      category: (ITEM_CATEGORIES[0] ?? 'Other') as ItemCategory,
       itemType: 'consumable',
       reorderLevel: '0',
       unitCost: '0',

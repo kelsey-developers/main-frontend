@@ -1079,9 +1079,9 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
           <StorageDistributionSection
             item={viewItem}
             isMobile={isMobile}
-            productId={item.id}
-            mainWarehouseId={item.warehouseId}
-            unit={item.unit || 'pcs'}
+            productId={item!.id}
+            mainWarehouseId={item!.warehouseId}
+            unit={item!.unit || 'pcs'}
           />
 
           <Divider />
