@@ -5,6 +5,7 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/purchase-orders',
   '/api/goods-receipts',
   '/api/product-categories',
+  '/api/market', // bookings, damage-incidents via market-backend (finance dashboard)
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -18,6 +19,7 @@ function shouldUseBackendFallback(endpoint: string): boolean {
 function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'GET' && endpoint.startsWith('/api/units/manage')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/bookings/my')) return true;
+  if (method === 'GET' && endpoint.startsWith('/api/market/bookings/my')) return true;
   if (method === 'PATCH' && endpoint.startsWith('/api/units/')) return true;
   return false;
 }

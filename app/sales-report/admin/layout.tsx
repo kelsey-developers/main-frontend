@@ -14,6 +14,7 @@ const ADMIN_LINKS: AdminLink[] = [
   { href: '/sales-report/admin', label: 'Overview' },
   { href: '/sales-report/admin/inventory-setup', label: 'Inventory Setup' },
   { href: '/sales-report/admin/replenishment', label: 'Replenishment' },
+  { href: '/sales-report/admin/charges-addons', label: 'Charges & Add-ons' },
   { href: '/sales-report/admin/approval-queue', label: 'Approval Queue' },
   { href: '/sales-report/admin/audit-alerts', label: 'Audit and Alerts' },
   { href: '/sales-report/admin/access', label: 'Access Control' },
@@ -31,7 +32,7 @@ export default function AdminLayout({
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
         <div className="mb-8">
           <nav className="flex items-center gap-2 text-sm text-gray-600 mb-4">
-            <Link href="/sales-report/inventory" className="text-[#0B5858] hover:underline">
+            <Link href="/sales-report" className="text-[#0B5858] hover:underline">
               Sales Report
             </Link>
             <span className="text-gray-400">/</span>
