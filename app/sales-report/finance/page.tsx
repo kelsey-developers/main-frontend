@@ -122,8 +122,8 @@ export default function SalesReportPage() {
   );
 
   const salesTrendData: SalesTrendPoint[] = useMemo(
-    () => buildSalesTrend(filteredBookings, filteredDamage),
-    [filteredBookings, filteredDamage],
+    () => buildSalesTrend(filteredBookings, filteredDamage, effectiveFilters),
+    [filteredBookings, filteredDamage, effectiveFilters],
   );
 
   const revenueByProperty: RevenueByProperty[] = useMemo(

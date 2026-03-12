@@ -165,7 +165,7 @@ export default function Homepage() {
     
 
       {/* Explore By Category */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 pb-25 relative">
+      <section className="max-w-7xl mx-auto px-4 sm:px-10 lg:px-8  py-16 pb-25 relative">
         <RevealOnScroll>
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
             <div>
@@ -181,16 +181,16 @@ export default function Homepage() {
             </div>
           </div>
         </RevealOnScroll>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 h-96px">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {[
-            { title: 'Penthouse', image: '/penthouse.jpg', href: '/listings?type=Penthouse' },
+            { title: 'Penthouse', image: '/penthouse.jpeg', href: '/listings?type=Penthouse' },
             { title: 'Condo', image: '/condo.jpeg', href: '/listings?type=condo' },
-            { title: 'Apartment', image: '/heroimage.png', href: '/listings?type=Apartment' },
+            { title: 'Apartment', image: '/apartment.jpeg', href: '/listings?type=Apartment' },
           ].map((cat, index) => (
             <RevealOnScroll key={cat.title} delay={index * 120}>
               <Link
                 href={cat.href}
-                className="group relative block aspect-square rounded-2xl overflow-hidden bg-gray-200 shadow-md hover:shadow-xl transition-shadow"
+                className="group relative block aspect-[3/4] rounded-2xl overflow-hidden bg-gray-200 shadow-md hover:shadow-xl transition-shadow"
               >
                 <img
                   src={cat.image}

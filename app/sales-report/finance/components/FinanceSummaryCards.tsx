@@ -1,6 +1,6 @@
 import React from 'react';
 import type { FinanceDashboardSummary } from '../types';
-import { formatNumber, formatPHP } from '../lib/format';
+import { formatNumber, formatPHP, formatPHPForChart } from '../lib/format';
 
 interface FinanceSummaryCardsProps {
   summary: FinanceDashboardSummary;
@@ -20,7 +20,7 @@ const FinanceSummaryCards: React.FC<FinanceSummaryCardsProps> = ({ summary }) =>
             </div>
           </div>
           <p className="text-white/80 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Sales</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatPHP(summary.totalSales)}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatPHPForChart(summary.totalSales)}</p>
         </div>
       </div>
       <div className="relative bg-gradient-to-br from-gray-600 to-gray-700 rounded-2xl shadow-xl p-6 hover:shadow-2xl transition-all duration-500 overflow-hidden group">
@@ -34,7 +34,7 @@ const FinanceSummaryCards: React.FC<FinanceSummaryCardsProps> = ({ summary }) =>
             </div>
           </div>
           <p className="text-white/80 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Revenue</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatPHP(summary.totalRevenue)}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatPHPForChart(summary.totalRevenue)}</p>
         </div>
       </div>
       <div className="relative bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl shadow-xl p-6 hover:shadow-2xl transition-all duration-500 overflow-hidden group">
@@ -48,7 +48,9 @@ const FinanceSummaryCards: React.FC<FinanceSummaryCardsProps> = ({ summary }) =>
             </div>
           </div>
           <p className="text-white/90 text-sm font-medium mb-1" style={{ fontFamily: 'Poppins' }}>Total Bookings</p>
-          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{formatNumber(summary.totalRent)}</p>
+          <p className="text-3xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>
+            {formatNumber(summary.totalRent)}
+          </p>
         </div>
       </div>
     </div>
