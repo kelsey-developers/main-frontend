@@ -237,6 +237,7 @@ export const mockUnitStockMovements: UnitStockMovementRow[] = [];
 
 let isDatasetLoaded = false;
 let datasetLoadPromise: Promise<void> | null = null;
+let lastDatasetFailure = { message: '', at: 0 };
 
 export const isInventoryDatasetLoaded = () => isDatasetLoaded;
 
@@ -304,7 +305,13 @@ const fetchInventoryDataset = async (): Promise<InventoryDatasetResponse & { _fe
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Request failed';
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('inventory:dataset-load-failed', { detail: { message } }));
+      const now = Date.now();
+      const isSameMessage = lastDatasetFailure.message === message;
+      const withinCooldown = now - lastDatasetFailure.at < 4000;
+      if (!(isSameMessage && withinCooldown)) {
+        lastDatasetFailure = { message, at: now };
+        window.dispatchEvent(new CustomEvent('inventory:dataset-load-failed', { detail: { message } }));
+      }
     }
     return { _fetchFailed: true, _message: message };
   }
