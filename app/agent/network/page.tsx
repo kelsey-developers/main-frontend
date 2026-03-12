@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAgentNetwork } from '@/lib/api/agents';
 import type { ReferralNode } from '@/types/referralTree';
@@ -9,45 +10,16 @@ import ReferralTreeNode from './components/ReferralTreeNode';
 const getBaseUrl = () => (typeof window !== 'undefined' ? window.location.origin : 'https://kelseyshomestay.com');
 const QR_SIZE = 160;
 
-function generateQRSVG(url: string, size: number): string {
-  const modules = 25;
-  const cellSize = size / modules;
-  let hash = 0;
-  for (let i = 0; i < url.length; i++) hash = (hash * 31 + url.charCodeAt(i)) & 0xffffffff;
-  let rects = '';
-  const drawFinder = (ox: number, oy: number) => {
-    for (let fr = 0; fr < 7; fr++)
-      for (let fc = 0; fc < 7; fc++) {
-        const isBorder = fr === 0 || fr === 6 || fc === 0 || fc === 6;
-        const isInner = fr >= 2 && fr <= 4 && fc >= 2 && fc <= 4;
-        if (isBorder || isInner)
-          rects += `<rect x="${(ox + fc) * cellSize}" y="${(oy + fr) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#0B5858"/>`;
-      }
-  };
-  drawFinder(0, 0); drawFinder(modules - 7, 0); drawFinder(0, modules - 7);
-  let seed = hash;
-  for (let r = 0; r < modules; r++)
-    for (let c = 0; c < modules; c++) {
-      const inFinder = (r < 8 && c < 8) || (r < 8 && c >= modules - 8) || (r >= modules - 8 && c < 8);
-      if (inFinder) continue;
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      if (seed % 3 === 0)
-        rects += `<rect x="${c * cellSize}" y="${r * cellSize}" width="${cellSize}" height="${cellSize}" fill="#0B5858"/>`;
-    }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}"><rect width="${size}" height="${size}" fill="white"/>${rects}</svg>`;
-}
-
 export default function AgentNetworkPage() {
   const { user } = useAuth();
   const [tree, setTree] = useState<ReferralNode | null>(null);
   const [stats, setStats] = useState<{ totalSubAgents: number; activeSubAgents: number; networkBookings: number; totalNetworkCommissions: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const svgRef = useRef<HTMLDivElement>(null);
 
   const userId = user?.id ?? '';
   const recruitLink = `${getBaseUrl()}/become-an-agent?recruitedBy=${userId}`;
-  const qrSvg = useMemo(() => generateQRSVG(recruitLink, QR_SIZE), [recruitLink]);
 
   useEffect(() => {
     let isMounted = true;
@@ -71,22 +43,33 @@ export default function AgentNetworkPage() {
   }, []);
 
   const handleCopy = async () => {
-    try { await navigator.clipboard.writeText(recruitLink); } catch {}
+    try {
+      await navigator.clipboard.writeText(recruitLink);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = recruitLink;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownloadQR = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const img = new Image();
-    const blob = new Blob([qrSvg], { type: 'image/svg+xml;charset=utf-8' });
+    const svg = svgRef.current?.querySelector('svg');
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
+    const img = new Image();
     img.onload = () => {
+      const canvas = document.createElement('canvas');
       canvas.width = QR_SIZE * 2;
       canvas.height = QR_SIZE * 2;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
       ctx.fillStyle = 'white';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -204,23 +187,21 @@ export default function AgentNetworkPage() {
           </div>
 
           {/* QR Code */}
-          {qrSvg && (
-            <div className="shrink-0 flex flex-col items-center">
-              <div className="bg-white p-3.5 rounded-2xl shadow-xl shadow-black/20"
-                dangerouslySetInnerHTML={{ __html: qrSvg }} />
-              <canvas ref={canvasRef} className="hidden" />
-              <button
-                type="button"
-                onClick={handleDownloadQR}
-                className="mt-4 flex items-center gap-2 text-[11px] font-bold text-white/60 hover:text-white transition-colors cursor-pointer uppercase tracking-widest"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download QR
-              </button>
+          <div ref={svgRef} className="shrink-0 flex flex-col items-center">
+            <div className="bg-white p-3.5 rounded-2xl shadow-xl shadow-black/20">
+              <QRCodeSVG value={recruitLink} size={QR_SIZE} level="M" includeMargin />
             </div>
-          )}
+            <button
+              type="button"
+              onClick={handleDownloadQR}
+              className="mt-4 flex items-center gap-2 text-[11px] font-bold text-white/60 hover:text-white transition-colors cursor-pointer uppercase tracking-widest"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download QR
+            </button>
+          </div>
         </div>
       </div>
 

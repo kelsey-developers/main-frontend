@@ -34,6 +34,7 @@ export interface PrefillListing {
   longitude?: number | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
+  assigned_agent_ids?: string[];
 }
 
 export interface NewListingFormPayload {
@@ -59,6 +60,7 @@ export interface NewListingFormPayload {
   longitude?: number;
   check_in_time?: string;
   check_out_time?: string;
+  assigned_agent_ids?: string[];
 }
 
 interface NewListingFormProps {

@@ -4,13 +4,13 @@ import type { NextRequest } from 'next/server';
 /** Routes that require a valid session — redirects to /login if not authenticated */
 const PROTECTED_ROUTES = [
   '/admin',
-  '/agent',
   '/booking',
   '/booking-details',
   '/reserve',
   '/rewards',
   '/profile',
   '/settings',
+  '/chat',
 ];
 
 /** Routes only accessible when NOT logged in — redirects to / if already authenticated */

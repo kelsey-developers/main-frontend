@@ -95,7 +95,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({
 
   return (
     <section className="bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
           {/* Avatar */}
           <div className="shrink-0 self-center sm:self-start">

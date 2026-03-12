@@ -19,7 +19,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const auth = request.headers.get('authorization');
   if (auth) headers.authorization = auth;
 
-  const res = await fetch(`${apiUrl}/api/agent-registration`, {
+  const res = await fetch(`${apiUrl}/api/agents/register`, {
     method: 'POST',
     headers,
     body,

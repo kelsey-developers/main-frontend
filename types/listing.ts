@@ -4,6 +4,12 @@ export interface ListingOwner {
   email: string;
 }
 
+export interface AssignedAgent {
+  id: string;
+  username: string;
+  fullname: string;
+}
+
 export interface Listing {
   id: string;
   title: string;
@@ -34,6 +40,8 @@ export interface Listing {
   updated_at: string;
   owner?: ListingOwner | null;
   bookings_count?: number;
+  assigned_agents?: AssignedAgent[];
+  assigned_agent_ids?: string[];
 }
 
 export interface ListingView {

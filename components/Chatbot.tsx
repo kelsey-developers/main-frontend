@@ -2,12 +2,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import UnitPreviewCard from '@/components/chat/UnitPreviewCard';
+import { parseUnitIdsFromMessage, stripUnitTags } from '@/lib/chat/parseUnits';
 
 type Message = {
   id: string;
   text: string;
   sender: 'user' | 'bot';
   timestamp: Date;
+  suggestedUnits?: Array<{ id: string; title?: string; price?: number; city?: string; main_image_url?: string | null; bedrooms?: number; bathrooms?: number; property_type?: string }>;
 };
 
 const BOT_GREETINGS = [
@@ -16,11 +20,20 @@ const BOT_GREETINGS = [
   "Welcome! Ask me about listings, rewards, or support.",
 ];
 
+const BOT_GREETING_LOGGED_IN = "Hi! I can help you find units, including ones near your location. Try asking 'find units near my location' or 'show me available apartments in Manila'.";
+
 /** Hide on cleaning job detail so the sticky "Mark as Done" is the only CTA and no visual distraction */
 const HIDE_CHATBOT_PREFIX = '/cleaning/';
 
+/** Check if message suggests user wants location-based results */
+function wantsNearMe(text: string): boolean {
+  const lower = text.toLowerCase();
+  return /near\s*(me|my\s*location|my\s*area)/.test(lower) || /around\s*here/.test(lower) || /close\s*to\s*me/.test(lower);
+}
+
 export default function Chatbot() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>(() => [
     {
@@ -30,7 +43,23 @@ export default function Chatbot() {
       timestamp: new Date(),
     },
   ]);
+  const greetingSetRef = useRef(false);
+
+  useEffect(() => {
+    if (user && messages.length === 1 && messages[0].id === 'welcome' && !greetingSetRef.current) {
+      greetingSetRef.current = true;
+      setMessages([
+        {
+          id: 'welcome',
+          text: BOT_GREETING_LOGGED_IN,
+          sender: 'bot',
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, [user, messages]);
   const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,7 +74,7 @@ export default function Chatbot() {
     }
   }, [isOpen, messages]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
 
@@ -57,22 +86,91 @@ export default function Chatbot() {
     };
     setMessages((prev) => [...prev, userMsg]);
     setInputValue('');
+    setIsLoading(true);
 
-    // Simple mock bot reply
-    setTimeout(() => {
-      const replies = [
-        "Thanks for your message! I'll look into that for you.",
-        "Got it! Is there anything else you'd like to know?",
-        "I'm here to help with bookings, rewards, or any questions.",
-      ];
-      const botMsg: Message = {
-        id: `bot-${Date.now()}`,
-        text: replies[Math.floor(Math.random() * replies.length)],
-        sender: 'bot',
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botMsg]);
-    }, 600);
+    if (user) {
+      try {
+        let latitude: number | undefined;
+        let longitude: number | undefined;
+        if (wantsNearMe(trimmed)) {
+          const pos = await new Promise<GeolocationPosition | null>((resolve) => {
+            if (!navigator.geolocation) {
+              resolve(null);
+              return;
+            }
+            navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 5000 });
+          });
+          if (pos) {
+            latitude = pos.coords.latitude;
+            longitude = pos.coords.longitude;
+          }
+        }
+
+        const history = messages
+          .filter((m) => m.id !== 'welcome')
+          .map((m) => ({
+            role: m.sender === 'user' ? 'user' as const : 'model' as const,
+            content: m.text,
+          }));
+
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: trimmed,
+            history,
+            ...(latitude != null && longitude != null ? { latitude, longitude } : {}),
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        const botText = res.ok && typeof data.message === 'string'
+          ? data.message
+          : data.error || 'Sorry, I could not get a response. Please try again.';
+
+        const units = Array.isArray(data.units) ? data.units : [];
+        const unitIds = parseUnitIdsFromMessage(botText);
+        const suggestedUnits = unitIds
+          .map((id) => units.find((u: { id?: string }) => String(u?.id) === id))
+          .filter(Boolean) as Message['suggestedUnits'];
+
+        const botMsg: Message = {
+          id: `bot-${Date.now()}`,
+          text: botText,
+          sender: 'bot',
+          timestamp: new Date(),
+          suggestedUnits: (suggestedUnits?.length ?? 0) > 0 ? suggestedUnits : undefined,
+        };
+        setMessages((prev) => [...prev, botMsg]);
+      } catch {
+        const botMsg: Message = {
+          id: `bot-${Date.now()}`,
+          text: 'Sorry, something went wrong. Please try again.',
+          sender: 'bot',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      // Mock reply when not logged in
+      setTimeout(() => {
+        const replies = [
+          "Please log in to chat with me and get real-time unit recommendations!",
+          "Sign in to ask about available units, find properties near you, or get booking help.",
+        ];
+        const botMsg: Message = {
+          id: `bot-${Date.now()}`,
+          text: replies[Math.floor(Math.random() * replies.length)],
+          sender: 'bot',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+        setIsLoading(false);
+      }, 600);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -127,7 +225,7 @@ export default function Chatbot() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-chatbot-msg`}
+                className={`flex flex-col gap-2 ${msg.sender === 'user' ? 'items-end' : 'items-start'} animate-chatbot-msg`}
               >
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
@@ -136,8 +234,15 @@ export default function Chatbot() {
                       : 'rounded-bl-md bg-gray-100 text-gray-800'
                   }`}
                 >
-                  {msg.text}
+                  {msg.sender === 'bot' && msg.suggestedUnits ? stripUnitTags(msg.text) : msg.text}
                 </div>
+                {msg.sender === 'bot' && msg.suggestedUnits && msg.suggestedUnits.length > 0 && (
+                  <div className="flex flex-wrap gap-2 max-w-[85%]">
+                    {msg.suggestedUnits.map((unit) => (
+                      <UnitPreviewCard key={unit.id} unit={unit} compact />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -158,9 +263,13 @@ export default function Chatbot() {
                 type="button"
                 onClick={sendMessage}
                 className="rounded-xl bg-[var(--brand-teal)] px-4 py-2.5 text-white transition-colors hover:bg-[var(--brand-teal-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-teal)] focus:ring-offset-2 disabled:opacity-50"
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() || isLoading}
               >
-                <SendIcon className="h-5 w-5" />
+                {isLoading ? (
+                  <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <SendIcon className="h-5 w-5" />
+                )}
               </button>
             </div>
           </div>

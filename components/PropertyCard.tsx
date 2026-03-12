@@ -13,14 +13,13 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ apartment, onApartmentClick
     <div
       key={apartment.id}
       onClick={() => onApartmentClick(apartment.id)}
-      className="group bg-white rounded-xl sm:rounded-2xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1 sm:hover:-translate-y-3 border border-gray-100 cursor-pointer flex flex-col h-full"
+      className="group bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-100 cursor-pointer flex flex-col h-full"
     >
-      <div className="relative h-48 sm:h-56 overflow-hidden">
+      <div className="relative h-40 sm:h-44 overflow-hidden">
         <div
           className="w-full h-full bg-cover bg-center"
           style={{ backgroundImage: `url('${apartment.main_image_url || '/heroimage.png'}')` }}
         />
-        <div className="p-4 sm:p-6 flex-1 flex flex-col" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
         <div className="absolute top-4 right-4">
           <span
@@ -44,8 +43,8 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ apartment, onApartmentClick
         </div>
       </div>
 
-      <div className="p-4 sm:p-6">
-        <div className="mb-4">
+      <div className="p-4">
+        <div className="mb-3">
           <div className="flex items-baseline justify-between">
             <div>
               <span className="text-xl sm:text-2xl font-bold text-black" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>
@@ -76,7 +75,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ apartment, onApartmentClick
           {apartment.title}
         </h3>
 
-        <div className="flex items-center mb-4">
+        <div className="flex items-center mb-3">
           <svg className="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
@@ -99,7 +98,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ apartment, onApartmentClick
           </p>
         </div>
 
-        <div className="flex items-center justify-between mb-3 sm:mb-4 text-xs sm:text-sm text-gray-600">
+        <div className="flex items-center justify-between mb-2 text-xs text-gray-600">
           <div className="flex items-center">
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -150,7 +149,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ apartment, onApartmentClick
         </div>
 
         {apartment.amenities && apartment.amenities.length > 0 && (
-          <div className="mb-3 sm:mb-4">
+          <div className="mb-2">
             <div className="flex flex-wrap gap-1">
               {apartment.amenities.slice(0, 3).map((amenity, index) => (
                 <span
