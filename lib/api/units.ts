@@ -1,5 +1,6 @@
 import type { Listing, ListingView } from '@/types/listing';
 import { apiClient } from './client';
+import type { NewListingFormPayload } from '@/components/NewListingForms';
 
 type ApiError = Error & { status?: number };
 
@@ -9,6 +10,46 @@ const isUnitsApiUnavailable = (err: unknown) => {
   const message = error.message.toLowerCase();
   return error.status === 404 || message.includes('api route not found');
 };
+
+export async function createUnit(payload: NewListingFormPayload): Promise<Listing> {
+  const body = {
+    unit_name: payload.title,
+    description: payload.description,
+    base_price: payload.price,
+    location: payload.location,
+    city: payload.city,
+    country: payload.country,
+    bedroom_count: payload.bedrooms,
+    bathroom_count: payload.bathrooms,
+    area_sqm: payload.square_feet,
+    unit_type: payload.property_type.toLowerCase(),
+    min_pax: payload.min_pax,
+    max_capacity: payload.max_capacity,
+    excess_pax_fee: payload.excess_pax_fee,
+    amenities: payload.amenities,
+    check_in_time: payload.check_in_time,
+    check_out_time: payload.check_out_time,
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    status: 'available',
+    is_featured: false,
+    images: buildImages(payload.main_image_url, payload.image_urls),
+  };
+  const data = await apiClient.post<Record<string, unknown>>('/api/units', body);
+  return toListing(data);
+}
+
+function buildImages(
+  mainUrl: string | undefined,
+  imageUrls: string[] | undefined
+): { url: string; is_main: boolean; sort_order: number }[] {
+  const images: { url: string; is_main: boolean; sort_order: number }[] = [];
+  if (mainUrl) images.push({ url: mainUrl, is_main: true, sort_order: 0 });
+  (imageUrls ?? []).forEach((url, i) => {
+    if (url !== mainUrl) images.push({ url, is_main: false, sort_order: i + 1 });
+  });
+  return images;
+}
 
 export async function listUnitsForManage(): Promise<Listing[]> {
   try {

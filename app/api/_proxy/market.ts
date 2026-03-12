@@ -45,6 +45,13 @@ async function forwardToUpstream(
     if (value) headers.set(key, value);
   });
 
+  // If no Authorization header came from the client, fall back to the
+  // accessToken cookie (set by the login flow) so protected routes work.
+  if (!headers.has('authorization')) {
+    const cookieToken = request.cookies.get('accessToken')?.value;
+    if (cookieToken) headers.set('authorization', `Bearer ${cookieToken}`);
+  }
+
   // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
   if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
     headers.set('ngrok-skip-browser-warning', 'true');
