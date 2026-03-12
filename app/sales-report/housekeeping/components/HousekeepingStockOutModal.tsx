@@ -302,6 +302,18 @@ interface UnitDraft {
   items: LineItem[];
 }
 
+type BookingSummary = {
+  id: string;
+  code: string;
+  guest: string;
+  checkIn: string;
+  checkOut: string;
+  unit: string;
+};
+
+// TODO: Wire this up to real synced bookings when available.
+const BOOKINGS: BookingSummary[] = [];
+
 function UnitForm({ onDraftChange }: { onDraftChange: (draft: UnitDraft) => void }) {
   const authState = useMockAuth();
   const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
