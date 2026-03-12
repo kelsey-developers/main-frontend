@@ -86,7 +86,7 @@ export default function Navbar() {
     pathname?.startsWith(route)
   );
 
-  if (hideNavbarByRoute || hideNavbarByDataset) {
+  if (hideNavbarByRoute) {
     return null;
   }
 
