@@ -6,6 +6,7 @@ import type { Listing } from '@/types/listing';
 import { listUnitsForManage, updateUnit, createUnit, deleteUnit, getUnitById, updateUnitFull } from '@/lib/api/units';
 import { useAuth } from '@/contexts/AuthContext';
 import NewListingForm, { type NewListingFormPayload } from '@/components/NewListingForms';
+import AssignAgentsModal from '@/components/AssignAgentsModal';
 
 const ManageUnits: React.FC = () => {
   const router = useRouter();
@@ -33,6 +34,8 @@ const ManageUnits: React.FC = () => {
   const [showNewListing, setShowNewListing] = useState(false);
   const [unitToEdit, setUnitToEdit] = useState<Listing | null>(null);
   const [isLoadingEdit, setIsLoadingEdit] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [unitToAssign, setUnitToAssign] = useState<Listing | null>(null);
 
   const fetchUnits = useCallback(async () => {
     if (!canAccess) return;
@@ -196,7 +199,7 @@ const ManageUnits: React.FC = () => {
       setUnits(prevUnits =>
         prevUnits.map(unit =>
           unit.id === unitId
-            ? { ...unit, is_available: result.is_available, updated_at: result.updated_at }
+            ? { ...unit, is_available: result.is_available ?? newStatus === 'available', updated_at: result.updated_at }
             : unit
         )
       );
@@ -220,7 +223,7 @@ const ManageUnits: React.FC = () => {
       setUnits(prevUnits =>
         prevUnits.map(unit =>
           unit.id === unitId
-            ? { ...unit, is_featured: result.is_featured, updated_at: result.updated_at }
+            ? { ...unit, is_featured: result.is_featured ?? newFeatured, updated_at: result.updated_at }
             : unit
         )
       );
@@ -764,23 +767,42 @@ const ManageUnits: React.FC = () => {
                                 </td>
 
                                 <td className="px-3 py-2.5 align-middle">
-                                  <button
-                                    onClick={() => router.push(`/unit-calendar/${unit.id}`)}
-                                    className="inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors border cursor-pointer"
-                                    style={{
-                                      borderColor: '#558B8B',
-                                      color: '#558B8B',
-                                      fontFamily: 'Poppins'
-                                    }}
-                                    aria-label="View availability"
-                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F6D658'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                  >
-                                    <span>View</span>
-                                    <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => router.push(`/unit-calendar/${unit.id}`)}
+                                      className="inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors border cursor-pointer"
+                                      style={{
+                                        borderColor: '#558B8B',
+                                        color: '#558B8B',
+                                        fontFamily: 'Poppins'
+                                      }}
+                                      aria-label="View availability"
+                                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F6D658'; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                    >
+                                      <span>View</span>
+                                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={() => { setUnitToAssign(unit); setShowAssignModal(true); }}
+                                      className="inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors border cursor-pointer"
+                                      style={{
+                                        borderColor: '#558B8B',
+                                        color: '#558B8B',
+                                        fontFamily: 'Poppins'
+                                      }}
+                                      aria-label="Assign agents"
+                                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F6D658'; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                    >
+                                      <span>Assign</span>
+                                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </td>
 
                                 <td className="px-3 py-2.5 align-middle hidden md:table-cell">
@@ -1050,7 +1072,7 @@ const ManageUnits: React.FC = () => {
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1066,6 +1088,23 @@ const ManageUnits: React.FC = () => {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                 </svg>
                                 View Slots
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUnitToAssign(unit);
+                                  setShowAssignModal(true);
+                                }}
+                                className="flex items-center px-3 py-2 rounded text-xs font-medium transition-colors hover:opacity-90 cursor-pointer border border-[#558B8B]"
+                                style={{
+                                  color: '#558B8B',
+                                  fontFamily: 'Poppins'
+                                }}
+                              >
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                </svg>
+                                Assign
                               </button>
                               
                               <div className="flex items-center space-x-1">
@@ -1191,6 +1230,22 @@ const ManageUnits: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {unitToAssign && (
+        <AssignAgentsModal
+          isOpen={showAssignModal}
+          onClose={() => { setShowAssignModal(false); setUnitToAssign(null); }}
+          unitId={unitToAssign.id}
+          unitTitle={unitToAssign.title}
+          assignedAgents={unitToAssign.assigned_agents || []}
+          onSaved={(agents) => {
+            setUnits(prev => prev.map(u =>
+              u.id === unitToAssign.id ? { ...u, assigned_agents: agents } : u
+            ));
+            showToast('Agents updated.');
+          }}
+        />
       )}
 
       {hoveredText && (

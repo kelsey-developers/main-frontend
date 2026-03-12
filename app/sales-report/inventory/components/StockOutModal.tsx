@@ -1043,10 +1043,12 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
+    window.addEventListener('inventory:dataset-updated', refresh);
     window.addEventListener('focus', refresh);
 
     return () => {
       window.removeEventListener('inventory:movement-updated', refresh);
+      window.removeEventListener('inventory:dataset-updated', refresh);
       window.removeEventListener('focus', refresh);
     };
   }, []);

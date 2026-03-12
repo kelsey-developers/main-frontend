@@ -27,6 +27,7 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'GET' && endpoint.startsWith('/api/units/manage')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/bookings/my')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/agents/me/')) return true;
+  if (method === 'GET' && endpoint.startsWith('/api/agents/list')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/market/bookings/my')) return true;
   if (method === 'PATCH' && endpoint.startsWith('/api/units/')) return true;
   // Allow dev-auth for charge types while there's no real login flow.

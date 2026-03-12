@@ -137,7 +137,7 @@ function BecomeAnAgentContent() {
       if (form.feeProofFile) {
         fd.append('feeProof', form.feeProofFile);
       }
-      const res = await fetch('/api/agent-registration', {
+      const res = await fetch('/api/agents/register', {
         method: 'POST',
         body: fd,
         credentials: 'same-origin',

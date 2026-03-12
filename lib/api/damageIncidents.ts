@@ -101,7 +101,9 @@ export interface DamageAttachment {
 }
 
 function extractList<T>(res: unknown, keys: string[]): T[] {
-  if (!res || typeof res !== 'object') return [];
+  if (res == null) return [];
+  if (Array.isArray(res)) return res as T[];
+  if (typeof res !== 'object') return [];
   const obj = res as Record<string, unknown>;
   for (const key of keys) {
     const val = obj[key];

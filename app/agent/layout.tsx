@@ -75,13 +75,19 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   const [profileImageError, setProfileImageError] = useState(false);
   const { userProfile, user, userRole, roleLoading, isAgent } = useAuth();
 
+  const RESERVED_AGENT_SEGMENTS = ['profile', 'commissions', 'payouts', 'network'];
+  const pathSegments = pathname.split('/').filter(Boolean);
+  const secondSegment = pathSegments[1];
+  const isPublicProfileView = secondSegment && !RESERVED_AGENT_SEGMENTS.includes(secondSegment);
+
   useEffect(() => {
     if (roleLoading) return;
+    if (isPublicProfileView) return;
     if (!user) return;
     if (!isAgent) {
       router.replace('/home');
     }
-  }, [user, isAgent, roleLoading, router]);
+  }, [user, isAgent, roleLoading, router, isPublicProfileView]);
 
   const displayName = userProfile?.fullname || user?.email?.split('@')[0] || 'Agent';
   const initials = getInitials(userProfile?.fullname, user?.email);
@@ -90,7 +96,7 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   const isActive = (href: string) =>
     href === '/agent' ? pathname === '/agent' : pathname.startsWith(href);
 
-  const canAccess = user && (roleLoading || isAgent);
+  const canAccess = isPublicProfileView || (user && (roleLoading || isAgent));
   if (!canAccess) {
     return (
       <div className={`${LAYOUT_NAVBAR_OFFSET} min-h-screen flex items-center justify-center bg-gray-50`}>
@@ -102,7 +108,8 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
   return (
     <div className={`${LAYOUT_NAVBAR_OFFSET} min-h-screen bg-gray-50 font-poppins`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
+        {!isPublicProfileView && (
+          <>
         {/* Mobile top bar */}
         <div className="lg:hidden flex items-center justify-between py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
@@ -173,7 +180,9 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
           </div>
         )}
 
-        <div className="flex flex-col lg:flex-row gap-8 py-8">
+        <div className={`flex flex-col gap-8 py-8 ${isPublicProfileView ? '' : 'lg:flex-row'}`}>
+          {!isPublicProfileView && (
+          <>
           {/* Desktop Sidebar */}
           <aside className="hidden lg:flex flex-col w-64 shrink-0">
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden sticky top-28">
@@ -240,12 +249,20 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
               </div>
             </div>
           </aside>
-
+          </>
+          )}
           {/* Main content */}
           <main className="flex-1 min-w-0">
             {children}
           </main>
         </div>
+          </>
+        )}
+        {isPublicProfileView && (
+          <main className="py-8">
+            {children}
+          </main>
+        )}
       </div>
     </div>
   );

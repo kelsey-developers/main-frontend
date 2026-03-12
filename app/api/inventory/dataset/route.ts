@@ -19,12 +19,14 @@ type InventoryDataset = {
   stockMovements: unknown[];
   damageAdjustments: unknown[];
   replenishmentItems: unknown[];
+  units: unknown[];
+  unitItems: unknown[];
+  unitStockMovements: unknown[];
   dashboardSummary: {
     totalItems: number;
     totalStocks: number;
     lowStockCount: number;
     replenishmentNeeded: number;
-    // Allow extra properties from backend without failing the type
     [key: string]: unknown;
   };
 };
@@ -39,6 +41,9 @@ const emptyDataset: InventoryDataset = {
   stockMovements: [],
   damageAdjustments: [],
   replenishmentItems: [],
+  units: [],
+  unitItems: [],
+  unitStockMovements: [],
   dashboardSummary: {
     totalItems: 0,
     totalStocks: 0,
@@ -60,6 +65,9 @@ function ensureDatasetShape(raw: unknown): typeof emptyDataset {
       stockMovements: Array.isArray(o.stockMovements) ? o.stockMovements : emptyDataset.stockMovements,
       damageAdjustments: Array.isArray(o.damageAdjustments) ? o.damageAdjustments : emptyDataset.damageAdjustments,
       replenishmentItems: Array.isArray(o.replenishmentItems) ? o.replenishmentItems : emptyDataset.replenishmentItems,
+      units: Array.isArray(o.units) ? o.units : emptyDataset.units,
+      unitItems: Array.isArray(o.unitItems) ? o.unitItems : emptyDataset.unitItems,
+      unitStockMovements: Array.isArray(o.unitStockMovements) ? o.unitStockMovements : emptyDataset.unitStockMovements,
       dashboardSummary:
         o.dashboardSummary != null && typeof o.dashboardSummary === 'object' && !Array.isArray(o.dashboardSummary)
           ? { ...emptyDataset.dashboardSummary, ...(o.dashboardSummary as Record<string, unknown>) }
