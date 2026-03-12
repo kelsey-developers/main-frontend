@@ -63,41 +63,41 @@ export default function CompletionModal({ checkedCount, totalCount, checklistIte
 
   const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-gray-900/50 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-900/50 animate-fade-in"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="bg-white w-full max-w-md rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 overflow-hidden animate-fade-in-up"
+        className="bg-white w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 overflow-hidden animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-[#0B5858]">
-          <div>
-            <h2 className="text-lg font-bold text-white">Mark Job as Done</h2>
-            <p className="text-xs text-white/70 mt-0.5">Add your completion notes and photo proof</p>
+        {/* Header — plain white to match design system */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-4 border-b border-gray-100 bg-white shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-gray-900" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>Mark Job as Done</h2>
+            <p className="text-xs text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>Add your completion notes and photo proof</p>
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-lg cursor-pointer">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button type="button" onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg cursor-pointer shrink-0" aria-label="Close">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 min-h-0">
 
-          {/* Checklist status */}
-          <div className={`rounded-xl px-4 py-3 border ${pct === 100 ? 'bg-[#0B5858]/5 border-[#0B5858]/10' : 'bg-[#FACC15]/10 border-[#FACC15]/20'}`}>
-            <div className="flex items-center justify-between mb-1.5">
-              <p className={`text-xs font-bold ${pct === 100 ? 'text-[#0B5858]' : 'text-[#0B5858]'}`}>
+          {/* Checklist card — same as job detail: teal bg, white text, yellow progress bar */}
+          <div className="rounded-2xl p-4 sm:p-5 bg-[#0B5858] shadow-[0_10px_30px_-5px_rgba(0,0,0,0.15)]">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-sm font-bold text-white" style={{ fontFamily: 'Poppins' }}>
                 Checklist: {checkedCount}/{totalCount} complete
               </p>
-              <span className={`text-xs font-bold ${pct === 100 ? 'text-[#0B5858]' : 'text-[#0B5858]'}`}>{pct}%</span>
+              <span className="text-xs text-white/80 tabular-nums shrink-0" style={{ fontFamily: 'Poppins' }}>{pct}%</span>
             </div>
-            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full ${pct === 100 ? 'bg-[#0B5858]' : 'bg-[#FACC15]'}`} style={{ width: `${pct}%` }} />
+            <div className="w-full h-2 sm:h-1.5 rounded-full overflow-hidden bg-white/20">
+              <div className="h-full rounded-full bg-[#FACC15] transition-[width] duration-500 ease-out" style={{ width: `${pct}%`, boxShadow: 'inset 0 0 12px rgba(250, 204, 21, 0.4)' }} />
             </div>
             {uncheckedCount > 0 && (
-              <p className="text-[11px] text-gray-500 mt-1.5">{uncheckedCount} item{uncheckedCount > 1 ? 's' : ''} unchecked — note any issues in your completion notes.</p>
+              <p className="text-[11px] text-white/70 mt-2" style={{ fontFamily: 'Poppins' }}>{uncheckedCount} item{uncheckedCount > 1 ? 's' : ''} unchecked — note any issues in your completion notes.</p>
             )}
           </div>
 
@@ -121,7 +121,7 @@ export default function CompletionModal({ checkedCount, totalCount, checklistIte
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Photo Proof <span className="text-gray-400 font-normal">(optional — up to 3)</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {photoSlots.map((slot, idx) => (
                 <div key={idx} className="aspect-square rounded-xl overflow-hidden border-2 border-dashed border-gray-200 relative">
                   {slot ? (
@@ -159,10 +159,10 @@ export default function CompletionModal({ checkedCount, totalCount, checklistIte
 
           {/* Actions */}
           <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">
+            <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer" style={{ fontFamily: 'Poppins' }}>
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d7a7a] transition-colors cursor-pointer disabled:opacity-50">
+            <button type="submit" disabled={submitting} className="flex-1 py-3 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer disabled:opacity-50" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>
               {submitting ? 'Submitting…' : 'Submit Completion'}
             </button>
           </div>
