@@ -241,7 +241,7 @@ export default function ScheduleJobModal({ prefillDate, prefillPropertyId, prefi
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer disabled:opacity-50" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>
+            <button type="submit" disabled={submitting} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#094848] transition-colors cursor-pointer disabled:opacity-50" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>
               {submitting ? 'Scheduling…' : 'Schedule Job'}
             </button>
           </div>

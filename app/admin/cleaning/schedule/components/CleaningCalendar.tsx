@@ -88,7 +88,7 @@ export default function CleaningCalendar({ jobs, currentMonth, onDayClick, onAdd
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onAddJob(date); }}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-[#0B5858] text-white flex items-center justify-center shrink-0 cursor-pointer"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-full bg-[#0B5858] hover:bg-[#094848] text-white flex items-center justify-center shrink-0 cursor-pointer"
                 >
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />

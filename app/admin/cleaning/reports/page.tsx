@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -9,6 +10,146 @@ import {
 import { getCleaningReport, getCleanerPerformance } from '@/services/cleaningService';
 import { JOB_TYPE_CONFIG } from '@/types/cleaning';
 import type { CleaningReport, CleanerPerformance } from '@/types/cleaning';
+
+/** Dropdown — same as admin/commissions: rounded-2xl, shadow, click-outside close */
+function CustomDropdown({
+  value,
+  onChange,
+  options,
+  className = '',
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between gap-3 pl-4 pr-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <svg className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 top-full left-0 mt-2 w-full min-w-[140px] bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => { onChange(option.value); setTimeout(() => setIsOpen(false), 150); }}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                value === option.value ? 'bg-[#0B5858]/10 text-[#0B5858]' : 'text-gray-600 hover:bg-gray-50 hover:text-[#0B5858] active:bg-[#0B5858]/5'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Export modal — design-system: format CSV/PDF, Export Now */
+function ExportModal({
+  onClose,
+  onExport,
+}: {
+  onClose: () => void;
+  onExport: (format: 'csv' | 'pdf') => void;
+}) {
+  const [format, setFormat] = useState<'csv' | 'pdf'>('csv');
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  const modal = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in bg-gray-900/40" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl w-full max-w-sm shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 overflow-hidden animate-fade-in-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h3 className="text-lg font-bold text-gray-900 tracking-tight">Export Report</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-5 space-y-5">
+          <div>
+            <label className="block text-sm font-bold text-gray-900 mb-2.5">Format</label>
+            <div className="grid grid-cols-2 gap-3">
+              {(['csv', 'pdf'] as const).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFormat(f)}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border-2 transition-all cursor-pointer ${
+                    format === f ? 'border-[#0B5858] bg-[#0B5858]/5 text-[#0B5858]' : 'border-gray-100 bg-white text-gray-500 hover:border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {f === 'csv' ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    )}
+                  </svg>
+                  <span className="text-sm font-bold uppercase tracking-wider">{f}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="p-5 border-t border-gray-100 bg-gray-50/50 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2.5 px-4 rounded-xl border border-gray-200 text-gray-700 text-sm font-bold hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => { onExport(format); onClose(); }}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-[#0B5858] text-white text-sm font-bold hover:bg-[#094848] hover:shadow-lg hover:shadow-[#0B5858]/20 transition-all active:scale-[0.98] cursor-pointer"
+          >
+            Export Now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modal, document.body);
+}
 
 const PERIODS = ['2026-03', '2026-02'];
 
@@ -44,6 +185,7 @@ export default function CleaningReportsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('completedJobs');
   const [sortAsc, setSortAsc] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -188,6 +330,11 @@ export default function CleaningReportsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExport = (format: 'csv' | 'pdf') => {
+    if (format === 'csv') exportCSV();
+    else exportPDF();
+  };
+
   const SortIcon = ({ k }: { k: SortKey }) => {
     if (sortKey !== k) return <span className="text-gray-300 ml-1">↕</span>;
     return <span className="text-[#0B5858] ml-1">{sortAsc ? '↑' : '↓'}</span>;
@@ -225,67 +372,52 @@ export default function CleaningReportsPage() {
           </Link>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>Cleaning Reports</h1>
         </div>
-        <div className="flex gap-2 items-center flex-wrap">
-          {/* Period picker */}
-          <select
+        <div className="flex gap-3 items-center flex-wrap">
+          <CustomDropdown
             value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] text-gray-700 cursor-pointer bg-white"
-          >
-            {PERIODS.map((p) => {
+            onChange={setPeriod}
+            options={PERIODS.map((p) => {
               const [y, m] = p.split('-');
               const label = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
-              return <option key={p} value={p}>{label}</option>;
+              return { value: p, label };
             })}
-          </select>
-          {/* Export CSV */}
+            className="min-w-[160px]"
+          />
           <button
             type="button"
-            onClick={exportCSV}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer bg-white shadow-sm"
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-2 px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm cursor-pointer"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg className="w-4 h-4 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
             </svg>
-            Export CSV
-          </button>
-          {/* Export PDF */}
-          <button
-            type="button"
-            onClick={exportPDF}
-            disabled={exporting}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d7a7a] transition-colors cursor-pointer shadow-sm shadow-[#0B5858]/20 disabled:opacity-50"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            {exporting ? 'Generating…' : 'Export PDF'}
+            Export
           </button>
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Total Jobs</p>
-          <p className="text-3xl font-bold text-gray-900">{report.totalJobs}</p>
+      {/* Summary cards — same style as overview (rounded-3xl, no icon) */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-5">
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Total Jobs</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{report.totalJobs}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Completed</p>
-          <p className="text-3xl font-bold text-emerald-600">{report.completedJobs}</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Completed</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{report.completedJobs}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Completion Rate</p>
-          <p className="text-3xl font-bold text-[#0B5858]">{completionRate}%</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Completion Rate</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{completionRate}%</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cancelled</p>
-          <p className="text-3xl font-bold text-red-500">{report.cancelledJobs}</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cancelled</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{report.cancelledJobs}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Avg Duration</p>
-          <p className="text-3xl font-bold text-gray-900">{fmtDuration(report.averageDuration)}</p>
-          <p className="text-xs text-gray-400 mt-1">Top: {report.topCleaner}</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Avg Duration</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmtDuration(report.averageDuration)}</p>
+          <p className="text-xs font-medium text-gray-400 mt-2">Top: {report.topCleaner}</p>
         </div>
       </div>
 
@@ -465,6 +597,13 @@ export default function CleaningReportsPage() {
           </tbody>
         </table>
       </div>
+
+      {showExportModal && (
+        <ExportModal
+          onClose={() => setShowExportModal(false)}
+          onExport={handleExport}
+        />
+      )}
     </div>
   );
 }

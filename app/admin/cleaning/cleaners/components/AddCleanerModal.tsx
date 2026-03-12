@@ -171,7 +171,7 @@ export default function AddCleanerModal({ onClose, onCreated }: Props) {
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer disabled:opacity-50"
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#094848] transition-colors cursor-pointer disabled:opacity-50"
               style={{ fontFamily: 'Poppins', fontWeight: 600 }}
             >
               {loading ? 'Adding…' : 'Add Cleaner'}
