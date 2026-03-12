@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams } from 'next/navigation';
-import Navbar from '../../../components/Navbar';
-import Footer from '../../../components/Footer';
 import { getBookingById } from '@/lib/api/bookings';
 
 interface BookingDetails {
@@ -110,14 +108,12 @@ function BookingDetailsContent() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
         <div className="pt-20 pb-8 flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="inline-block w-10 h-10 border-4 border-gray-200 border-t-[#0B5858] rounded-full animate-spin" />
             <p className="mt-3 text-sm text-gray-600" style={{ fontFamily: 'Poppins' }}>Loading booking...</p>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -127,7 +123,6 @@ function BookingDetailsContent() {
     const isNotFound = error?.status === 404;
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <Navbar />
         <div className="pt-20 pb-8 flex-1 flex items-center justify-center px-4">
           <div className="max-w-md w-full bg-white border border-gray-200 rounded-lg p-8 text-center">
             <div className="flex justify-center mb-4">
@@ -156,7 +151,6 @@ function BookingDetailsContent() {
             </button>
           </div>
         </div>
-        <Footer />
       </div>
     );
   }
@@ -236,8 +230,6 @@ function BookingDetailsContent() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navbar />
-      
       <div className="pt-20 pb-8 flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header */}
@@ -675,8 +667,6 @@ function BookingDetailsContent() {
           </div>
         </div>
       </div>
-
-      <Footer />
     </div>
   );
 }

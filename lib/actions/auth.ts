@@ -20,7 +20,8 @@ const COOKIE_OPTS = {
 
 export async function loginAction(
   email: string,
-  password: string
+  password: string,
+  redirectTo?: string
 ): Promise<{ error?: string }> {
   try {
     const { accessToken } = await loginApi(email, password);
@@ -30,7 +31,7 @@ export async function loginAction(
     jar.set('accessToken', accessToken, COOKIE_OPTS);
     jar.set('user', JSON.stringify(user), COOKIE_OPTS);
 
-    redirect('/');
+    redirect(redirectTo ?? '/');
   } catch (err) {
     if (isRedirectError(err)) throw err;
     const message =

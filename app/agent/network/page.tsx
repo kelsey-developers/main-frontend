@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { getReferralTree, getReferralStats } from '@/services/referralTreeService';
-import type { ReferralNode, ReferralStats } from '@/types/referralTree';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAgentNetwork } from '@/lib/api/agents';
+import type { ReferralNode } from '@/types/referralTree';
 import ReferralTreeNode from './components/ReferralTreeNode';
 
-const AGENT_ID = 'agent-001';
-const DOMAIN = 'kelseyshomestay.com';
+const getBaseUrl = () => (typeof window !== 'undefined' ? window.location.origin : 'https://kelseyshomestay.com');
 const QR_SIZE = 160;
 
 function generateQRSVG(url: string, size: number): string {
@@ -38,30 +38,37 @@ function generateQRSVG(url: string, size: number): string {
 }
 
 export default function AgentNetworkPage() {
+  const { user } = useAuth();
   const [tree, setTree] = useState<ReferralNode | null>(null);
-  const [stats, setStats] = useState<ReferralStats | null>(null);
+  const [stats, setStats] = useState<{ totalSubAgents: number; activeSubAgents: number; networkBookings: number; totalNetworkCommissions: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const recruitLink = `https://${DOMAIN}/become-an-agent?recruitedBy=${AGENT_ID}`;
+  const userId = user?.id ?? '';
+  const recruitLink = `${getBaseUrl()}/become-an-agent?recruitedBy=${userId}`;
   const qrSvg = useMemo(() => generateQRSVG(recruitLink, QR_SIZE), [recruitLink]);
 
   useEffect(() => {
     let isMounted = true;
-    Promise.all([
-      getReferralTree(AGENT_ID),
-      getReferralStats(AGENT_ID),
-    ]).then(([t, s]) => {
-      if (!isMounted) return;
-      setTree(t);
-      setStats(s);
-      setLoading(false);
-    });
+    getAgentNetwork()
+      .then(({ tree: t, stats: s }) => {
+        if (!isMounted) return;
+        setTree(t);
+        setStats(s);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setTree(null);
+        setStats(null);
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
     return () => {
       isMounted = false;
     };
-  }, [recruitLink]);
+  }, []);
 
   const handleCopy = async () => {
     try { await navigator.clipboard.writeText(recruitLink); } catch {}
@@ -113,8 +120,8 @@ export default function AgentNetworkPage() {
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
           {[
-            { label: 'Total Sub-Agents', value: stats.totalSubAgents, sub: 'All levels' },
-            { label: 'Active',           value: stats.activeSubAgents, sub: 'Currently active' },
+            { label: 'All levels', value: stats.totalSubAgents, sub: 'Sub-agents in network' },
+            { label: 'Active', value: stats.activeSubAgents, sub: 'Currently active' },
             { label: 'Network Bookings', value: stats.networkBookings, sub: 'Through your network' },
             { label: 'Network Earnings', value: `₱${stats.totalNetworkCommissions.toLocaleString()}`, sub: 'Total commissions' },
           ].map((s) => (
