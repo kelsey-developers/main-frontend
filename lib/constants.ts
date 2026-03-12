@@ -9,6 +9,16 @@
  */
 export const LAYOUT_NAVBAR_OFFSET = 'pt-16';
 
+/** Navbar height in px for sticky offsets (e.g. progress card top). Matches h-16 = 4rem = 64px. */
+export const NAVBAR_HEIGHT_PX = 64;
+
+/** Z-index stack for cleaning job detail: Navbar above progress, progress above checklist, footer above content. */
+export const CLEANING_JOB_Z = {
+  navbar: 50,
+  progressCard: 30,
+  stickyFooter: 40,
+} as const;
+
 export const BRAND = {
   teal: '#0B5858',
   tealHover: '#0d9488',
