@@ -19,7 +19,7 @@ interface ImageUploadProps {
 const ImageUpload: React.FC<ImageUploadProps> = ({
   onImagesUploaded,
   maxFiles = 10,
-  disabled = false
+  disabled = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -41,42 +41,73 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     e.preventDefault();
     setIsDragging(false);
     if (disabled) return;
-    const files = Array.from(e.dataTransfer.files);
-    handleFiles(files);
+    handleFiles(Array.from(e.dataTransfer.files));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      handleFiles(Array.from(e.target.files));
-    }
+    if (e.target.files) handleFiles(Array.from(e.target.files));
+    // Reset so the same file can be re-selected after removal
+    e.target.value = '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleFiles = useCallback((files: File[]) => {
+  const handleFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
-    if (files.length > maxFiles) {
+
+    const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      setError('Only image files are accepted (JPEG, PNG, WebP, GIF).');
+      return;
+    }
+    if (imageFiles.length > maxFiles) {
       setError(`You can only upload up to ${maxFiles} images at once.`);
       return;
     }
+
     setError(null);
     setIsUploading(true);
-    const uploaded: UploadedImage[] = [];
-    files.forEach((file, i) => {
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${i}`;
-      uploaded.push({
-        id,
-        url: URL.createObjectURL(file),
-        name: file.name,
-        size: file.size,
-        created_at: new Date().toISOString()
+    setUploadProgress(10);
+
+    try {
+      const formData = new FormData();
+      imageFiles.forEach((f) => formData.append('images', f));
+
+      setUploadProgress(40);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
       });
-      setUploadProgress(((i + 1) / files.length) * 100);
-    });
-    if (uploaded.length > 0) {
+
+      setUploadProgress(80);
+
+      const json = await res.json() as { urls?: string[]; error?: string };
+
+      if (!res.ok) {
+        throw new Error(json.error || `Upload failed (${res.status})`);
+      }
+
+      const urls: string[] = json.urls ?? [];
+      const uploaded: UploadedImage[] = urls.map((url, i) => ({
+        id: typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `img-${Date.now()}-${i}`,
+        url,
+        name: imageFiles[i]?.name ?? `image-${i + 1}`,
+        size: imageFiles[i]?.size ?? 0,
+        created_at: new Date().toISOString(),
+      }));
+
+      setUploadProgress(100);
       onImagesUploaded(uploaded);
-      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
     }
-    setIsUploading(false);
-    setUploadProgress(0);
   }, [maxFiles, onImagesUploaded]);
 
   const openFileDialog = () => {
@@ -87,12 +118,12 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
     <div className="w-full">
       <div
         className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          isDragging ? 'border-[#0B5858] bg-[#f0fafa]' : 'border-gray-300 hover:border-gray-400'
+        } ${disabled || isUploading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={openFileDialog}
+        onClick={isUploading ? undefined : openFileDialog}
       >
         <input
           ref={fileInputRef}
@@ -101,19 +132,27 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
           accept="image/*"
           onChange={handleFileSelect}
           className="hidden"
-          disabled={disabled}
+          disabled={disabled || isUploading}
         />
+
         {isUploading ? (
           <div className="space-y-4">
             <div className="w-12 h-12 mx-auto">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0B5858]" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>Adding images...</p>
+              <p className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>
+                Uploading images…
+              </p>
               <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                <div
+                  className="h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%`, backgroundColor: '#0B5858' }}
+                />
               </div>
-              <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>{Math.round(uploadProgress)}% complete</p>
+              <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>
+                {Math.round(uploadProgress)}%
+              </p>
             </div>
           </div>
         ) : (
@@ -124,13 +163,20 @@ const ImageUpload: React.FC<ImageUploadProps> = ({
               </svg>
             </div>
             <div>
-              <p className="text-lg font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>{isDragging ? 'Drop images here' : 'Upload Property Images'}</p>
-              <p className="text-sm text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>Drag and drop images here, or click to select files</p>
-              <p className="text-xs text-gray-400 mt-2" style={{ fontFamily: 'Poppins' }}>Supports JPEG, PNG, WebP (max {maxFiles} files)</p>
+              <p className="text-lg font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>
+                {isDragging ? 'Drop images here' : 'Upload Property Images'}
+              </p>
+              <p className="text-sm text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>
+                Drag and drop images here, or click to select files
+              </p>
+              <p className="text-xs text-gray-400 mt-2" style={{ fontFamily: 'Poppins' }}>
+                Supports JPEG, PNG, WebP · Max {maxFiles} files · 10 MB each
+              </p>
             </div>
           </div>
         )}
       </div>
+
       {error && (
         <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
           <p className="text-sm text-red-600" style={{ fontFamily: 'Poppins' }}>{error}</p>

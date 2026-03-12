@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Listing } from '@/types/listing';
-import { listUnitsForManage, updateUnit } from '@/lib/api/units';
+import { listUnitsForManage, updateUnit, createUnit } from '@/lib/api/units';
 import { useAuth } from '@/contexts/AuthContext';
 import NewListingForm, { type NewListingFormPayload } from '@/components/NewListingForms';
 
@@ -102,9 +102,14 @@ const ManageUnits: React.FC = () => {
   };
 
   const handleCreateListing = async (data: NewListingFormPayload) => {
-    console.info('New listing payload (UI only):', data);
-    showToast('Create listing is not yet wired to the backend.');
-    setShowNewListing(false);
+    try {
+      const created = await createUnit(data);
+      setUnits(prev => [created, ...prev]);
+      setShowNewListing(false);
+      showToast('Listing created successfully!');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to create listing.');
+    }
   };
 
   const getCapacityText = (bedrooms: number) => {

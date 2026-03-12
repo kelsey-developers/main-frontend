@@ -45,6 +45,9 @@ export interface NewListingFormPayload {
   bathrooms: number;
   square_feet?: number;
   property_type: string;
+  min_pax: number;
+  max_capacity: number;
+  excess_pax_fee: number;
   main_image_url?: string;
   image_urls?: string[];
   amenities?: string[];
@@ -97,6 +100,9 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
     bathrooms: '',
     square_feet: '',
     property_type: 'apartment',
+    min_pax: '1',
+    max_capacity: '2',
+    excess_pax_fee: '0',
     main_image_url: '',
     image_urls: [] as string[],
     amenities: [] as string[],
@@ -151,6 +157,9 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         bathrooms: (initialListing.bathrooms ?? '').toString(),
         square_feet: (initialListing.square_feet ?? '').toString(),
         property_type: initialListing.property_type || 'apartment',
+        min_pax: '1',
+        max_capacity: '2',
+        excess_pax_fee: '0',
         main_image_url: initialListing.main_image_url || '',
         image_urls: initialListing.image_urls || [],
         amenities: initialListing.amenities || [],
@@ -345,6 +354,9 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         bathrooms: parseInt(formData.bathrooms) || 0,
         square_feet: formData.square_feet ? parseInt(formData.square_feet) : undefined,
         property_type: formData.property_type,
+        min_pax: parseInt(formData.min_pax) || 1,
+        max_capacity: parseInt(formData.max_capacity) || 2,
+        excess_pax_fee: parseFloat(formData.excess_pax_fee) || 0,
         main_image_url: formData.main_image_url || undefined,
         image_urls: allImageUrls.length > 0 ? allImageUrls : undefined,
         amenities: formData.amenities.length > 0 ? formData.amenities : undefined,
@@ -429,8 +441,25 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
           <input type="number" name="bathrooms" value={formData.bathrooms} onChange={handleInputChange} min={0} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="0" />
         </div>
         <div>
-          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Square Feet</label>
+          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Area (sqm)</label>
           <input type="number" name="square_feet" value={formData.square_feet} onChange={handleInputChange} min={0} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="0" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Min Guests <span style={{ color: '#B84C4C' }}>*</span></label>
+          <input type="number" name="min_pax" value={formData.min_pax} onChange={handleInputChange} min={1} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="1" />
+          <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>Minimum guests included in base price</p>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Max Capacity <span style={{ color: '#B84C4C' }}>*</span></label>
+          <input type="number" name="max_capacity" value={formData.max_capacity} onChange={handleInputChange} min={1} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="2" />
+          <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>Maximum total guests allowed</p>
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Extra Guest Fee (₱/night)</label>
+          <input type="number" name="excess_pax_fee" value={formData.excess_pax_fee} onChange={handleInputChange} min={0} step={0.01} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="0" />
+          <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>Fee per extra guest beyond min</p>
         </div>
       </div>
       <div>
