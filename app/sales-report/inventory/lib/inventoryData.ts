@@ -413,22 +413,56 @@ const buildWarehouseUnitAllocationMap = (): Record<string, WarehouseUnitAllocati
     mockReplenishmentItems.map((item) => [normalizeInventoryName(item.name), item])
   );
 
+  const latestMovementByUnitProduct = new Map<string, UnitStockMovementRow>();
+  for (const movement of mockUnitStockMovements) {
+    const key = `${movement.unitId}::${movement.productId}`;
+    const existing = latestMovementByUnitProduct.get(key);
+    if (!existing) {
+      latestMovementByUnitProduct.set(key, movement);
+      continue;
+    }
+    const existingTime = new Date(existing.recordedAt).getTime();
+    const nextTime = new Date(movement.recordedAt).getTime();
+    if (Number.isNaN(existingTime) || nextTime >= existingTime) {
+      latestMovementByUnitProduct.set(key, movement);
+    }
+  }
+
   const byWarehouse = new Map<string, Map<string, WarehouseUnitAllocationSummary>>();
 
   mockUnitItems.forEach((unitItem) => {
     if (!unitItem.assignedToUnit || unitItem.currentStock <= 0) return;
 
     const replenishmentItem = replenishmentByName.get(normalizeInventoryName(unitItem.name));
-    if (!replenishmentItem) return;
-
     const unit = inventoryUnitsState.find((entry) => entry.id === unitItem.assignedToUnit);
     if (!unit) return;
 
-    if (!byWarehouse.has(replenishmentItem.warehouseId)) {
-      byWarehouse.set(replenishmentItem.warehouseId, new Map<string, WarehouseUnitAllocationSummary>());
+    const maybeProductId = (unitItem as InventoryItem & { productId?: string }).productId;
+    const movementByProduct = maybeProductId
+      ? latestMovementByUnitProduct.get(`${unit.id}::${maybeProductId}`)
+      : undefined;
+    const movementByName = !movementByProduct
+      ? mockUnitStockMovements
+          .filter(
+            (movement) =>
+              movement.unitId === unit.id &&
+              normalizeInventoryName(movement.productName) === normalizeInventoryName(unitItem.name)
+          )
+          .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())[0]
+      : undefined;
+
+    const sourceWarehouseId =
+      movementByProduct?.sourceWarehouseId ||
+      movementByName?.sourceWarehouseId ||
+      replenishmentItem?.warehouseId ||
+      '';
+    if (!sourceWarehouseId) return;
+
+    if (!byWarehouse.has(sourceWarehouseId)) {
+      byWarehouse.set(sourceWarehouseId, new Map<string, WarehouseUnitAllocationSummary>());
     }
 
-    const byUnit = byWarehouse.get(replenishmentItem.warehouseId)!;
+    const byUnit = byWarehouse.get(sourceWarehouseId)!;
     if (!byUnit.has(unit.id)) {
       byUnit.set(unit.id, {
         unitId: unit.id,
@@ -438,13 +472,15 @@ const buildWarehouseUnitAllocationMap = (): Record<string, WarehouseUnitAllocati
     }
 
     const row = byUnit.get(unit.id)!;
-    const existing = row.items.find((entry) => entry.productId === replenishmentItem.id);
+    const productId = maybeProductId || replenishmentItem?.id || unitItem.id;
+    const productName = replenishmentItem?.name || unitItem.name;
+    const existing = row.items.find((entry) => entry.productId === productId);
     if (existing) {
       existing.quantity += unitItem.currentStock;
     } else {
       row.items.push({
-        productId: replenishmentItem.id,
-        productName: replenishmentItem.name,
+        productId,
+        productName,
         quantity: unitItem.currentStock,
       });
     }

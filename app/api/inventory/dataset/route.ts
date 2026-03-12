@@ -18,6 +18,9 @@ type InventoryDataset = {
   goodsReceipts: unknown[];
   stockMovements: unknown[];
   replenishmentItems: unknown[];
+  units?: unknown[];
+  unitItems?: unknown[];
+  unitStockMovements?: unknown[];
   dashboardSummary: {
     totalItems: number;
     totalStocks: number;
@@ -37,6 +40,9 @@ const emptyDataset: InventoryDataset = {
   goodsReceipts: [],
   stockMovements: [],
   replenishmentItems: [],
+  units: [],
+  unitItems: [],
+  unitStockMovements: [],
   dashboardSummary: {
     totalItems: 0,
     totalStocks: 0,
@@ -57,6 +63,9 @@ function ensureDatasetShape(raw: unknown): typeof emptyDataset {
       goodsReceipts: Array.isArray(o.goodsReceipts) ? o.goodsReceipts : emptyDataset.goodsReceipts,
       stockMovements: Array.isArray(o.stockMovements) ? o.stockMovements : emptyDataset.stockMovements,
       replenishmentItems: Array.isArray(o.replenishmentItems) ? o.replenishmentItems : emptyDataset.replenishmentItems,
+      units: Array.isArray(o.units) ? o.units : emptyDataset.units,
+      unitItems: Array.isArray(o.unitItems) ? o.unitItems : emptyDataset.unitItems,
+      unitStockMovements: Array.isArray(o.unitStockMovements) ? o.unitStockMovements : emptyDataset.unitStockMovements,
       dashboardSummary:
         o.dashboardSummary != null && typeof o.dashboardSummary === 'object' && !Array.isArray(o.dashboardSummary)
           ? { ...emptyDataset.dashboardSummary, ...(o.dashboardSummary as Record<string, unknown>) }

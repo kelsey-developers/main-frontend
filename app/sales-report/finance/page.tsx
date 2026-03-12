@@ -6,7 +6,7 @@ import FinanceDashboardLinks from './components/FinanceDashboardLinks';
 import FinanceSummaryCards from './components/FinanceSummaryCards';
 import SalesTrendChart from './components/SalesTrendChart';
 import RevenueByTypeChart from './components/RevenueByTypeChart';
-
+import { fetchFinanceBookings, fetchFinanceDamageIncidents } from './lib/financeDataService';
 import { filterBookingRows, filterDamageIncidents } from './lib/filters';
 import {
   buildSummary,
@@ -82,23 +82,38 @@ export default function SalesReportPage() {
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [filterEnabled, setFilterEnabled] = useState(false);
-  const [bookingRows, setBookingRows] = useState<BookingLinkedRow[]>([]);
-  const [damagePenalty, setDamagePenalty] = useState<DamagePenalty[]>([]);
+  const [bookings, setBookings] = useState<Awaited<ReturnType<typeof fetchFinanceBookings>>>([]);
+  const [damageIncidents, setDamageIncidents] =
+    useState<Awaited<ReturnType<typeof fetchFinanceDamageIncidents>>>([]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 350);
-    return () => clearTimeout(timer);
+    let mounted = true;
+    (async () => {
+      try {
+        const [bookingsData, damageData] = await Promise.all([
+          fetchFinanceBookings(),
+          fetchFinanceDamageIncidents(),
+        ]);
+        if (mounted) {
+          setBookings(bookingsData);
+          setDamageIncidents(damageData);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
 
   const filteredBookings = useMemo(
-    () => filterBookingRows(bookingRows, effectiveFilters),
-    [bookingRows, effectiveFilters],
+    () => filterBookingRows(bookings as BookingLinkedRow[], effectiveFilters),
+    [bookings, effectiveFilters],
   );
   const filteredDamage = useMemo(
-    () => filterDamageIncidents(damagePenalty, effectiveFilters),
-    [damagePenalty, effectiveFilters],
+    () => filterDamageIncidents(damageIncidents as DamagePenalty[], effectiveFilters),
+    [damageIncidents, effectiveFilters],
   );
 
   const summary: FinanceDashboardSummary = useMemo(

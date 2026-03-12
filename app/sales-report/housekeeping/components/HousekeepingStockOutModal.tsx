@@ -46,12 +46,6 @@ const REASONS_UN = [
   'Other',
 ];
 
-const BOOKINGS = [
-  { id: 'b1', code: 'BK-2025-001', guest: 'Juan dela Cruz', checkIn: 'Mar 08', checkOut: 'Mar 12', unit: 'Unit 101' },
-  { id: 'b2', code: 'BK-2025-002', guest: 'Maria Santos', checkIn: 'Mar 09', checkOut: 'Mar 11', unit: 'Unit 201' },
-  { id: 'b3', code: 'BK-2025-003', guest: 'Robert Kim', checkIn: 'Mar 10', checkOut: 'Mar 14', unit: 'Unit 301' },
-];
-
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '10px 12px',
@@ -307,6 +301,18 @@ interface UnitDraft {
   notes: string;
   items: LineItem[];
 }
+
+type BookingSummary = {
+  id: string;
+  code: string;
+  guest: string;
+  checkIn: string;
+  checkOut: string;
+  unit: string;
+};
+
+// TODO: Wire this up to real synced bookings when available.
+const BOOKINGS: BookingSummary[] = [];
 
 function UnitForm({ onDraftChange }: { onDraftChange: (draft: UnitDraft) => void }) {
   const authState = useMockAuth();
@@ -719,7 +725,15 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                 >
                   HOUSEKEEPING · UNIT / ROOM
                 </div>
-                <div style={{ color: C.white, fontWeight: 800, fontSize: 22, marginBottom: 3, fontFamily: 'Poppins' }}>
+                <div
+                  style={{
+                    color: C.white,
+                    fontWeight: 800,
+                    fontSize: 22,
+                    marginBottom: 3,
+                    fontFamily: 'Poppins',
+                  }}
+                >
                   Housekeeping Stock Out
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.68)', fontSize: 13, fontFamily: 'Poppins' }}>
@@ -754,14 +768,18 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
             <div className="p-6" style={{ fontFamily: 'Poppins' }}>
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg
+                    className="w-5 h-5 text-emerald-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-[16px] font-semibold text-gray-900">
-                    Stock out logged successfully
-                  </h2>
+                  <h2 className="text-[16px] font-semibold text-gray-900">Stock out logged successfully</h2>
                   <p className="text-[12px] text-gray-600 mt-0.5">
                     {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''} deducted from inventory
                   </p>
