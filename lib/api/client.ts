@@ -19,6 +19,8 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'GET' && endpoint.startsWith('/api/units/manage')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/bookings/my')) return true;
   if (method === 'PATCH' && endpoint.startsWith('/api/units/')) return true;
+  if (method === 'DELETE' && endpoint.startsWith('/api/units/')) return true;
+  if (method === 'PUT' && endpoint.startsWith('/api/units/')) return true;
   return false;
 }
 
@@ -238,4 +240,10 @@ export const apiClient = {
 
   patch: <T>(endpoint: string, body: unknown, options?: RequestOptions) =>
     request<T>(endpoint, { method: 'PATCH', body, ...options }),
+
+  put: <T>(endpoint: string, body: unknown, options?: RequestOptions) =>
+    request<T>(endpoint, { method: 'PUT', body, ...options }),
+
+  delete: <T>(endpoint: string, options?: RequestOptions) =>
+    request<T>(endpoint, { method: 'DELETE', ...options }),
 };

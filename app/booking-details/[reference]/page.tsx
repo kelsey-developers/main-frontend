@@ -13,9 +13,8 @@ interface BookingDetails {
   check_in_date: string;
   check_out_date: string;
   nights: number;
-  num_guests: number;
-  extra_guests: number;
-  extra_guest_charge?: number;
+  total_guests: number;
+  excess_pax_charge?: number;
   unit_charge: number;
   amenities_charge?: number;
   service_charge?: number;
@@ -306,7 +305,7 @@ function BookingDetailsContent() {
                         <path d="M6 22v-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path>
                         <path d="M18 22v-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path>
                       </svg>
-                      <span>{booking.num_guests} guest{booking.num_guests !== 1 ? 's' : ''}</span>
+                      <span>{booking.total_guests} guest{booking.total_guests !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
                 </div>
@@ -342,21 +341,16 @@ function BookingDetailsContent() {
                     <span>{formatCurrency(booking.unit_charge * booking.nights)}</span>
                   </div>
 
-                  {booking.extra_guests > 0 && (
+                  {(booking.excess_pax_charge ?? 0) > 0 && (
                     <div className="flex justify-between">
-                      <span>Extra guest charges ({booking.extra_guests})</span>
-                      <span>{formatCurrency(booking.extra_guest_charge || 0)}</span>
+                      <span>Excess guest charges (over capacity)</span>
+                      <span>{formatCurrency(booking.excess_pax_charge || 0)}</span>
                     </div>
                   )}
 
                   <div className="flex justify-between">
                     <span>Amenities / Additional Services</span>
                     <span>{formatCurrency(booking.amenities_charge || 0)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <span>Service Charges</span>
-                    <span>{formatCurrency(booking.service_charge || 0)}</span>
                   </div>
                   
                   <div className="flex justify-between">

@@ -65,7 +65,17 @@ export default function BookingTemporaryPage() {
 
   const baseGuests = useMemo(() => {
     if (!listing) return 2;
-    return Math.max(1, listing.bedrooms + 1);
+    return Math.max(1, listing.max_capacity ?? listing.min_pax ?? 2);
+  }, [listing]);
+
+  const maxCapacity = useMemo(() => {
+    if (!listing) return 2;
+    return Math.max(1, listing.max_capacity ?? listing.min_pax ?? 2);
+  }, [listing]);
+
+  const excessPaxFee = useMemo(() => {
+    if (!listing) return 250;
+    return Math.max(0, listing.excess_pax_fee ?? 250);
   }, [listing]);
 
   const handleCancel = () => {
@@ -124,7 +134,8 @@ export default function BookingTemporaryPage() {
           pricePerNight={listing.price}
           priceUnit={listing.price_unit}
           baseGuests={baseGuests}
-          extraGuestFeePerPerson={250}
+          maxCapacity={maxCapacity}
+          extraGuestFeePerPerson={excessPaxFee}
           requirePayment={requirePayment}
           onCancel={handleCancel}
           onBookingsReady={() => setBookingsReady(true)}

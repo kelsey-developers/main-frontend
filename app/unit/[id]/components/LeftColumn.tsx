@@ -26,6 +26,8 @@ const LeftColumn: React.FC<LeftColumnProps> = ({
 
   const extraImages = listing ? (listing.image_urls || []).filter((url) => url && url !== listing.main_image_url) : [];
   const allImages = listing ? [listing.main_image_url || '/avida.jpg', ...extraImages] : ['/avida.jpg'];
+  const displayImages = allImages.slice(0, 3);
+  const remainingCount = Math.max(0, allImages.length - 3);
 
   const handleOpenModal = (index: number) => {
     setCurrentImageIndex(index);
@@ -118,57 +120,66 @@ const LeftColumn: React.FC<LeftColumnProps> = ({
 
   return (
     <div>
-      {/* Image Gallery */}
+      {/* Image Gallery - max 3 photos; if more, show +N on last */}
       <div className="mb-1">
-        {extraImages.length >= 2 ? (
+        {displayImages.length === 1 ? (
+          <div className="h-75 w-full flex justify-center cursor-pointer relative" onClick={() => handleOpenModal(0)}>
+            <img
+              src={displayImages[0]}
+              className="h-full w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
+              style={{ aspectRatio: '16/9', maxHeight: '100%' }}
+              alt="main"
+            />
+            {remainingCount > 0 && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                <span className="text-white text-3xl font-bold" style={{ fontFamily: 'Poppins' }}>+{remainingCount}</span>
+              </div>
+            )}
+          </div>
+        ) : displayImages.length === 2 ? (
+          <div className="grid grid-cols-2 gap-3 h-75">
+            {displayImages.map((imageUrl, index) => (
+              <div key={index} className="h-full w-full cursor-pointer overflow-hidden flex items-center justify-center relative" onClick={() => handleOpenModal(index)}>
+                <img
+                  src={imageUrl}
+                  className="h-full w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
+                  style={{ aspectRatio: '16/9', maxHeight: '100%' }}
+                  alt={index === 0 ? 'main' : 'additional'}
+                />
+                {index === 1 && remainingCount > 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                    <span className="text-white text-2xl font-bold" style={{ fontFamily: 'Poppins' }}>+{remainingCount}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
           <div className="grid grid-cols-3 gap-3 h-75">
             <div className="col-span-2 h-full w-full cursor-pointer overflow-hidden" onClick={() => handleOpenModal(0)}>
               <img
-                src={listing.main_image_url || '/avida.jpg'}
+                src={displayImages[0]}
                 className="h-full w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
                 style={{ aspectRatio: '16/9', maxHeight: '100%' }}
                 alt="main"
               />
             </div>
             <div className="col-span-1 flex flex-col gap-3">
-              {extraImages.slice(0, 2).map((imageUrl, index) => (
-                <div key={index} className="cursor-pointer" onClick={() => handleOpenModal(index + 1)}>
+              {displayImages.slice(1, 3).map((imageUrl, index) => (
+                <div key={index} className="cursor-pointer relative flex-1 min-h-0" onClick={() => handleOpenModal(index + 1)}>
                   <img
                     src={imageUrl}
                     className="h-36 w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
                     alt={`additional ${index + 1}`}
                   />
+                  {index === displayImages.slice(1, 3).length - 1 && remainingCount > 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                      <span className="text-white text-xl font-bold" style={{ fontFamily: 'Poppins' }}>+{remainingCount}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
-        ) : extraImages.length === 1 ? (
-          <div className="grid grid-cols-2 gap-3 h-75">
-            <div className="col-span-1 h-full w-full cursor-pointer overflow-hidden flex items-center justify-center" onClick={() => handleOpenModal(0)}>
-              <img
-                src={listing.main_image_url || '/avida.jpg'}
-                className="h-full w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
-                style={{ aspectRatio: '16/9', maxHeight: '100%' }}
-                alt="main"
-              />
-            </div>
-            <div className="col-span-1 h-full w-full cursor-pointer overflow-hidden flex items-center justify-center" onClick={() => handleOpenModal(1)}>
-              <img
-                src={extraImages[0]}
-                className="h-full w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
-                style={{ aspectRatio: '16/9', maxHeight: '100%' }}
-                alt="additional"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="h-75 w-full flex justify-center cursor-pointer" onClick={() => handleOpenModal(0)}>
-            <img
-              src={listing.main_image_url || '/avida.jpg'}
-              className="h-full w-full object-cover rounded-lg hover:opacity-90 transition-opacity"
-              style={{ aspectRatio: '16/9', maxHeight: '100%' }}
-              alt="main"
-            />
           </div>
         )}
 
