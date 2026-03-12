@@ -26,6 +26,8 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'PATCH' && endpoint.startsWith('/api/units/')) return true;
   // Allow dev-auth for charge types while there's no real login flow.
   if (endpoint.startsWith('/api/charge-types') || endpoint.startsWith('/api/market/charge-types')) return true;
+  if (method === 'DELETE' && endpoint.startsWith('/api/units/')) return true;
+  if (method === 'PUT' && endpoint.startsWith('/api/units/')) return true;
   return false;
 }
 
@@ -245,4 +247,10 @@ export const apiClient = {
 
   patch: <T>(endpoint: string, body: unknown, options?: RequestOptions) =>
     request<T>(endpoint, { method: 'PATCH', body, ...options }),
+
+  put: <T>(endpoint: string, body: unknown, options?: RequestOptions) =>
+    request<T>(endpoint, { method: 'PUT', body, ...options }),
+
+  delete: <T>(endpoint: string, options?: RequestOptions) =>
+    request<T>(endpoint, { method: 'DELETE', ...options }),
 };

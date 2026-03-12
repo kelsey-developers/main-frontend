@@ -56,6 +56,7 @@ export interface BookingFormData {
   extraGuestFeePerPerson?: number;
   extraGuestRate?: number;
   baseGuests?: number;
+  maxCapacity?: number;
   serviceCharge?: number;
   discount?: number;
 
@@ -155,8 +156,7 @@ export interface CreateBookingInput {
   listing_id: string;
   check_in_date: string;
   check_out_date: string;
-  num_guests: number;
-  extra_guests: number;
+  total_guests: number;
   add_ons: AdditionalService[];
   landmark?: string;
   parking_info?: string;
@@ -178,8 +178,7 @@ export interface BookingRecord {
   listing_id: string;
   check_in_date: string;
   check_out_date: string;
-  num_guests: number;
-  extra_guests: number;
+  total_guests: number;
   add_ons: AdditionalService[];
   landmark?: string;
   parking_info?: string;

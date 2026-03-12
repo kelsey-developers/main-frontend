@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookingFormData } from '@/types/booking';
+import { BookingSummarySidebar } from './BookingSummarySidebar';
+import { NeedHelpCard } from './NeedHelpCard';
 
 interface ClientInfoStepProps {
   formData: BookingFormData;
+  listingId?: string;
   onUpdate: (data: Partial<BookingFormData>) => void;
   onUpdateField?: (key: keyof BookingFormData, value: any) => void;
   onNext: () => void;
@@ -496,7 +499,7 @@ const PhoneInput: React.FC<{
   );
 };
 
-const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, onUpdate, onUpdateField, onNext, onBack, onCancel }) => {
+const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, listingId, onUpdate, onUpdateField, onNext, onBack, onCancel }) => {
   const updateField = (k: keyof BookingFormData, v: any) => {
     if (typeof onUpdateField === 'function') {
       try {
@@ -562,10 +565,13 @@ const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, onUpdate, onU
   }, [formData, dob, age]);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 pb-16 md:pb-6 text-xs sm:text-sm md:text-base" style={{ fontFamily: 'Poppins' }}>
+    <div className="p-4 sm:p-6 pb-16 md:pb-6 text-xs sm:text-sm md:text-base" style={{ fontFamily: 'Poppins' }}>
+      <div className="max-w-6xl mx-auto">
       <h2 className="text-lg sm:text-2xl font-bold text-[#0B5858] mb-1">Client Information</h2>
       <p className="text-xs sm:text-sm text-gray-500 mb-4">Please fill in your client details to continue</p>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="lg:col-span-2 space-y-4">
       {isUnder18 && !under18NotifDismissed && (
         <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200 flex items-start justify-between" role="alert">
           <div className="flex items-center gap-3">
@@ -584,7 +590,7 @@ const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, onUpdate, onU
         </div>
       )}
 
-      <div className="space-y-5">
+      <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <FloatingInput
             id="firstName"
@@ -705,6 +711,16 @@ const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, onUpdate, onU
         <button onClick={onNext} disabled={!isFormValid || isUnder18} className="px-6 py-2 bg-[#0B5858] text-white rounded-lg hover:bg-[#0a4a4a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm" style={{ fontFamily: 'Poppins' }}>
           Next
         </button>
+      </div>
+        </div>
+
+        <aside className="lg:col-span-1">
+          <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
+            <BookingSummarySidebar formData={formData} listingId={listingId} />
+            <NeedHelpCard />
+          </div>
+        </aside>
+      </div>
       </div>
 
       <div

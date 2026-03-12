@@ -31,8 +31,7 @@ type DrawerBooking = {
   listing?: { title?: string; location?: string };
   check_in_date: string;
   check_out_date: string;
-  num_guests?: number;
-  extra_guests?: number;
+  total_guests?: number;
   total_amount?: number;
   request_description?: string;
 };
@@ -135,7 +134,7 @@ function bookingToDrawerBooking(b: Booking): DrawerBooking {
     check_in_date: b.checkInDateString,
     check_out_date: b.checkOutDateString,
     total_amount: b.totalAmount,
-    num_guests: 2,
+    total_guests: 2,
   };
 }
 

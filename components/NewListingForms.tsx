@@ -22,10 +22,14 @@ export interface PrefillListing {
   bedrooms?: number | null;
   bathrooms?: number | null;
   square_feet?: number | null;
+  area_sqm?: number | null;
   property_type?: string | null;
   main_image_url?: string | null;
   image_urls?: string[] | null;
   amenities?: string[] | null;
+  min_pax?: number | null;
+  max_capacity?: number | null;
+  excess_pax_fee?: number | null;
   latitude?: number | null;
   longitude?: number | null;
   check_in_time?: string | null;
@@ -155,11 +159,11 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         country: initialListing.country || 'Philippines',
         bedrooms: (initialListing.bedrooms ?? '').toString(),
         bathrooms: (initialListing.bathrooms ?? '').toString(),
-        square_feet: (initialListing.square_feet ?? '').toString(),
+        square_feet: (initialListing.area_sqm ?? initialListing.square_feet ?? '').toString(),
         property_type: initialListing.property_type || 'apartment',
-        min_pax: '1',
-        max_capacity: '2',
-        excess_pax_fee: '0',
+        min_pax: (initialListing.min_pax ?? 1).toString(),
+        max_capacity: (initialListing.max_capacity ?? 2).toString(),
+        excess_pax_fee: (initialListing.excess_pax_fee ?? 0).toString(),
         main_image_url: initialListing.main_image_url || '',
         image_urls: initialListing.image_urls || [],
         amenities: initialListing.amenities || [],
@@ -168,6 +172,9 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         check_in_time: initialListing.check_in_time || '',
         check_out_time: initialListing.check_out_time || ''
       });
+      if (initialListing.latitude != null && initialListing.longitude != null) {
+        setSelectedPosition([initialListing.latitude, initialListing.longitude]);
+      }
       const allImages: UploadedImage[] = [];
       if (initialListing.main_image_url) {
         allImages.push({ id: 'existing-main', url: initialListing.main_image_url, name: 'Main Image', size: 0, created_at: new Date().toISOString() });
@@ -180,7 +187,7 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         });
       }
       setUploadedImages(allImages);
-      setSelectedMainImageId(initialListing.main_image_url ? 'existing-main' : null);
+      setSelectedMainImageId(initialListing.main_image_url ? 'existing-main' : (allImages[0]?.id ?? null));
     }
   }, [mode, initialListing]);
 

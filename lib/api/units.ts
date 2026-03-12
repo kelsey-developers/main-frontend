@@ -43,10 +43,18 @@ function buildImages(
   mainUrl: string | undefined,
   imageUrls: string[] | undefined
 ): { url: string; is_main: boolean; sort_order: number }[] {
+  const seen = new Set<string>();
   const images: { url: string; is_main: boolean; sort_order: number }[] = [];
-  if (mainUrl) images.push({ url: mainUrl, is_main: true, sort_order: 0 });
-  (imageUrls ?? []).forEach((url, i) => {
-    if (url !== mainUrl) images.push({ url, is_main: false, sort_order: i + 1 });
+  if (mainUrl && mainUrl.trim()) {
+    images.push({ url: mainUrl.trim(), is_main: true, sort_order: 0 });
+    seen.add(mainUrl.trim());
+  }
+  let sortOrder = 1;
+  (imageUrls ?? []).forEach((url) => {
+    const u = (url || '').trim();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    images.push({ url: u, is_main: false, sort_order: sortOrder++ });
   });
   return images;
 }
@@ -66,6 +74,36 @@ export async function updateUnit(
   updates: { status?: 'available' | 'unavailable' | 'maintenance'; is_featured?: boolean }
 ): Promise<{ id: string; status: string; is_available: boolean; is_featured: boolean; updated_at: string }> {
   return apiClient.patch(`/api/units/${id}`, updates);
+}
+
+export async function updateUnitFull(id: string, payload: NewListingFormPayload): Promise<Listing> {
+  const body = {
+    unit_name: payload.title,
+    description: payload.description,
+    base_price: payload.price,
+    location: payload.location,
+    city: payload.city,
+    country: payload.country,
+    bedroom_count: payload.bedrooms,
+    bathroom_count: payload.bathrooms,
+    area_sqm: payload.square_feet,
+    unit_type: payload.property_type.toLowerCase(),
+    min_pax: payload.min_pax,
+    max_capacity: payload.max_capacity,
+    excess_pax_fee: payload.excess_pax_fee,
+    amenities: payload.amenities,
+    check_in_time: payload.check_in_time,
+    check_out_time: payload.check_out_time,
+    latitude: payload.latitude,
+    longitude: payload.longitude,
+    images: buildImages(payload.main_image_url, payload.image_urls),
+  };
+  const data = await apiClient.put<Record<string, unknown>>(`/api/units/${id}`, body);
+  return toListing(data);
+}
+
+export async function deleteUnit(id: string): Promise<{ id: string; deleted: boolean }> {
+  return apiClient.delete(`/api/units/${id}`);
 }
 
 function toManageListing(u: Record<string, unknown>): Listing {
@@ -168,6 +206,9 @@ function toListing(u: Record<string, unknown>): Listing {
     longitude: u.longitude != null ? Number(u.longitude) : undefined,
     check_in_time: u.check_in_time ? String(u.check_in_time) : undefined,
     check_out_time: u.check_out_time ? String(u.check_out_time) : undefined,
+    min_pax: u.min_pax != null ? Number(u.min_pax) : undefined,
+    max_capacity: u.max_capacity != null ? Number(u.max_capacity) : undefined,
+    excess_pax_fee: u.excess_pax_fee != null ? Number(u.excess_pax_fee) : undefined,
     created_at: String(u.created_at ?? ''),
     updated_at: String(u.updated_at ?? ''),
   };

@@ -34,8 +34,7 @@ interface Booking {
   assigned_agent?: string;
   check_in_date: string;
   check_out_date: string;
-  num_guests?: number;
-  extra_guests?: number;
+  total_guests?: number;
   total_amount: number;
   request_description?: string;
   status: 'pending' | 'pending-payment' | 'booked' | 'ongoing' | 'completed' | 'declined' | 'cancelled';
@@ -60,8 +59,7 @@ const mockBookings: Booking[] = [
     agent: mockAgents[0],
     check_in_date: '2026-02-20',
     check_out_date: '2026-02-27',
-    num_guests: 4,
-    extra_guests: 0,
+    total_guests: 4,
     total_amount: 45000,
     request_description: 'Would appreciate an early check-in if possible',
     created_at: '2026-02-12T10:30:00Z'
@@ -73,8 +71,7 @@ const mockBookings: Booking[] = [
     listing: { title: 'Mountain Resort', location: 'Tagaytay' },
     check_in_date: '2026-02-25',
     check_out_date: '2026-03-05',
-    num_guests: 6,
-    extra_guests: 2,
+    total_guests: 8,
     total_amount: 67500,
     request_description: 'Need wheelchair accessibility',
     created_at: '2026-02-11T14:15:00Z'
@@ -87,7 +84,7 @@ const mockBookings: Booking[] = [
     agent: mockAgents[1],
     check_in_date: '2026-02-18',
     check_out_date: '2026-02-22',
-    num_guests: 2,
+    total_guests: 2,
     total_amount: 25000,
     request_description: 'Business trip, need high-speed internet',
     created_at: '2026-02-10T09:45:00Z'
@@ -100,7 +97,7 @@ const mockBookings: Booking[] = [
     agent: mockAgents[2],
     check_in_date: '2026-03-10',
     check_out_date: '2026-03-17',
-    num_guests: 5,
+    total_guests: 5,
     total_amount: 56000,
     request_description: 'Honeymoon package',
     created_at: '2026-02-09T16:20:00Z'
@@ -113,7 +110,7 @@ const mockBookings: Booking[] = [
     agent: mockAgents[0],
     check_in_date: '2026-02-16',
     check_out_date: '2026-02-19',
-    num_guests: 8,
+    total_guests: 8,
     total_amount: 120000,
     created_at: '2026-02-08T11:00:00Z'
   },
@@ -124,7 +121,7 @@ const mockBookings: Booking[] = [
     listing: { title: 'Garden House', location: 'Davao' },
     check_in_date: '2026-03-01',
     check_out_date: '2026-03-08',
-    num_guests: 3,
+    total_guests: 3,
     total_amount: 36000,
     created_at: '2026-02-07T13:30:00Z'
   }
