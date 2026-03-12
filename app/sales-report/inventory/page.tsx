@@ -85,11 +85,13 @@ export default function InventoryDashboardPage() {
       }
     };
     window.addEventListener('inventory:movement-updated', onUpdate);
+    window.addEventListener('inventory:dataset-updated', onUpdate);
     window.addEventListener('inventory:dataset-load-failed', onLoadFailed);
 
     return () => {
       isMounted = false;
       window.removeEventListener('inventory:movement-updated', onUpdate);
+      window.removeEventListener('inventory:dataset-updated', onUpdate);
       window.removeEventListener('inventory:dataset-load-failed', onLoadFailed);
     };
   }, []);

@@ -9,6 +9,7 @@ import {
   inventoryUnits,
   inventoryUnitItems,
   isWarehouseActive,
+  loadInventoryDataset,
 } from '../../inventory/lib/inventoryDataStore';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 import { apiClient } from '@/lib/api/client';
@@ -32,6 +33,18 @@ export default function AdminInventorySetupPage() {
   const [reasonsLoading, setReasonsLoading] = useState(true);
   const [reasonsSaving, setReasonsSaving] = useState(false);
   const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    void loadInventoryDataset();
+    const onUpdate = () => setRefreshTick((t) => t + 1);
+    window.addEventListener('inventory:dataset-updated', onUpdate);
+    window.addEventListener('inventory:movement-updated', onUpdate);
+    return () => {
+      window.removeEventListener('inventory:dataset-updated', onUpdate);
+      window.removeEventListener('inventory:movement-updated', onUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     apiClient
@@ -66,7 +79,7 @@ export default function AdminInventorySetupPage() {
       map.set(item.assignedToUnit, list);
     }
     return map;
-  }, []);
+  }, [refreshTick]);
 
   return (
     <div style={{ fontFamily: 'Poppins' }} className="space-y-8 pb-10">

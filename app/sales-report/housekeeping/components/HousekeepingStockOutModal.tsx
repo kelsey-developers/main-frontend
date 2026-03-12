@@ -297,10 +297,15 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
   );
 
   useEffect(() => {
-    void loadInventoryDataset();
+    void loadInventoryDataset().then(() => setRefreshTick((t) => t + 1));
     const onUpdate = () => setRefreshTick((t) => t + 1);
+    const onDatasetUpdated = () => setRefreshTick((t) => t + 1);
     window.addEventListener('inventory:movement-updated', onUpdate);
-    return () => window.removeEventListener('inventory:movement-updated', onUpdate);
+    window.addEventListener('inventory:dataset-updated', onDatasetUpdated);
+    return () => {
+      window.removeEventListener('inventory:movement-updated', onUpdate);
+      window.removeEventListener('inventory:dataset-updated', onDatasetUpdated);
+    };
   }, []);
 
   useEffect(() => {

@@ -10,7 +10,7 @@ import InventoryDropdown, { type InventoryDropdownOption } from '../components/I
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
 import UnitSearchInput from '../components/UnitSearchInput';
 import EditUnitThresholdModal from '../components/EditUnitThresholdModal';
-import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getUnitAllocationsForDisplay, inventoryUnitItems } from '../lib/inventoryDataStore';
+import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getUnitAllocationsForDisplay, inventoryUnitItems, loadInventoryDataset } from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 
 function InventoryItemsPageContent() {
@@ -52,12 +52,18 @@ function InventoryItemsPageContent() {
   }, [itemIdFromQuery]);
 
   useEffect(() => {
-    const onMovementUpdated = () => {
-      // Data is already updated by the emitter (stock-out, recompute, etc.); just re-render.
-      setRefreshTick((t) => t + 1);
-    };
+    void loadInventoryDataset();
+  }, []);
+
+  useEffect(() => {
+    const onMovementUpdated = () => setRefreshTick((t) => t + 1);
+    const onDatasetUpdated = () => setRefreshTick((t) => t + 1);
     window.addEventListener('inventory:movement-updated', onMovementUpdated);
-    return () => window.removeEventListener('inventory:movement-updated', onMovementUpdated);
+    window.addEventListener('inventory:dataset-updated', onDatasetUpdated);
+    return () => {
+      window.removeEventListener('inventory:movement-updated', onMovementUpdated);
+      window.removeEventListener('inventory:dataset-updated', onDatasetUpdated);
+    };
   }, []);
 
   // Query param takes precedence; otherwise use selected warehouse or null (All Warehouses)

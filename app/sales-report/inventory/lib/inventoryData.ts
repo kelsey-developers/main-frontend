@@ -411,7 +411,25 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
     .filter((a): a is ItemAllocation => a != null);
   replaceArray(mockUnitAllocations, normalizedAllocations);
   refreshUnitItemsDisplay();
-  replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
+  replaceArray(mockUnitStockMovements, dataset.unitStockMovements ?? []);
+
+  // Units from dataset (backend includes id, name, type, location, itemCount, imageUrl)
+  const rawUnits = Array.isArray(dataset.units) ? dataset.units : [];
+  const normalizedUnits = rawUnits
+    .filter((u) => u != null && typeof u === 'object')
+    .map((u) => {
+      const o = u as unknown as Record<string, unknown>;
+      return {
+        id: String(o.id ?? ''),
+        name: String(o.name ?? o.title ?? ''),
+        type: String(o.type ?? o.property_type ?? 'unit'),
+        location: String(o.location ?? o.city ?? ''),
+        itemCount: typeof o.itemCount === 'number' ? o.itemCount : 0,
+        imageUrl: String(o.imageUrl ?? o.main_image_url ?? '/heroimage.png'),
+      };
+    })
+    .filter((u) => u.id);
+  replaceArray(inventoryUnitsState, normalizedUnits);
 
   // Warehouses come from backend dataset only.
   replaceArray(mockWarehouses, dataset.warehouses ?? []);
@@ -513,9 +531,13 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
       return;
     }
     applyDataset(dataset as InventoryDatasetResponse);
-    const externalUnits = await fetchExternalUnits();
-    if (externalUnits) {
-      syncUnitsFromExternalSource(externalUnits);
+    // Fallback: if dataset had no units, fetch from /api/units (e.g. external listings)
+    const hasUnitsFromDataset = Array.isArray((dataset as InventoryDatasetResponse).units) && (dataset as InventoryDatasetResponse).units!.length > 0;
+    if (!hasUnitsFromDataset) {
+      const externalUnits = await fetchExternalUnits();
+      if (externalUnits) {
+        syncUnitsFromExternalSource(externalUnits);
+      }
     }
     // Do not clear units when fetch fails — preserve existing data
     isDatasetLoaded = hasMeaningfulDataset(dataset);

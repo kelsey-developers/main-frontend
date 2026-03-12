@@ -144,7 +144,10 @@ export default function DamageReportsPage() {
   const { error: showError } = useToast();
 
   useEffect(() => {
-    void loadInventoryDataset();
+    void loadInventoryDataset().then(() => setRefreshTick((t) => t + 1));
+    const onDatasetUpdated = () => setRefreshTick((t) => t + 1);
+    window.addEventListener('inventory:dataset-updated', onDatasetUpdated);
+    return () => window.removeEventListener('inventory:dataset-updated', onDatasetUpdated);
   }, []);
 
   useEffect(() => {
@@ -156,11 +159,14 @@ export default function DamageReportsPage() {
         setIncidents(Array.isArray(data) ? data : []);
       } catch (err) {
         setIncidents([]);
+        const status = (err as any)?.status as number | undefined;
         const msg = err instanceof Error ? err.message : 'Failed to load damage reports.';
         setFetchError(msg);
         const isConfigError =
-          /MARKET_API_URL|not configured|damage-incidents/i.test(msg);
-        setIsServerDown(!isConfigError);
+          /MARKET_API_URL|not configured|damage-incidents|unreachable|backend/i.test(msg);
+        // Treat 401/403 as permissions issues, not server-down.
+        const isAuthError = status === 401 || status === 403;
+        setIsServerDown(!isConfigError && !isAuthError);
         showError(msg);
       } finally {
         setIsLoading(false);
@@ -171,7 +177,7 @@ export default function DamageReportsPage() {
 
   const rawRows = useMemo(
     () => flattenIncidentsToRows(incidents),
-    [incidents]
+    [incidents, refreshTick]
   );
 
   const productIds = useMemo(
@@ -445,15 +451,31 @@ export default function DamageReportsPage() {
                     </svg>
                   </div>
                   <div className="font-semibold text-gray-700 mb-1">Server is unavailable</div>
-                  <p className="text-sm text-gray-500">Please try again later.</p>
+                  <p className="text-sm text-gray-500 mb-4">Please try again later.</p>
+                  <button
+                    type="button"
+                    onClick={() => setRefreshTick((t) => t + 1)}
+                    className="px-4 py-2 rounded-lg bg-[#05807e] text-white font-semibold text-sm hover:bg-[#047772] transition-colors"
+                    style={{ fontFamily: 'Poppins' }}
+                  >
+                    Retry
+                  </button>
                 </>
               ) : (
                 <>
                   <div className="font-semibold mb-2 text-amber-700">Could not load damage reports</div>
-                  <p className="text-sm text-gray-600">{fetchError}</p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Ensure MARKET_API_URL is configured and the damage-incidents API is available.
+                  <p className="text-sm text-gray-600 mb-2">{fetchError}</p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    Ensure the market backend is running and MARKET_API_URL in .env.local points to it (e.g. Cloudflare tunnel URL).
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setRefreshTick((t) => t + 1)}
+                    className="px-4 py-2 rounded-lg bg-[#05807e] text-white font-semibold text-sm hover:bg-[#047772] transition-colors"
+                    style={{ fontFamily: 'Poppins' }}
+                  >
+                    Retry
+                  </button>
                 </>
               )}
             </div>
