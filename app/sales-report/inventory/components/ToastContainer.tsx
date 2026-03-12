@@ -16,30 +16,26 @@ interface ToastContainerProps {
 }
 
 export default function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
+  if (toasts.length === 0) return null;
+
   return (
     <div
-      style={{
-        position: 'fixed',
-        top: 20,
-        right: 20,
-        zIndex: 9999,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        maxWidth: 420,
-        pointerEvents: 'auto',
-      }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none"
+      aria-live="polite"
+      aria-label="Notifications"
     >
-      {toasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          id={toast.id}
-          type={toast.type}
-          message={toast.message}
-          duration={toast.duration}
-          onClose={onRemove}
-        />
-      ))}
+      <div className="flex flex-col gap-3 w-full max-w-[min(420px,100%)] pointer-events-auto">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            id={toast.id}
+            type={toast.type}
+            message={toast.message}
+            duration={toast.duration}
+            onClose={onRemove}
+          />
+        ))}
+      </div>
     </div>
   );
 }

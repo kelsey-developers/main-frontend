@@ -5,10 +5,10 @@ import Link from 'next/link';
 import type { InventoryFeatureLink } from '../types';
 
 const FEATURE_LINKS: InventoryFeatureLink[] = [
+    { href: '/sales-report/inventory/purchase-orders', title: 'Purchase Orders', icon: 'purchaseOrders' },
     { href: '/sales-report/inventory/items', title: 'Inventory items', icon: 'items' },
     { href: '/sales-report/inventory/suppliers', title: 'Supplier Directory', icon: 'suppliers' },
     { href: '/sales-report/inventory/warehouses', title: 'Warehouse Directory', icon: 'warehouses' },
-    { href: '/sales-report/inventory/purchase-orders', title: 'Purchase Order Archive', icon: 'purchaseOrders' },
     { href: '/sales-report/inventory/stock-movements', title: 'Stock Movement History', icon: 'stockMovements' },
 ];
 

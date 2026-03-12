@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import AdminSummaryCards from './components/AdminSummaryCards';
 import AdminCharts from './components/AdminCharts';
-import CalendarWidget from '../../components/CalendarWidget';
+import { CalendarView } from '../calendar/page';
 import type { AdminStats, ChartData } from './types';
 import { getAgentAnalytics } from '@/services/agentDashboardService';
 import type { AgentAnalytics } from '@/services/agentDashboardService';
@@ -284,8 +284,8 @@ const AdminPage: React.FC = React.memo(() => {
             <h3 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>Upcoming Bookings Calendar</h3>
             <p className="text-gray-600 mt-1" style={{fontFamily: 'Poppins'}}>View and manage all upcoming bookings</p>
           </div>
-          <div className="p-6">
-            <CalendarWidget hideNavbar={true} />
+          <div className="p-0 overflow-hidden">
+            <CalendarView embedded />
           </div>
         </div>
       </div>

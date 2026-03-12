@@ -4,10 +4,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import FinancePageHeader from '../components/FinancePageHeader';
 import HorizontalFilter from '../components/HorizontalFilter';
 import DamagePenaltySection from './DamagePenaltySection';
-import { mockDamagePenalty } from '../lib/mockData';
 import { filterDamageIncidents } from '../lib/filters';
 import { defaultSalesReportFilters } from '../types';
-import type { SalesReportFilters } from '../types';
+import type { DamagePenalty, SalesReportFilters } from '../types';
 import { exportDamagePenaltyToCsv, exportDamagePenaltyToPdf } from '../lib/exportDamagePenalty';
 import { logExport } from '../lib/audit';
 
@@ -35,14 +34,28 @@ function DamagePenaltyPageSkeleton() {
   );
 }
 
+function getDefaultViewFilters(): SalesReportFilters {
+  return {
+    ...defaultSalesReportFilters,
+    filterMethod: 'quick',
+    timePeriod: 'month',
+    timePeriodScope: 'this',
+    searchName: '',
+    propertyType: 'All',
+    location: 'All',
+  };
+}
+
 export default function DamagePenaltyPage() {
-  const [filters, setFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
+  const [draftFilters, setDraftFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
+  const [appliedFilters, setAppliedFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportPanelOpen, setExportPanelOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [incidents, setIncidents] = useState(mockDamagePenalty);
+  const [incidents, setIncidents] = useState<DamagePenalty[]>([]);
+  const [filterEnabled, setFilterEnabled] = useState(false);
   const exportPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,21 +70,25 @@ export default function DamagePenaltyPage() {
   }, [exportPanelOpen]);
 
   const update = (key: keyof SalesReportFilters, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setDraftFilters((prev) => ({ ...prev, [key]: value }));
   };
 
   useEffect(() => {
     const timer = setTimeout(() => setIsLoading(false), 350);
     return () => clearTimeout(timer);
   }, []);
+  const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
 
-  const filteredIncidents = useMemo(() => filterDamageIncidents(incidents, filters), [incidents, filters]);
+  const filteredIncidents = useMemo(
+    () => filterDamageIncidents(incidents, effectiveFilters),
+    [incidents, effectiveFilters],
+  );
 
   const handleExportCsv = () => {
     setExportingCsv(true);
     try {
       exportDamagePenaltyToCsv(filteredIncidents);
-      logExport('damage-penalty', 'csv', filters, filteredIncidents.length);
+      logExport('damage-penalty', 'csv', effectiveFilters, filteredIncidents.length);
     } finally {
       setExportingCsv(false);
     }
@@ -81,7 +98,7 @@ export default function DamagePenaltyPage() {
     setExportingPdf(true);
     try {
       exportDamagePenaltyToPdf(filteredIncidents);
-      logExport('damage-penalty', 'pdf', filters, filteredIncidents.length);
+      logExport('damage-penalty', 'pdf', effectiveFilters, filteredIncidents.length);
     } catch (e) {
       console.error(e);
     } finally {
@@ -110,7 +127,7 @@ export default function DamagePenaltyPage() {
       <div className="mb-4 flex flex-1 min-w-0 gap-2">
         <input
           type="search"
-          value={filters.searchName}
+          value={draftFilters.searchName}
           onChange={(e) => update('searchName', e.target.value)}
           placeholder="Search..."
           className="flex-1 min-w-0 px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
@@ -171,7 +188,17 @@ export default function DamagePenaltyPage() {
         {filtersPanelOpen ? 'Hide filters' : 'Filters'}
       </button>
       <div className={`mt-4 ${filtersPanelOpen ? 'block' : 'hidden lg:block'}`}>
-        <HorizontalFilter filters={filters} onFiltersChange={setFilters} />
+        <HorizontalFilter
+          filters={draftFilters}
+          onFiltersChange={setDraftFilters}
+          filterEnabled={filterEnabled}
+          onFilterEnabledChange={setFilterEnabled}
+          onApplyFilters={() => {
+            if (filterEnabled) {
+              setAppliedFilters(draftFilters);
+            }
+          }}
+        />
       </div>
       <div className="mt-4">
         <DamagePenaltySection incidents={filteredIncidents} />

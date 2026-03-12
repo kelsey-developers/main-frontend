@@ -3,7 +3,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { mockDamagePenalty } from '../../lib/mockData';
 import type { DamagePenalty } from '../../types';
 import { formatPHP, formatDateLong } from '../../lib/format';
 
@@ -89,9 +88,8 @@ export default function DamagePenaltyDetailPage() {
     }
     let mounted = true;
     const timer = setTimeout(() => {
-      if (mounted && parsed) {
-        const found = mockDamagePenalty.find((m) => m.bookingId === parsed.bookingId && m.unit === parsed.unit) ?? null;
-        setIncident(found);
+      if (mounted) {
+        setIncident(null);
       }
       if (mounted) setIsLoading(false);
     }, 350);

@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ItemType, ItemCategory, ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import { useToast } from '../hooks/useToast';
 import { 
-  mockWarehouseDirectoryData,
+  inventoryWarehouseDirectory,
+  inventorySuppliers,
   ITEM_CATEGORIES,
   ITEM_TYPES,
   ITEM_UNITS,
-} from '../lib/mockData';
+} from '../lib/inventoryDataStore';
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -45,12 +47,14 @@ function Field({
   label,
   required,
   hint,
+  hintBelow,
   children,
   style,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
+  hintBelow?: string;
   children: React.ReactNode;
   style?: React.CSSProperties;
 }) {
@@ -74,6 +78,11 @@ function Field({
         )}
       </label>
       {children}
+      {hintBelow && (
+        <span style={{ fontWeight: 400, color: C.midGray, fontSize: 11, fontFamily: 'Poppins' }}>
+          {hintBelow}
+        </span>
+      )}
     </div>
   );
 }
@@ -143,6 +152,7 @@ interface EditItemModalProps {
 }
 
 export default function EditItemModal({ item, onClose, onSave }: EditItemModalProps) {
+  const { toasts, removeToast, success, error } = useToast();
   const [mounted, setMounted] = useState(false);
   const [form, setForm] = useState({
     sku: '',
@@ -154,6 +164,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
     minStock: 0,
     unitCost: 0,
     warehouseId: '',
+    currentsupplierId: '',
     isActive: true,
   });
 
@@ -172,6 +183,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
         minStock: item.minStock || 0,
         unitCost: item.unitCost || 0,
         warehouseId: item.warehouseId || '',
+        currentsupplierId: item.currentsupplierId || '',
         isActive: item.isActive ?? true,
       });
     }
@@ -197,7 +209,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
       const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
       if (nextModalCount === 0) {
         delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
       } else {
         document.body.dataset.modalCount = String(nextModalCount);
       }
@@ -207,33 +218,31 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
     if (!form.name.trim()) {
-      alert('Item name is required');
+      error('Item name is required');
       return;
     }
     if (!form.category) {
-      alert('Category is required');
+      error('Category is required');
       return;
     }
     if (!form.unit) {
-      alert('Unit is required');
+      error('Unit is required');
       return;
     }
     if (form.minStock < 0) {
-      alert('Minimum stock cannot be negative');
+      error('Minimum stock cannot be negative');
       return;
     }
     if (form.currentStock < 0) {
-      alert('Current stock cannot be negative');
+      error('Current stock cannot be negative');
       return;
     }
     if (form.unitCost < 0) {
-      alert('Unit cost cannot be negative');
+      error('Unit cost cannot be negative');
       return;
     }
 
-    // TODO(backend): Send update request to API
     const updatedData: Partial<ReplenishmentItem> = {
       ...form,
       category: form.category as ItemCategory,
@@ -242,13 +251,11 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
       updatedAt: new Date().toISOString(),
     };
 
-    console.log('Updating item:', updatedData);
-    
     if (onSave) {
       onSave(updatedData);
     }
 
-    alert(`Item "${form.name}" updated successfully!`);
+    success(`Item "${form.name}" updated successfully`);
     onClose();
   };
 
@@ -393,6 +400,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
 
@@ -407,6 +417,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
 
@@ -416,6 +429,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 onChange={(value) => setForm({ ...form, unit: value })}
                 options={[
                   { value: '', label: 'Select...' },
+                  ...(form.unit && !ITEM_UNITS.includes(form.unit)
+                    ? [{ value: form.unit, label: form.unit }]
+                    : []),
                   ...ITEM_UNITS.map((unit) => ({ value: unit, label: unit })),
                 ]}
                 placeholder="Select..."
@@ -423,6 +439,9 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 hideIcon={true}
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
           </div>
@@ -430,19 +449,13 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
           <SectionLabel label="INVENTORY" />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            <Field label="Current Stock" required>
+            <Field label="Current Stock" required hint="Use Stock In or Stock Out to change">
               <input
                 type="number"
                 value={form.currentStock}
-                onChange={(e) => setForm({ ...form, currentStock: parseInt(e.target.value) || 0 })}
+                readOnly
                 min="0"
-                style={inputStyle}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = C.teal;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = C.lightGray;
-                }}
+                style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </Field>
 
@@ -463,16 +476,16 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
             </Field>
           </div>
 
-          <SectionLabel label="WAREHOUSE & PRICING" />
+          <SectionLabel label="DEFAULT WAREHOUSE, SUPPLIER & PRICING" />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 20 }}>
-            <Field label="Warehouse" required>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
+            <Field label="Default Warehouse" required hintBelow="Used for PO receipt & stock out">
               <InventoryDropdown
                 value={form.warehouseId}
                 onChange={(value) => setForm({ ...form, warehouseId: value })}
                 options={[
                   { value: '', label: 'Select warehouse...' },
-                  ...mockWarehouseDirectoryData.map((wh) => ({
+                  ...inventoryWarehouseDirectory.map((wh) => ({
                     value: wh.id,
                     label: `${wh.name} - ${wh.location}`,
                   })),
@@ -481,6 +494,30 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                 placeholderWhen=""
                 fullWidth={true}
                 minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
+              />
+            </Field>
+
+            <Field label="Default Supplier" hintBelow="Used for PO creation">
+              <InventoryDropdown
+                value={form.currentsupplierId}
+                onChange={(value) => setForm({ ...form, currentsupplierId: value })}
+                options={[
+                  { value: '', label: 'None' },
+                  ...inventorySuppliers.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                  })),
+                ]}
+                placeholder="None"
+                placeholderWhen=""
+                fullWidth={true}
+                minWidthClass="min-w-0"
+                align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
 

@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
+import { updateInventoryItem } from '../lib/inventoryDataStore';
 import AuditTrailModal from './AuditTrailModal';
 import EditItemModal from './EditItemModal';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
@@ -426,7 +427,12 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
               <InventoryTableSkeleton />
             ) : filtered.length === 0 ? (
               <div className="px-6 py-14 text-center text-gray-400 text-sm" style={{ fontFamily: 'Poppins' }}>
-                No items match your search.
+                <div className="flex flex-col items-center gap-2">
+                  <svg className="w-12 h-12 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  <span className="font-semibold text-gray-900">No items match your search</span>
+                </div>
               </div>
             ) : (
               <div>
@@ -533,6 +539,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
       {/* ── Footer ───────────────────────────────────────────────────── */}
       <div className="mt-3 flex justify-end">
         <span className="text-[12px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
+          Warehouse inventory items with thresholds, restock alerts, and stock-out options -{' '}
           <span className="font-semibold text-[#05807e]">{filtered.length}</span> item
           {filtered.length !== 1 ? 's' : ''} across{' '}
           <span className="font-semibold text-[#05807e]">
@@ -553,8 +560,9 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
         item={editItem}
         onClose={() => setEditItem(null)}
         onSave={(updatedData) => {
-          console.log('Item updated:', updatedData);
-          // TODO(backend): Update item in the items array or refetch from API
+          if (editItem) {
+            updateInventoryItem(editItem.id, updatedData);
+          }
         }}
       />
     </div>

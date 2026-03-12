@@ -20,7 +20,14 @@ export default function StockOutPage() {
     [searchParams]
   );
 
-  const returnTo = searchParams.get('returnTo') || '/sales-report/inventory/stock-movements';
+  const warehousePrefill = useMemo(
+    () => ({
+      warehouseId: searchParams.get('warehouseId') || '',
+    }),
+    [searchParams]
+  );
+
+  const returnTo = searchParams.get('returnTo') || '/sales-report/inventory/items';
 
   useEffect(() => {
     const mode = searchParams.get('mode');
@@ -205,6 +212,7 @@ export default function StockOutPage() {
           mode={modalMode}
           onClose={() => setModalMode(null)}
           unitPrefill={modalMode === 'unit' ? unitPrefill : undefined}
+          warehousePrefill={modalMode === 'warehouse' ? warehousePrefill : undefined}
           returnTo={returnTo}
         />
       )}

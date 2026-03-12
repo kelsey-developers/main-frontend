@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 import type { ItemCategory, ItemType, ReplenishmentItem } from '../types';
-import { loadInventoryDataset, mockDashboardSummary, mockReplenishmentItems } from './mockData';
+import { loadInventoryDataset, inventoryDashboardSummary, inventoryItems } from './inventoryDataStore';
 
 type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
 
@@ -28,16 +28,13 @@ export interface NewItemStockInInput {
   itemType: ItemType;
   unit: string;
   minStock: number;
-  unitCost?: number;
   isActive?: boolean;
   supplierId?: string;
-  supplierName?: string;
-  createdBy?: string;
   initialStocks: Array<{
     warehouseId: string;
     quantity: number;
-    reason: string;
-    date: string;
+    reason?: string;
+    date?: string;
     reference?: string;
     notes?: string;
   }>;
@@ -81,7 +78,7 @@ const emitInventoryMovementUpdated = (detail: {
 };
 
 const buildLedgerResult = (productId: string, movementIds: string[]): LedgerResult => {
-  const item = mockReplenishmentItems.find((entry) => entry.id === productId);
+  const item = inventoryItems.find((entry) => entry.id === productId);
   if (!item) {
     throw new Error('Item not found after refreshing inventory dataset.');
   }
@@ -196,7 +193,7 @@ export const createItemAndProcessStockIn = async (
   }
 
   await loadInventoryDataset(true);
-  const createdItem = mockReplenishmentItems.find((entry) => entry.id === product.id);
+  const createdItem = inventoryItems.find((entry) => entry.id === product.id);
   if (!createdItem) {
     throw new Error('Product was created but could not be loaded into inventory list.');
   }
@@ -222,10 +219,14 @@ export const processStockOut = async (input: StockOutInput): Promise<LedgerResul
   movementIds.push(outMovementId);
 
   if (input.transferToWarehouseId) {
-    const transferInId = await postMovement(input, 'IN', {
-      warehouseId: input.transferToWarehouseId,
-      notes: [input.notes, `Transfer from ${input.warehouseId}`].filter(Boolean).join(' | '),
-    });
+    const transferInId = await postMovement(
+      { ...input, referenceType: 'MANUAL' },
+      'IN',
+      {
+        warehouseId: input.transferToWarehouseId,
+        notes: [input.notes, `Transfer from ${input.warehouseId}`].filter(Boolean).join(' | '),
+      }
+    );
     movementIds.push(transferInId);
   }
 
@@ -253,15 +254,15 @@ export const recomputeAllInventoryDerivedValues = async () => {
   await loadInventoryDataset(true);
 
   // Keep summary aligned in case other parts mutate the arrays client-side.
-  mockDashboardSummary.totalItems = mockReplenishmentItems.length;
-  mockDashboardSummary.totalStocks = mockReplenishmentItems.reduce(
+  inventoryDashboardSummary.totalItems = inventoryItems.length;
+  inventoryDashboardSummary.totalStocks = inventoryItems.reduce(
     (sum, item) => sum + item.currentStock,
     0
   );
-  mockDashboardSummary.lowStockCount = mockReplenishmentItems.filter(
+  inventoryDashboardSummary.lowStockCount = inventoryItems.filter(
     (item) => item.currentStock < item.minStock
   ).length;
-  mockDashboardSummary.replenishmentNeeded = mockReplenishmentItems.reduce(
+  inventoryDashboardSummary.replenishmentNeeded = inventoryItems.reduce(
     (sum, item) => sum + Math.max(0, item.minStock - item.currentStock),
     0
   );

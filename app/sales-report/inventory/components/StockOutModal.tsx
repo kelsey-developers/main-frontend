@@ -5,25 +5,18 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
-import ToastContainer from './ToastContainer';
+import SingleDatePicker from '@/components/SingleDatePicker';
 import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 import { processStockOut } from '../lib/inventoryLedger';
 import { 
   loadInventoryDataset,
-  mockReplenishmentItems, 
-  mockWarehouseDirectoryData,
-  mockUnits,
-} from '../lib/mockData';
-
-// ─── Date utility ─────────────────────────────────────────────────
-const getTodayISO = () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+  inventoryItems, 
+  getDisplayableInventoryItems,
+  inventoryWarehouseDirectory,
+  inventoryUnits,
+} from '../lib/inventoryDataStore';
+import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -57,7 +50,7 @@ const C = {
   unBookingText: '#0b5858',
 };
 
-// ─── Mock data ───────────────────────────────────────────────────
+// ─── Static form options ─────────────────────────────────────────
 const REASONS_WH = [
   'General Use',
   'Disposal / Expired',
@@ -202,9 +195,27 @@ function LineItemRow({
   onRemove: (i: number) => void;
   sourceWarehouse?: string;
 }) {
-  const product = mockReplenishmentItems.find((p) => p.id === item.productId);
-  const avail = product ? product.currentStock : 0;
+  const product = inventoryItems.find((p) => p.id === item.productId);
+  const wh = sourceWarehouse
+    ? inventoryWarehouseDirectory.find((w) => w.id === sourceWarehouse)
+    : undefined;
+  const whBalance = wh?.inventoryBalances.find((b) => b.productId === item.productId);
+  const avail = sourceWarehouse && whBalance !== undefined
+    ? whBalance.quantity
+    : (product ? product.currentStock : 0);
   const over = !!(product && item.quantity && parseInt(item.quantity) > avail);
+
+  const itemOptions = sourceWarehouse && wh
+    ? wh.inventoryBalances
+        .filter((b) => b.quantity > 0)
+        .map((b) => {
+          const p = inventoryItems.find((i) => i.id === b.productId);
+          return { value: b.productId, label: `${p?.sku ?? b.productId} — ${b.productName}` };
+        })
+    : getDisplayableInventoryItems().map((p) => ({
+        value: p.id,
+        label: `${p.sku} — ${p.name}`,
+      }));
 
   return (
     <div
@@ -226,18 +237,23 @@ function LineItemRow({
             Item <span style={{ color: C.red }}>*</span>
           </label>
         )}
-        <select
-          value={item.productId}
-          onChange={(e) => onUpdate(index, 'productId', e.target.value)}
-          style={inputStyle}
-        >
-          <option value="">Select item…</option>
-          {mockReplenishmentItems.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.sku} — {p.name}
-            </option>
-          ))}
-        </select>
+        <InventoryDropdown
+          value={item.productId || ''}
+          onChange={(value) => onUpdate(index, 'productId', value)}
+          options={[
+            { value: '', label: sourceWarehouse ? 'Select item…' : 'Select warehouse first' },
+            ...itemOptions,
+          ]}
+          placeholder="Select item…"
+          placeholderWhen=""
+          hideIcon={true}
+          fullWidth={true}
+          minWidthClass="min-w-0"
+          align="left"
+          backdropZIndexClass="z-[10005]"
+          menuZIndexClass="z-[10010]"
+          useFixedPosition={true}
+        />
         {product && <StockPill available={avail} reorder={product.minStock} unit={product.unit} />}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -313,6 +329,7 @@ function AddItemBtn({ onAdd, accent }: { onAdd: () => void; accent: string }) {
 // WAREHOUSE FORM COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 interface WarehouseFormProps {
+  prefill?: { warehouseId: string };
   onDraftChange: (draft: WarehouseDraft) => void;
 }
 
@@ -328,14 +345,14 @@ interface WarehouseDraft {
   items: LineItem[];
 }
 
-function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
-  const mockAuth = useMockAuth();
-  const [confirmedBy, setConfirmedBy] = useState(mockAuth.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(mockAuth.user?.id || '');
-  const [warehouse, setWarehouse] = useState('');
+function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
+  const authState = useMockAuth();
+  const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(authState.user?.id || '');
+  const [warehouse, setWarehouse] = useState(prefill?.warehouseId || '');
   const [reason, setReason] = useState('');
   const [toWarehouse, setToWarehouse] = useState('');
-  const [date, setDate] = useState(getTodayISO());
+  const [date, setDate] = useState(getTodayInPhilippineTime());
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [isDamage, setIsDamage] = useState(false);
@@ -343,6 +360,12 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
+
+  useEffect(() => {
+    if (prefill?.warehouseId && !warehouse) {
+      setWarehouse(prefill.warehouseId);
+    }
+  }, [prefill?.warehouseId, warehouse]);
 
   useEffect(() => {
     onDraftChange({
@@ -358,7 +381,7 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
     });
   }, [confirmedBy, idNumber, warehouse, reason, toWarehouse, date, reference, notes, items, onDraftChange]);
 
-  const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
   const isTransfer = reason === 'Inter-warehouse Transfer';
 
   return (
@@ -413,6 +436,10 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Reason" required>
@@ -431,14 +458,18 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Date" required>
-          <input 
-            type="date" 
+          <SingleDatePicker
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={inputStyle} 
+            onChange={setDate}
+            placeholder="Select date"
+            calendarZIndex={10020}
           />
         </Field>
         <Field label="Reference No." hint="Optional">
@@ -466,6 +497,10 @@ function WarehouseForm({ onDraftChange }: WarehouseFormProps) {
               hideIcon={true}
               fullWidth={true}
               minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
+              useFixedPosition={true}
             />
           </Field>
         </div>
@@ -556,21 +591,36 @@ interface UnitDraft {
 }
 
 function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
-  const mockAuth = useMockAuth();
-  const [confirmedBy, setConfirmedBy] = useState(mockAuth.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(mockAuth.user?.id || '');
+  const authState = useMockAuth();
+  const itemFromPrefill = prefill?.itemId
+    ? inventoryItems.find((i) => i.id === prefill.itemId)
+    : undefined;
+  const [confirmedBy, setConfirmedBy] = useState(prefill?.confirmedBy || authState.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(prefill?.idNumber || authState.user?.id || '');
   const [unit, setUnit] = useState(prefill?.unitId || '');
   const [booking, setBooking] = useState('');
   const [reason, setReason] = useState('');
-  const [srcWarehouse, setSrcWarehouse] = useState('');
-  const [date, setDate] = useState(getTodayISO());
+  const [srcWarehouse, setSrcWarehouse] = useState(itemFromPrefill?.warehouseId || '');
+  const [date, setDate] = useState(getTodayInPhilippineTime());
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
+  const [items, setItems] = useState<LineItem[]>(
+    prefill?.itemId ? [{ productId: prefill.itemId, quantity: '1' }] : [{ productId: '', quantity: '' }]
+  );
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
   const bk = BOOKINGS.find((b) => b.id === booking);
+
+  // Auto-fill warehouse from item when prefill.itemId is set and data loads
+  useEffect(() => {
+    if (prefill?.itemId) {
+      const item = inventoryItems.find((i) => i.id === prefill.itemId);
+      if (item?.warehouseId) {
+        setSrcWarehouse((prev) => (prev ? prev : item.warehouseId));
+      }
+    }
+  }, [prefill?.itemId, inventoryItems]);
 
   useEffect(() => {
     onDraftChange({
@@ -587,7 +637,7 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
     });
   }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, notes, items, onDraftChange]);
 
-  const warehouses = mockWarehouseDirectoryData.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
 
   return (
     <>
@@ -634,13 +684,17 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             onChange={(value) => setUnit(value)}
             options={[
               { value: '', label: 'Select unit…' },
-              ...mockUnits.map((u) => ({ value: u.id, label: u.name })),
+              ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
             ]}
             placeholder="Select unit…"
             placeholderWhen=""
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Link to Booking" hint="Optional">
@@ -656,6 +710,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
       </div>
@@ -721,6 +779,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Pull from Warehouse" required>
@@ -736,14 +798,18 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             hideIcon={true}
             fullWidth={true}
             minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
           />
         </Field>
         <Field label="Date" required>
-          <input 
-            type="date" 
+          <SingleDatePicker
             value={date}
-            onChange={(e) => setDate(e.target.value)}
-            style={inputStyle} 
+            onChange={setDate}
+            placeholder="Select date"
+            calendarZIndex={10020}
           />
         </Field>
         <Field label="Reference No." hint="Optional">
@@ -801,17 +867,21 @@ interface StockOutModalProps {
     idNumber: string;
     itemId: string;
   };
+  warehousePrefill?: {
+    warehouseId: string;
+  };
 }
 
-export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: StockOutModalProps) {
+export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, warehousePrefill }: StockOutModalProps) {
   const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [, setRefreshTick] = useState(0);
-  const { toasts, removeToast, success, error } = useToast();
-  const mockAuth = useMockAuth();
+  const { error } = useToast();
   const [warehouseDraft, setWarehouseDraft] = useState<WarehouseDraft | null>(null);
   const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [recordedItemsCount, setRecordedItemsCount] = useState(0);
 
   // Animate in
   useEffect(() => {
@@ -826,7 +896,9 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
       });
 
     const refresh = () => {
-      setRefreshTick((tick) => tick + 1);
+      void loadInventoryDataset(true).finally(() => {
+        setRefreshTick((tick) => tick + 1);
+      });
     };
 
     window.addEventListener('inventory:movement-updated', refresh);
@@ -926,12 +998,15 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
         }
       }
 
-      success('Stock Out logged successfully!');
-      router.push(returnTo || '/sales-report/inventory/stock-movements');
-      handleClose();
+      setRecordedItemsCount(
+        isWH ? warehouseDraft!.items.filter((e) => e.productId && Number(e.quantity) > 0).length : unitDraft!.items.filter((e) => e.productId && Number(e.quantity) > 0).length
+      );
+      setShowSuccessModal(true);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to process stock-out movement.';
-      error(message);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Stock-out error:', err);
+      }
+      error('We couldn’t complete the stock-out. Please try again.');
     }
   };
 
@@ -955,7 +1030,6 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
 
   return createPortal(
     <>
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
       <div
         onClick={handleClose}
         style={{
@@ -976,8 +1050,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          maxWidth: 720,
-          maxHeight: '92vh',
+          maxWidth: showSuccessModal ? 448 : 720,
+          maxHeight: showSuccessModal ? 'auto' : '92vh',
           background: C.white,
           borderRadius: 22,
           boxShadow: '0 24px 80px rgba(0,0,0,0.22)',
@@ -989,7 +1063,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
           opacity: visible ? 1 : 0,
         }}
       >
-        {/* ── Gradient header ── */}
+        {!showSuccessModal && (
+        /* ── Gradient header ── */
         <div
           style={{
             background: grad,
@@ -1075,70 +1150,119 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill }: 
             </button>
           </div>
         </div>
+        )}
 
-        {/* ── Scrollable form body ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '26px 28px' }}>
-          {isWH ? (
-            <WarehouseForm onDraftChange={setWarehouseDraft} />
-          ) : (
-            <UnitForm prefill={unitPrefill} onDraftChange={setUnitDraft} />
-          )}
-        </div>
-
-        {/* ── Sticky footer ── */}
-        <div
-          style={{
-            padding: '16px 28px',
-            borderTop: `1px solid ${C.lightGray}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexShrink: 0,
-            background: C.white,
-          }}
-        >
-          <span style={{ fontSize: 12, color: C.midGray, fontFamily: 'Poppins' }}>
-            <span style={{ color: C.red }}>*</span> Required · Logged as <strong>Stock Out</strong>
-          </span>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={handleClose}
-              style={{
-                background: 'none',
-                border: `1.5px solid ${C.lightGray}`,
-                borderRadius: 10,
-                padding: '10px 22px',
-                cursor: 'pointer',
-                color: C.darkGray,
-                fontWeight: 600,
-                fontSize: 14,
-                fontFamily: 'Poppins',
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              style={{
-                background: btnBg,
-                border: 'none',
-                borderRadius: 10,
-                padding: '10px 26px',
-                cursor: 'pointer',
-                color: C.white,
-                fontWeight: 700,
-                fontSize: 14,
-                fontFamily: 'Poppins',
-                boxShadow: `0 4px 16px ${btnSh}`,
-                transition: 'filter 0.15s',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
-              onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
-            >
-              Confirm Stock Out
-            </button>
+        {showSuccessModal ? (
+          /* Success modal (same style as Purchase Order success) */
+          <div className="p-6" style={{ fontFamily: 'Poppins' }}>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-[16px] font-semibold text-gray-900">
+                  Stock out logged successfully
+                </h2>
+                <p className="text-[12px] text-gray-600 mt-0.5">
+                  {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''} deducted from inventory
+                </p>
+              </div>
+            </div>
+            <p className="text-[13px] text-gray-700 mb-5">
+              You can review movements in the Stock Movement History.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                className="px-4 py-2 text-[13px] rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  handleClose();
+                }}
+              >
+                Stay here
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-[13px] rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold hover:opacity-95"
+                onClick={() => {
+                  router.push(returnTo || '/sales-report/inventory/items');
+                  handleClose();
+                }}
+              >
+                Go to Inventory Items
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* ── Scrollable form body ── */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '26px 28px' }}>
+              {isWH ? (
+                <WarehouseForm prefill={warehousePrefill} onDraftChange={setWarehouseDraft} />
+              ) : (
+                <UnitForm prefill={unitPrefill} onDraftChange={setUnitDraft} />
+              )}
+            </div>
+
+            {/* ── Sticky footer ── */}
+            <div
+              style={{
+                padding: '16px 28px',
+                borderTop: `1px solid ${C.lightGray}`,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexShrink: 0,
+                background: C.white,
+              }}
+            >
+              <span style={{ fontSize: 12, color: C.midGray, fontFamily: 'Poppins' }}>
+                <span style={{ color: C.red }}>*</span> Required · Logged as <strong>Stock Out</strong>
+              </span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={handleClose}
+                  style={{
+                    background: 'none',
+                    border: `1.5px solid ${C.lightGray}`,
+                    borderRadius: 10,
+                    padding: '10px 22px',
+                    cursor: 'pointer',
+                    color: C.darkGray,
+                    fontWeight: 600,
+                    fontSize: 14,
+                    fontFamily: 'Poppins',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmit}
+                  style={{
+                    background: btnBg,
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '10px 26px',
+                    cursor: 'pointer',
+                    color: C.white,
+                    fontWeight: 700,
+                    fontSize: 14,
+                    fontFamily: 'Poppins',
+                    boxShadow: `0 4px 16px ${btnSh}`,
+                    transition: 'filter 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.08)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+                >
+                  Confirm Stock Out
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
     </>,

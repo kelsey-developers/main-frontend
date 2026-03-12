@@ -16,6 +16,10 @@ export interface SingleDatePickerProps {
   placeholder?: string;
   /** Optional className for the trigger wrapper */
   className?: string;
+  /** z-index for the calendar portal (default 10000) */
+  calendarZIndex?: number;
+  /** Minimum selectable date (YYYY-MM-DD); dates before this are disabled */
+  minDate?: string;
 }
 
 const MONTH_NAMES = [
@@ -70,6 +74,8 @@ export default function SingleDatePicker({
   onChange,
   placeholder = 'Select date',
   className = '',
+  calendarZIndex = 10000,
+  minDate,
 }: SingleDatePickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -140,6 +146,14 @@ export default function SingleDatePicker({
   const days = getDaysInMonth(monthStart);
   const displayMonth = monthStart.getMonth();
   const isSelected = (date: Date) => formatDate(date) === value;
+  const isDisabled = (date: Date) => {
+    if (!minDate) return false;
+    const min = new Date(minDate);
+    min.setHours(0, 0, 0, 0);
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d < min;
+  };
 
   return (
     <div className={`relative ${className}`} ref={pickerRef}>
@@ -165,7 +179,7 @@ export default function SingleDatePicker({
           ref={dropdownRef}
           className="fixed bg-white rounded-lg shadow-lg border border-gray-200 p-2.5 flex flex-col"
           onClick={(e) => e.stopPropagation()}
-          style={{ width: 'min(90vw, 280px)', zIndex: 10000 }}
+          style={{ width: 'min(90vw, 280px)', zIndex: calendarZIndex }}
         >
           <div className="flex items-center justify-between mb-1.5 px-1">
             <button
@@ -204,11 +218,14 @@ export default function SingleDatePicker({
               const currentMonth = day.getMonth() === displayMonth;
               const selected = isSelected(day);
               const today = isToday(day);
+              const disabled = isDisabled(day);
               return (
                 <button
                   key={index}
                   type="button"
+                  disabled={disabled}
                   onClick={(e) => {
+                    if (disabled) return;
                     e.stopPropagation();
                     onChange(formatDate(day));
                     setIsOpen(false);
@@ -218,7 +235,7 @@ export default function SingleDatePicker({
                     ${!currentMonth ? 'text-gray-300' : 'text-gray-900'}
                     ${selected ? 'bg-[#0B5858] text-white font-semibold' : ''}
                     ${today && !selected ? 'border-2 border-[#0B5858]' : ''}
-                    hover:bg-gray-100 cursor-pointer
+                    ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 cursor-pointer'}
                   `}
                   style={{ fontFamily: 'var(--font-poppins)' }}
                 >

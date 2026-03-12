@@ -6,6 +6,9 @@ import { defaultSalesReportFilters } from '../types';
 interface FilterSidebarProps {
   filters: SalesReportFilters;
   onFiltersChange: (filters: SalesReportFilters) => void;
+  filterEnabled: boolean;
+  onFilterEnabledChange: (enabled: boolean) => void;
+  onApplyFilters: () => void;
 }
 
 const PROPERTY_TYPES = ['All', 'Condo', 'Apartment', 'Penthouse', 'House'];
@@ -23,6 +26,9 @@ const YEAR_OPTIONS = Array.from(
 const FilterSidebar: React.FC<FilterSidebarProps> = ({
   filters,
   onFiltersChange,
+  filterEnabled,
+  onFilterEnabledChange,
+  onApplyFilters,
 }) => {
   const update = (key: keyof SalesReportFilters, value: string) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -34,12 +40,35 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
   return (
     <div className="w-full lg:w-72 flex-shrink-0 space-y-3">
     <div className="w-full">
-      <h2
-        className="text-xl font-bold text-gray-900 mb-4"
-        style={{ fontFamily: 'Poppins' }}
-      >
-        Filters
-      </h2>
+      <div className="flex flex-row gap-2 justify-between items-center">
+        <h2
+          className="text-xl font-bold text-gray-900 mb-1"
+          style={{ fontFamily: 'Poppins' }}
+        >
+          Filters
+        </h2>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-xs font-medium text-gray-600 select-none"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            {filterEnabled ? 'On' : 'Off'}
+          </span>
+          <button
+            type="button"
+            onClick={() => onFilterEnabledChange(!filterEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              filterEnabled ? 'bg-[#0B5858]' : 'bg-gray-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                filterEnabled ? 'translate-x-5' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
       <div className="space-y-4">
         <div>
           <label
@@ -51,16 +80,21 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
           </label>
           <select
             id="property-type"
-            value={filters.propertyType}
+            value={filterEnabled ? filters.propertyType : ''}
             onChange={(e) => update('propertyType', e.target.value)}
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+            disabled={!filterEnabled}
+            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
             style={{ fontFamily: 'Poppins' }}
           >
-            {PROPERTY_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
+            {!filterEnabled && (
+              <option value=""></option>
+            )}
+            {filterEnabled &&
+              PROPERTY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
           </select>
           <div className="border-b-2  border-gray-300 py-2"></div>
         </div>
@@ -74,22 +108,27 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
           </label>
           <select
             id="location"
-            value={filters.location}
+            value={filterEnabled ? filters.location : ''}
             onChange={(e) => update('location', e.target.value)}
-            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+            disabled={!filterEnabled}
+            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
             style={{ fontFamily: 'Poppins' }}
           >
-            {LOCATIONS.map((loc) => (
-              <option key={loc} value={loc}>
-                {loc}
-              </option>
-            ))}
+            {!filterEnabled && (
+              <option value=""></option>
+            )}
+            {filterEnabled &&
+              LOCATIONS.map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
           </select>
           <div className="border-b-2 border-gray-300 py-2"></div>
         </div>
         <div>
           <label
-            className="block text-sm font-medium text-gray-700 mb-1"
+            className={`block text-sm font-medium mb-1 ${filterEnabled ? 'text-gray-700' : 'text-gray-400'}`}
             style={{ fontFamily: 'Poppins' }}
           >
             Time Period
@@ -98,11 +137,14 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
             <div className="bg-gray-200 rounded-lg p-2 grid grid-cols-2 gap-2 w-full">
               <button
                 type="button"
-                onClick={() => updateQuick({ filterMethod: 'quick' })}
+                onClick={() => filterEnabled && updateQuick({ filterMethod: 'quick' })}
+                disabled={!filterEnabled}
                 className={`w-full px-3 py-2.5 rounded-lg border text-sm transition-colors ${
-                  filters.filterMethod === 'quick'
-                    ? 'bg-white border-[#0B5858] text-gray-900 shadow-sm'
-                    : 'bg-gray-200 border-gray-200 text-gray-600 hover:bg-gray-50'
+                  !filterEnabled
+                    ? 'bg-gray-200 border-gray-200 text-gray-400 cursor-not-allowed'
+                    : filters.filterMethod === 'quick'
+                      ? 'bg-white border-[#0B5858] text-gray-900 shadow-sm'
+                      : 'bg-gray-200 border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
                 style={{ fontFamily: 'Poppins' }}
               >
@@ -110,11 +152,14 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => updateQuick({ filterMethod: 'custom' })}
+                onClick={() => filterEnabled && updateQuick({ filterMethod: 'custom' })}
+                disabled={!filterEnabled}
                 className={`w-full px-3 py-2.5 rounded-lg border text-sm transition-colors ${
-                  filters.filterMethod === 'custom'
-                    ? 'bg-white border-[#0B5858] text-gray-900 shadow-sm '
-                    : 'bg-gray-200 border-gray-200 text-gray-600 hover:bg-gray-50'
+                  !filterEnabled
+                    ? 'bg-gray-200 border-gray-200 text-gray-400 cursor-not-allowed'
+                    : filters.filterMethod === 'custom'
+                      ? 'bg-white border-[#0B5858] text-gray-900 shadow-sm '
+                      : 'bg-gray-200 border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
                 style={{ fontFamily: 'Poppins' }}
               >
@@ -122,7 +167,7 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
               </button>
             </div>
           </div>
-          {filters.filterMethod === 'custom' ? (
+          {filterEnabled && filters.filterMethod === 'custom' ? (
           <div className="grid grid-cols-2 gap-2 pt-2">
             <div className="col-span-2">
               <p className="text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins' }}>Start Date</p>
@@ -185,25 +230,37 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
           </div>
           ) : (
             <div className="flex flex-col gap-2 py-3">
-            <p className="text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins' }}>View By</p>
+            <p className={`text-sm font-medium ${filterEnabled ? 'text-gray-700' : 'text-gray-400'}`} style={{ fontFamily: 'Poppins' }}>View By</p>
             <select
-              value={filters.timePeriod}
+              value={filterEnabled ? filters.timePeriod : ''}
               onChange={(e) => updateQuick({ timePeriod: e.target.value as 'week' | 'month' | 'year' })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+              disabled={!filterEnabled}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
               style={{ fontFamily: 'Poppins' }}
             >
-              <option value="week">Week</option>
-              <option value="month">Month</option>
-              <option value="year">Year</option>
+              {!filterEnabled && <option value=""></option>}
+              {filterEnabled && (
+                <>
+                  <option value="week">Week</option>
+                  <option value="month">Month</option>
+                  <option value="year">Year</option>
+                </>
+              )}
             </select>
             <select
-              value={filters.timePeriodScope}
+              value={filterEnabled ? filters.timePeriodScope : ''}
               onChange={(e) => updateQuick({ timePeriodScope: e.target.value as 'this' | 'last' })}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+              disabled={!filterEnabled}
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
               style={{ fontFamily: 'Poppins' }}
             >
-              <option value="this">This {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
-              <option value="last">Last {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
+              {!filterEnabled && <option value=""></option>}
+              {filterEnabled && (
+                <>
+                  <option value="this">This {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
+                  <option value="last">Last {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
+                </>
+              )}
             </select>
           </div>
           )}
@@ -214,15 +271,17 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
         <button
           type="button"
           onClick={() => onFiltersChange({ ...defaultSalesReportFilters })}
-          className="px-4 py-2.5 w-full rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors"
+          disabled={!filterEnabled}
+          className="px-4 py-2.5 w-full rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
           style={{ fontFamily: 'Poppins' }}
         >
           Reset
         </button>
         <button
           type="button"
-          onClick={() => onFiltersChange({ ...filters })}
-          className="px-4 py-2.5 w-full rounded-lg border border-transparent bg-[#0B5858] text-white text-sm font-medium shadow-sm hover:bg-[#0B5858]/90 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors"
+          onClick={onApplyFilters}
+          disabled={!filterEnabled}
+          className="px-4 py-2.5 w-full rounded-lg border border-transparent bg-[#0B5858] text-white text-sm font-medium shadow-sm hover:bg-[#0B5858]/90 focus:ring-2 focus:ring-[#0B5858]/20 focus:outline-none transition-colors disabled:bg-gray-300 disabled:text-gray-100 disabled:cursor-not-allowed"
           style={{ fontFamily: 'Poppins' }}
         >
           Set filter

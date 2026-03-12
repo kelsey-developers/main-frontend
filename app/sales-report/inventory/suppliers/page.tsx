@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from '@/lib/api/client';
-import { loadInventoryDataset, mockSupplierDirectoryData } from "../lib/mockData";
+import { loadInventoryDataset, inventorySupplierDirectory } from "../lib/inventoryDataStore";
 import InventoryDropdown, { type InventoryDropdownOption } from "../components/InventoryDropdown";
 import ActiveStatusToggle from "../components/ActiveStatusToggle";
+import { useToast } from "../hooks/useToast";
 import { avatarPalette, initials } from "../helpers/supplierHelpers";
 
-type Supplier = (typeof mockSupplierDirectoryData)[number];
+type Supplier = (typeof inventorySupplierDirectory)[number];
 
 const SupplierFormModal = ({
   supplier,
@@ -61,7 +63,6 @@ const SupplierFormModal = ({
 
     const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
     document.body.dataset.modalCount = String(modalCount);
-    document.body.dataset.hideNavbar = 'true';
 
     window.addEventListener("keydown", fn);
     document.body.style.overflow = "hidden";
@@ -73,7 +74,6 @@ const SupplierFormModal = ({
       const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
       if (nextModalCount === 0) {
         delete document.body.dataset.modalCount;
-        delete document.body.dataset.hideNavbar;
       } else {
         document.body.dataset.modalCount = String(nextModalCount);
       }
@@ -102,9 +102,16 @@ const SupplierFormModal = ({
     </div>
   );
 
-  return (
-    <div onClick={onClose} className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4">
-      <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl" style={{ fontFamily: 'Poppins' }}>
+  return createPortal(
+    <div
+      onClick={onClose}
+      className="fixed inset-0 bg-[rgba(17,24,39,0.38)] flex items-center justify-center z-[10000] p-4"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-white rounded-2xl w-full max-w-[560px] max-h-[92dvh] overflow-hidden flex flex-col shadow-2xl"
+        style={{ fontFamily: 'Poppins' }}
+      >
         <div className="bg-gradient-to-r from-[#0b5858] to-[#05807e] px-6 py-5 flex justify-between items-center flex-shrink-0">
           <div>
             <div className="text-[10px] font-bold tracking-widest text-white/50 mb-1">
@@ -164,25 +171,31 @@ const SupplierFormModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
 const SuppliersSkeleton = () => (
-  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-    <div className="hidden md:grid grid-cols-[2fr_1.5fr_1.5fr_90px_140px_180px_220px] px-4 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e]">
-      {["SUPPLIER NAME", "CONTACT PERSON", "EMAIL / PHONE", "PO ORDERS", "LAST ORDER DATE", "PURCHASE ORDER STATUS", "ACTIONS"].map((h) => (
+  <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm min-w-[900px]">
+    <div className="hidden md:grid grid-cols-[minmax(70px,0.7fr)_minmax(170px,2.2fr)_minmax(100px,1.5fr)_minmax(120px,1.5fr)_90px_90px_120px_100px_minmax(110px,1.2fr)] px-4 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e]">
+      {["SUPPLIER ID", "SUPPLIER NAME", "CONTACT PERSON", "EMAIL / PHONE", "SUPPLIER STATUS", "PO ORDERS", "LAST ORDER DATE", "PURCHASE ORDER STATUS", "ACTIONS"].map((h) => (
         <div key={h} className="text-[10.5px] font-semibold tracking-wider text-white/70" style={{ fontFamily: 'Poppins' }}>
           {h}
         </div>
       ))}
     </div>
-    <div className="animate-pulse">
+      <div className="animate-pulse">
       {Array.from({ length: 6 }).map((_, index) => (
         <div
           key={`skeleton-${index}`}
-          className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_1.5fr_90px_140px_180px_220px] gap-3 md:gap-0 px-4 py-4 border-b border-gray-100 last:border-b-0"
+          className="grid grid-cols-1 md:grid-cols-[minmax(70px,0.7fr)_minmax(170px,2.2fr)_minmax(100px,1.5fr)_minmax(120px,1.5fr)_90px_90px_120px_100px_minmax(110px,1.2fr)] gap-3 md:gap-0 px-4 py-4 border-b border-gray-100 last:border-b-0"
         >
+          {/* Supplier ID skeleton */}
+          <div className="hidden md:flex items-center">
+            <div className="h-3 w-32 rounded bg-slate-200" />
+          </div>
+          {/* Supplier name skeleton */}
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-slate-200 flex-shrink-0" />
             <div className="flex flex-col gap-2 min-w-0">
@@ -198,6 +211,11 @@ const SuppliersSkeleton = () => (
             <div className="h-3 w-36 rounded bg-slate-200" />
             <div className="h-2.5 w-24 rounded bg-slate-200" />
           </div>
+          {/* Supplier Status skeleton */}
+          <div className="hidden md:flex items-center justify-center">
+            <div className="h-6 w-16 rounded-full bg-slate-200" />
+          </div>
+
           <div className="hidden md:flex items-center justify-center">
             <div className="h-6 w-8 rounded bg-slate-200" />
           </div>
@@ -219,6 +237,7 @@ const SuppliersSkeleton = () => (
 
 export default function SuppliersPage() {
   const router = useRouter();
+  const { success, error } = useToast();
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -233,12 +252,14 @@ export default function SuppliersPage() {
     void loadInventoryDataset()
       .finally(() => {
         if (!isMounted) return;
-        setSuppliers([...mockSupplierDirectoryData]);
+        setSuppliers([...inventorySupplierDirectory]);
         setIsLoading(false);
       });
 
     const onRefresh = () => {
-      setSuppliers([...mockSupplierDirectoryData]);
+      void loadInventoryDataset(true).finally(() => {
+        if (isMounted) setSuppliers([...inventorySupplierDirectory]);
+      });
     };
 
     window.addEventListener('inventory:movement-updated', onRefresh);
@@ -281,6 +302,8 @@ export default function SuppliersPage() {
         contactEmail: data.email,
         contactPhone: data.phone,
         address: data.address,
+        notes: data.notes,
+        isActive: editTarget ? data.isActive : true,
       };
 
       if (editTarget) {
@@ -290,12 +313,15 @@ export default function SuppliersPage() {
       }
 
       await loadInventoryDataset(true);
-      setSuppliers([...mockSupplierDirectoryData]);
+      setSuppliers([...inventorySupplierDirectory]);
+      success(editTarget ? 'Supplier updated successfully.' : 'Supplier added successfully.');
     };
 
-    void run().catch((error) => {
-      const message = error instanceof Error ? error.message : 'Unable to save supplier changes.';
-      alert(message);
+    void run().catch((err) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Supplier save error:', err);
+      }
+      error('We couldn’t save the supplier. Please try again.');
     });
   };
 
@@ -416,12 +442,15 @@ export default function SuppliersPage() {
             ))}
           </div>
 
-          <InventoryDropdown
-            value={sortKey}
-            onChange={setSortKey}
-            options={sortOptions}
-            minWidthClass="min-w-[210px]"
-          />
+          <div className="relative z-[60]">
+            <InventoryDropdown
+              value={sortKey}
+              onChange={setSortKey}
+              options={sortOptions}
+              minWidthClass="min-w-[210px]"
+              menuZIndexClass="z-[999]"
+            />
+          </div>
         </div>
       </div>
 
@@ -432,9 +461,9 @@ export default function SuppliersPage() {
         ) : (
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           {/* Desktop Header */}
-          <div className="hidden md:grid grid-cols-[2fr_1.5fr_1.5fr_90px_140px_180px_220px] px-4 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e]">
-            {["SUPPLIER NAME", "CONTACT PERSON", "EMAIL / PHONE", "PO ORDERS", "LAST ORDER DATE", "PURCHASE ORDER STATUS", "ACTIONS"].map((h, i) => (
-              <div key={i} className={`text-[10.5px] font-semibold tracking-wider text-white/70 ${i === 3 ? 'text-center' : ''}`} style={{ fontFamily: 'Poppins' }}>
+          <div className="hidden md:grid grid-cols-[minmax(70px,0.7fr)_minmax(170px,2.2fr)_minmax(100px,1.5fr)_minmax(120px,1.5fr)_90px_90px_120px_100px_minmax(110px,1.2fr)] px-4 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e]">
+            {["SUPPLIER ID", "SUPPLIER NAME", "CONTACT PERSON", "EMAIL / PHONE", "SUPPLIER STATUS", "PO ORDERS", "LAST ORDER DATE", "PURCHASE ORDER STATUS", "ACTIONS"].map((h, i) => (
+              <div key={i} className={`text-[10.5px] font-semibold tracking-wider text-white/70 ${i === 5 ? 'text-center' : ''}`} style={{ fontFamily: 'Poppins' }}>
                 {h}
               </div>
             ))}
@@ -442,8 +471,14 @@ export default function SuppliersPage() {
 
           {/* Table Body */}
           {filtered.length === 0 ? (
-            <div className="py-12 text-center text-gray-400 text-sm" style={{ fontFamily: 'Poppins' }}>
-              No suppliers found.
+            <div className="py-12 px-6 text-center text-gray-400 text-sm" style={{ fontFamily: 'Poppins' }}>
+              <div className="flex justify-center mb-3">
+                <svg className="w-12 h-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="font-semibold text-gray-900 mb-1">No suppliers found</div>
+              <p className="text-sm">Try adjusting your search or filters</p>
             </div>
           ) : (
             <div>
@@ -451,39 +486,100 @@ export default function SuppliersPage() {
               const [fg, bg] = avatarPalette(s.name);
               const isLast = idx === filtered.length - 1;
               return (
-                <div
+              <div
                   key={s.id}
-                  className={`supplier-row grid grid-cols-1 md:grid-cols-[2fr_1.5fr_1.5fr_90px_140px_180px_220px] gap-3 md:gap-0 px-4 py-4 ${!isLast ? 'border-b border-gray-100' : ''} ${s.isActive ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
+                  className={`supplier-row relative grid grid-cols-1 md:grid-cols-[minmax(70px,0.7fr)_minmax(170px,2.2fr)_minmax(100px,1.5fr)_minmax(120px,1.5fr)_90px_90px_120px_100px_minmax(110px,1.2fr)] gap-3 md:gap-0 px-4 py-4 ${!isLast ? 'border-b border-gray-100' : ''} ${s.isActive ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
                 >
-                  {/* Supplier Name */}
-                  <div className="flex items-center gap-3">
+                  {/* Mobile supplier active status badge (top-right) */}
+                  <div className="absolute right-4 top-3 md:hidden">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold tracking-wide border ${
+                        s.isActive
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-gray-50 text-gray-500 border-gray-200'
+                      }`}
+                      style={{ fontFamily: 'Poppins' }}
+                    >
+                      {s.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  {/* Supplier ID (desktop) */}
+                  <div
+                    className="hidden md:flex items-center text-[11px] text-gray-400 break-all pr-2"
+                    style={{ fontFamily: "'DM Mono', monospace" }}
+                  >
+                    {s.id}
+                  </div>
+
+                  {/* Supplier Name + (mobile) contact */}
+                  <div className="flex items-start gap-3 min-w-0">
                     <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[12px] font-bold flex-shrink-0" style={{ background: bg, color: fg, fontFamily: 'Poppins' }}>
                       {initials(s.name)}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[13.5px] font-semibold text-gray-900 truncate" style={{ fontFamily: 'Poppins' }}>
+                      <div
+                        className="text-[13.5px] font-semibold text-gray-900 whitespace-normal break-words"
+                        style={{ fontFamily: 'Poppins' }}
+                      >
                         {s.name}
                       </div>
+                      {/* Supplier ID (mobile) */}
+                      <div
+                        className="mt-0.5 text-[11px] text-gray-400 break-all md:hidden"
+                        style={{ fontFamily: "'DM Mono', monospace" }}
+                      >
+                        {s.id}
+                      </div>
+                      {/* Mobile contact summary under name */}
+                      <div
+                        className="mt-0.5 text-[11px] text-gray-500 md:hidden whitespace-normal break-words"
+                        style={{ fontFamily: 'Poppins' }}
+                      >
+                        {s.contactName}
+                        {s.address && (
+                          <>
+                            {" · "}
+                            {s.address.split(",").slice(1).join(",").trim() || s.address}
+                          </>
+                        )}
+                      </div>
                       {s.notes && (
-                        <div className="hidden lg:block text-[11px] text-gray-400 truncate max-w-[220px] mt-0.5" style={{ fontFamily: 'Poppins' }}>
+                        <div
+                          className="hidden lg:block text-[11px] text-gray-400 whitespace-normal break-words max-w-[220px] mt-0.5"
+                          style={{ fontFamily: 'Poppins' }}
+                        >
                           {s.notes}
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Contact */}
-                  <div className="md:flex md:flex-col md:justify-center">
-                    <div className="text-[13px] font-medium text-gray-700" style={{ fontFamily: 'Poppins' }}>{s.contactName}</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5" style={{ fontFamily: 'Poppins' }}>
+                  {/* Contact (desktop column only) */}
+                  <div className="hidden md:flex md:flex-col md:justify-center min-w-0 overflow-hidden">
+                    <div className="text-[13px] font-medium text-gray-700 truncate" style={{ fontFamily: 'Poppins' }} title={s.contactName}>{s.contactName}</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5 truncate" style={{ fontFamily: 'Poppins' }} title={s.address}>
                       {s.address.split(",").slice(1).join(",").trim() || s.address}
                     </div>
                   </div>
 
                   {/* Email / Phone */}
-                  <div className="md:flex md:flex-col md:justify-center">
-                    <div className="text-[12.5px] text-[#05807e] font-medium truncate" style={{ fontFamily: 'Poppins' }}>{s.email}</div>
-                    <div className="text-[11.5px] text-gray-400 mt-0.5" style={{ fontFamily: 'Poppins' }}>{s.phone}</div>
+                  <div className="md:flex md:flex-col md:justify-center min-w-0 overflow-hidden">
+                    <div className="text-[12.5px] text-[#05807e] font-medium truncate" style={{ fontFamily: 'Poppins' }} title={s.email}>{s.email}</div>
+                    <div className="text-[11.5px] text-gray-400 mt-0.5 truncate" style={{ fontFamily: 'Poppins' }} title={s.phone}>{s.phone}</div>
+                  </div>
+
+                  {/* Supplier Status */}
+                  <div className="hidden md:flex items-center">
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold tracking-wide border ${
+                        s.isActive
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-gray-50 text-gray-500 border-gray-200'
+                      }`}
+                      style={{ fontFamily: 'Poppins' }}
+                    >
+                      {s.isActive ? 'Active' : 'Inactive'}
+                    </span>
                   </div>
 
                   {/* POs */}

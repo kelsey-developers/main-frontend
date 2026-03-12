@@ -15,6 +15,15 @@ function looksLikeNgrokErrorPage(text: string): boolean {
   return haystack.includes('ngrok') && (haystack.includes('err_ngrok_') || looksLikeHtml(text));
 }
 
+function isNgrokUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host.endsWith('.ngrok-free.dev') || host.endsWith('.ngrok.io') || host.endsWith('.ngrok.app');
+  } catch {
+    return false;
+  }
+}
+
 async function forwardToUpstream(
   request: NextRequest,
   upstreamUrl: string
@@ -25,6 +34,7 @@ async function forwardToUpstream(
   // Preserve auth/dev-auth headers if present.
   const passthroughHeaders = [
     'authorization',
+    'content-type',
     'x-user-id',
     'x-user-email',
     'x-user-role',
@@ -35,35 +45,87 @@ async function forwardToUpstream(
     if (value) headers.set(key, value);
   });
 
-  // Ensure JSON content-type for requests with body.
-  if (method !== 'GET' && method !== 'HEAD') {
-    if (!headers.get('content-type')) headers.set('content-type', 'application/json');
+  // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
+  if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
   }
 
-  let body: string | undefined;
-  if (method !== 'GET' && method !== 'HEAD') {
-    const raw = await request.text();
-    body = raw || undefined;
+  // Ensure JSON content-type only when not set (multipart uploads need their boundary).
+  if (method !== 'GET' && method !== 'HEAD' && !headers.get('content-type')) {
+    headers.set('content-type', 'application/json');
   }
 
-  const res = await fetch(upstreamUrl, {
-    method,
-    headers,
-    ...(body !== undefined ? { body } : {}),
-  });
-
-  const text = await res.text();
-  const isHtml = looksLikeHtml(text) || looksLikeNgrokErrorPage(text);
-  let data: unknown = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { message: text };
+  let body: string | ArrayBuffer | undefined;
+  if (method !== 'GET' && method !== 'HEAD') {
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      body = await request.arrayBuffer();
+    } else {
+      const raw = await request.text();
+      body = raw || undefined;
     }
   }
 
-  return { status: res.status, data, isHtml, rawText: text };
+  const MAX_RETRIES = 2;
+  const RETRY_DELAY_MS = 500;
+
+  function isRetryableNetworkError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const code =
+      (err as NodeJS.ErrnoException).code ??
+      (err.cause && typeof err.cause === 'object' && 'code' in err.cause
+        ? (err.cause as { code: string }).code
+        : undefined);
+    const msg = err.message.toLowerCase();
+    const causeMsg =
+      err.cause instanceof Error ? err.cause.message.toLowerCase() : '';
+    return (
+      code === 'ECONNRESET' ||
+      code === 'ECONNREFUSED' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ENOTFOUND' ||
+      msg.includes('fetch failed') ||
+      msg.includes('network') ||
+      causeMsg.includes('socket disconnected') ||
+      causeMsg.includes('connection')
+    );
+  }
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(upstreamUrl, {
+        method,
+        headers,
+        ...(body !== undefined ? { body } : {}),
+      });
+      const text = await res.text();
+      const isHtml = looksLikeHtml(text) || looksLikeNgrokErrorPage(text);
+      let data: unknown = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+      return { status: res.status, data, isHtml, rawText: text };
+    } catch (err) {
+      lastError = err;
+      if (attempt < MAX_RETRIES && isRetryableNetworkError(err)) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            `[market proxy] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for ${upstreamUrl}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export async function proxyMarketApi(

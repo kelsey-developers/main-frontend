@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useToastContext } from '../context/ToastContext';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -12,6 +13,13 @@ interface ToastMessage {
 }
 
 export function useToast() {
+  const context = useToastContext();
+
+  if (context) {
+    return context;
+  }
+
+  // Fallback when outside ToastProvider (local state - ToastContainer must be rendered by caller)
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const addToast = useCallback(

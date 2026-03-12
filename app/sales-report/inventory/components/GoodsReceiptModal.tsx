@@ -2,18 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import SingleDatePicker from '@/components/SingleDatePicker';
 import type { PurchaseOrder, PurchaseOrderLine } from '../types';
 import InventoryDropdown from './InventoryDropdown';
+import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
-import { mockPurchaseOrderLines, mockWarehouseDirectoryData, mockReplenishmentItems } from '../lib/mockData';
-
-const getTodayISO = () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+import { inventoryPurchaseOrderLines, inventoryWarehouseDirectory, inventoryItems } from '../lib/inventoryDataStore';
+import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
 const C = {
   darkTeal: '#0b5858',
@@ -84,13 +79,39 @@ export default function GoodsReceiptModal({
   onClose: () => void;
   onSubmit: (data: any) => void;
 }) {
-  const mockAuth = useMockAuth();
+  const authState = useMockAuth();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [warehouseId, setWarehouseId] = useState('');
-  const [receivedBy, setReceivedBy] = useState(mockAuth.userProfile?.fullname || '');
-  const [receiptDate, setReceiptDate] = useState(getTodayISO());
+  const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
+
+  // Auto-fill warehouse from PO line items' stored warehouse (most common among products)
+  const defaultWarehouseId = (() => {
+    const counts = new Map<string, number>();
+    for (const line of poLines) {
+      const item = inventoryItems.find((i) => i.id === line.productId);
+      if (item?.warehouseId) {
+        counts.set(item.warehouseId, (counts.get(item.warehouseId) ?? 0) + 1);
+      }
+    }
+    let best = '';
+    let max = 0;
+    for (const [whId, n] of counts) {
+      if (n > max) {
+        max = n;
+        best = whId;
+      }
+    }
+    return best;
+  })();
+
+  const [warehouseId, setWarehouseId] = useState(defaultWarehouseId);
+  const [receivedBy, setReceivedBy] = useState(authState.userProfile?.fullname || 'Staff');
+  const [receiptDate, setReceiptDate] = useState(getTodayInPhilippineTime());
   const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    setWarehouseId((prev) => (prev ? prev : defaultWarehouseId));
+  }, [defaultWarehouseId]);
 
   useEffect(() => {
     setMounted(true);
@@ -104,7 +125,37 @@ export default function GoodsReceiptModal({
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const poLines = mockPurchaseOrderLines.filter(line => line.poId === po.id);
+  const getRemaining = (line: PurchaseOrderLine) =>
+    Math.max(0, Number(line.quantity - (line.receivedQuantity ?? 0)));
+
+  const [lineQuantities, setLineQuantities] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {};
+    poLines.forEach((line) => {
+      init[line.id] = getRemaining(line);
+    });
+    return init;
+  });
+
+  const poLinesKey = poLines.map((l) => `${l.id}:${l.quantity}:${l.receivedQuantity}`).join('|');
+  useEffect(() => {
+    const next: Record<string, number> = {};
+    poLines.forEach((line) => {
+      next[line.id] = getRemaining(line);
+    });
+    setLineQuantities(next);
+  }, [poLinesKey]);
+
+  const setLineQty = (lineId: string, value: number, max: number) => {
+    const clamped = Math.max(0, Math.min(max, Math.round(value)));
+    setLineQuantities((prev) => ({ ...prev, [lineId]: clamped }));
+  };
+
+  const reviewItems = poLines
+    .map((line) => {
+      const qty = lineQuantities[line.id] ?? getRemaining(line);
+      return { line, qty };
+    })
+    .filter(({ qty }) => qty > 0);
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -127,15 +178,41 @@ export default function GoodsReceiptModal({
     setTimeout(onClose, 260);
   };
 
+  const MAX_FILE_SIZE_MB = 2;
+  const MAX_TOTAL_MB = 8;
+  const MAX_FILES = 5;
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    const newImages = [...receiptImages, ...files];
+    const maxBytes = MAX_FILE_SIZE_MB * 1024 * 1024;
+    const maxTotalBytes = MAX_TOTAL_MB * 1024 * 1024;
+    const currentTotal = receiptImages.reduce((sum, f) => sum + f.size, 0);
+    const validFiles: File[] = [];
+    let skippedOversized = false;
+
+    for (const file of files) {
+      if (validFiles.length >= MAX_FILES) break;
+      if (file.size > maxBytes) {
+        skippedOversized = true;
+        continue;
+      }
+      if (currentTotal + validFiles.reduce((s, f) => s + f.size, 0) + file.size > maxTotalBytes) {
+        skippedOversized = true;
+        break;
+      }
+      validFiles.push(file);
+    }
+
+    if (skippedOversized) {
+      error(`Some images were skipped. Max ${MAX_FILE_SIZE_MB}MB per file, ${MAX_TOTAL_MB}MB total, ${MAX_FILES} files.`);
+    }
+
+    const newImages = [...receiptImages, ...validFiles];
     setReceiptImages(newImages);
 
-    // Create previews
-    files.forEach(file => {
+    validFiles.forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreviews(prev => [...prev, reader.result as string]);
@@ -149,18 +226,25 @@ export default function GoodsReceiptModal({
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
+  const { toasts, removeToast, error, success } = useToast();
+
   const handleSubmit = () => {
-    if (!warehouseId || !receivedBy || !receiptDate) {
-      alert('Please fill in all required fields');
+    if (!warehouseId || !receiptDate) {
+      error('Please select a warehouse and receipt date.');
+      return;
+    }
+    if (reviewItems.length === 0) {
+      error('Enter at least one quantity to receive.');
       return;
     }
 
     onSubmit({
       warehouseId,
-      receivedBy,
+      receivedBy: (receivedBy || 'Staff').trim(),
       receiptDate,
       notes,
       receiptImages,
+      items: reviewItems.map(({ line, qty }) => ({ productId: line.productId, quantityReceived: qty })),
     });
     handleClose();
   };
@@ -170,6 +254,7 @@ export default function GoodsReceiptModal({
   }
 
   return createPortal(
+    <>
     <div
       onClick={handleClose}
       style={{
@@ -251,7 +336,7 @@ export default function GoodsReceiptModal({
                 onChange={setWarehouseId}
                 options={[
                   { value: '', label: 'Select warehouse...' },
-                  ...mockWarehouseDirectoryData
+                  ...inventoryWarehouseDirectory
                     .filter(w => w.isActive)
                     .map(w => ({ value: w.id, label: w.name }))
                 ]}
@@ -260,6 +345,8 @@ export default function GoodsReceiptModal({
                 hideIcon={true}
                 fullWidth={true}
                 align="left"
+                backdropZIndexClass="z-[10005]"
+                menuZIndexClass="z-[10010]"
               />
             </Field>
           </div>
@@ -273,49 +360,89 @@ export default function GoodsReceiptModal({
               gap: 12,
             }}
           >
-            <Field label="Received By" required>
+            <Field label="Received By" hint="Optional until login is enabled. Default: Staff">
               <input
                 type="text"
                 value={receivedBy}
-                readOnly
-                placeholder="Receiver name"
-                style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+                onChange={e => setReceivedBy(e.target.value)}
+                placeholder="e.g. Staff or your name"
+                style={inputStyle}
               />
             </Field>
             <Field label="Receipt Date" required>
-              <input
-                type="date"
+              <SingleDatePicker
                 value={receiptDate}
-                onChange={e => setReceiptDate(e.target.value)}
-                style={inputStyle}
+                onChange={setReceiptDate}
+                placeholder="Select receipt date"
+                calendarZIndex={10020}
+                className="w-full"
               />
             </Field>
           </div>
 
-          {/* Order Items Preview */}
+          {/* Order Items – Partial Receipt Quantities */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: C.darkGray, marginBottom: 10, fontFamily: 'Poppins' }}>
               Purchase Order Items
+            </div>
+            <div style={{ fontSize: 11, color: C.midGray, marginBottom: 8 }}>
+              Enter qty to receive per line. Max per line = remaining (ordered − received).
             </div>
             <div style={{ border: `1.5px solid ${C.lightGray}`, borderRadius: 10, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fbfb' }}>
                     <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Item</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Qty</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Ordered</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Received</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Remaining</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Qty to receive</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: C.midGray, fontFamily: 'Poppins' }}>Unit Price</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {poLines.map((line, idx) => {
-                    const product = mockReplenishmentItems.find(p => p.id === line.productId);
+                  {poLines.map((line) => {
+                    const product = inventoryItems.find(p => p.id === line.productId);
+                    const received = line.receivedQuantity ?? 0;
+                    const remaining = getRemaining(line);
+                    const qty = lineQuantities[line.id] ?? remaining;
+                    const unit = product?.unit || 'pcs';
                     return (
-                      <tr key={idx} style={{ borderTop: `1px solid ${C.lightGray}` }}>
+                      <tr key={line.id} style={{ borderTop: `1px solid ${C.lightGray}` }}>
                         <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, fontFamily: 'Poppins' }}>
                           {product?.name || `Product #${line.productId}`}
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, textAlign: 'right', fontFamily: 'Poppins' }}>
-                          {line.quantity} {product?.unit || 'pcs'}
+                          {line.quantity} {unit}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, textAlign: 'right', fontFamily: 'Poppins' }}>
+                          {received} {unit}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, textAlign: 'right', fontFamily: 'Poppins' }}>
+                          {remaining} {unit}
+                        </td>
+                        <td style={{ padding: '6px 12px', textAlign: 'right', fontFamily: 'Poppins' }}>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={qty}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\D/g, '');
+                              if (raw === '') {
+                                setLineQty(line.id, 0, remaining);
+                                return;
+                              }
+                              const v = parseInt(raw, 10);
+                              setLineQty(line.id, Number.isNaN(v) ? 0 : v, remaining);
+                            }}
+                            style={{
+                              ...inputStyle,
+                              width: 72,
+                              padding: '6px 8px',
+                              textAlign: 'right',
+                            }}
+                          />
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, textAlign: 'right', fontFamily: 'Poppins' }}>
                           PHP {line.unitPrice.toLocaleString()}
@@ -373,7 +500,7 @@ export default function GoodsReceiptModal({
                     Click to upload receipt images
                   </div>
                   <div style={{ fontSize: 11, color: C.midGray }}>
-                    PNG, JPG up to 10MB each
+                    PNG, JPG up to {MAX_FILE_SIZE_MB}MB each, max {MAX_FILES} files
                   </div>
                 </button>
 
@@ -450,6 +577,65 @@ export default function GoodsReceiptModal({
               />
             </Field>
           </div>
+
+          {/* Review Before Submit */}
+          <div
+            style={{
+              marginBottom: 20,
+              padding: 16,
+              borderRadius: 12,
+              background: '#f0f9f9',
+              border: `1.5px solid ${C.teal}33`,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.darkTeal, marginBottom: 10, fontFamily: 'Poppins' }}>
+              Review before submit
+            </div>
+            {reviewItems.length === 0 ? (
+              <div style={{ fontSize: 13, color: C.midGray, fontFamily: 'Poppins' }}>
+                No quantities entered. Add qty to receive above.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {reviewItems.map(({ line, qty }) => {
+                  const product = inventoryItems.find(p => p.id === line.productId);
+                  const unit = product?.unit || 'pcs';
+                  const remaining = getRemaining(line);
+                  return (
+                    <div
+                      key={line.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: 13,
+                        color: C.darkGray,
+                        fontFamily: 'Poppins',
+                      }}
+                    >
+                      <span>{product?.name || `Product #${line.productId}`}</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {qty} {unit} of {remaining} remaining
+                      </span>
+                    </div>
+                  );
+                })}
+                <div
+                  style={{
+                    marginTop: 8,
+                    paddingTop: 8,
+                    borderTop: `1px solid ${C.lightGray}`,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: C.darkTeal,
+                    fontFamily: 'Poppins',
+                  }}
+                >
+                  Total: {reviewItems.reduce((s, { qty }) => s + qty, 0)} units across {reviewItems.length} item{reviewItems.length !== 1 ? 's' : ''}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -489,31 +675,34 @@ export default function GoodsReceiptModal({
           <button
             type="button"
             onClick={handleSubmit}
+            disabled={reviewItems.length === 0}
             style={{
               padding: '10px 28px',
               borderRadius: 10,
               border: 'none',
-              background: `linear-gradient(135deg, ${C.darkTeal}, ${C.teal})`,
+              background: reviewItems.length === 0 ? C.midGray : `linear-gradient(135deg, ${C.darkTeal}, ${C.teal})`,
               color: C.white,
               fontSize: 14,
               fontWeight: 700,
-              cursor: 'pointer',
+              cursor: reviewItems.length === 0 ? 'not-allowed' : 'pointer',
               transition: 'opacity 0.15s',
-              boxShadow: '0 4px 14px rgba(11,88,88,0.3)',
+              boxShadow: reviewItems.length === 0 ? 'none' : '0 4px 14px rgba(11,88,88,0.3)',
               fontFamily: 'Poppins',
+              opacity: reviewItems.length === 0 ? 0.7 : 1,
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '0.9';
+              if (reviewItems.length > 0) e.currentTarget.style.opacity = '0.9';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = '1';
+              if (reviewItems.length > 0) e.currentTarget.style.opacity = '1';
             }}
           >
             Create Receipt
           </button>
         </div>
       </div>
-    </div>,
+    </div>
+    </>,
     document.body
   );
 }

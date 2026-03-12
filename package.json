@@ -10,12 +10,16 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@types/leaflet": "^1.9.21",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
     "lucide-react": "^0.577.0",
+    "leaflet": "^1.9.4",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-is": "^19.0.0",
+    "react-leaflet": "^4.2.1",
     "recharts": "^3.7.0"
   },
   "devDependencies": {
@@ -28,5 +32,8 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "dompurify": "^3.2.4"
   }
 }

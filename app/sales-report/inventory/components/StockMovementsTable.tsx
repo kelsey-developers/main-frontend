@@ -114,7 +114,9 @@ export default function StockMovementsTable({ movements, isLoading }: { movement
 
   return (
     <div className="mt-5 bg-white rounded-lg border border-gray-200 overflow-hidden" style={{ fontFamily: 'Poppins' }}>
-      <table className="w-full border-collapse">
+      {/* Allow horizontal scroll on smaller viewports so columns don't collapse */}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[900px]">
         <thead className="bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white">
           <tr>
             {['ID', 'PRODUCT', 'WAREHOUSE', 'TYPE', 'QTY', 'BY', 'DATE', 'TIME'].map((header) => (
@@ -129,32 +131,44 @@ export default function StockMovementsTable({ movements, isLoading }: { movement
           {movements.length === 0 ? (
             <tr>
               <td colSpan={8} className="p-10 text-center text-sm text-gray-400">
-                No movements found matching your criteria
+                <div className="flex flex-col items-center gap-2">
+                  <svg className="w-10 h-10 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                  <span>No movements found matching your criteria</span>
+                </div>
               </td>
             </tr>
           ) : (
             movements.map((movement) => (
               <tr key={movement.id} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 text-sm font-semibold text-gray-700">{movement.id}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">
-                  <div className="font-semibold text-gray-900">{movement.productName}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{movement.productSku}</div>
+                <td className="px-4 py-3 align-top">
+                  <div className="text-[11px] text-gray-400 break-all" style={{ fontFamily: "'DM Mono', monospace" }}>
+                    {movement.id}
+                  </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{movement.warehouseName}</td>
+                <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">
+                  <div className="font-semibold text-gray-900 whitespace-normal break-words">{movement.productName}</div>
+                  <div className="text-xs text-gray-500 mt-0.5 break-all" style={{ fontFamily: "'DM Mono', monospace" }}>
+                    {movement.productSku}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">{movement.warehouseName}</td>
                 <td className="px-4 py-3">
                   <StatusBadge status={movement.type} statusConfig={MOVEMENT_STATUS_CONFIG} className="text-[11px]" />
                 </td>
                 <td className="px-4 py-3">
                   <Qty type={movement.type} quantity={movement.quantity} />
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{movement.createdBy || 'N/A'}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{movement.recordedDate}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{movement.recordedTime}</td>
+                <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">{movement.createdBy || 'N/A'}</td>
+                <td className="px-4 py-3 text-[12px] text-gray-600">{movement.recordedDate}</td>
+                <td className="px-4 py-3 text-[12px] text-gray-600">{movement.recordedTime}</td>
               </tr>
             ))
           )}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }
