@@ -12,7 +12,7 @@ export interface ReferralNode {
   email: string;
   avatarUrl?: string;
   referralCode: string;
-  level: 0 | 1 | 2 | 3;
+  level: number;
   status: 'active' | 'inactive';
   joinedAt: string; // ISO
   totalCommissionsEarned: number; // ₱ lifetime
