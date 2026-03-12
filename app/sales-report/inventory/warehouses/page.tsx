@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,25 +24,6 @@ import { useToast } from '../hooks/useToast';
 
 type Warehouse = WarehouseDirectoryRecord;
 type SortKey = 'name' | 'mostStock' | 'mostLowStock';
-const LOCAL_WAREHOUSES_KEY = 'inventory.localWarehouses.v1';
-
-const readLocalWarehouses = (): Warehouse[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(LOCAL_WAREHOUSES_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Warehouse[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row) => row && typeof row.id === 'string' && typeof row.name === 'string');
-  } catch {
-    return [];
-  }
-};
-
-const writeLocalWarehouses = (rows: Warehouse[]) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(LOCAL_WAREHOUSES_KEY, JSON.stringify(rows));
-};
 
 const formatRecordedDateTime = (value?: string) => {
   const base = value ? new Date(value) : new Date();
@@ -724,7 +705,6 @@ export default function WarehousesPage() {
   const { error, success } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const sessionOnlyWarehouses = useRef<Warehouse[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -776,28 +756,11 @@ export default function WarehousesPage() {
   }, [warehouses]);
 
   const applyWarehouseList = () => {
-    const backendIds = new Set(inventoryWarehouseDirectory.map((row) => row.id));
-    const localOnly = sessionOnlyWarehouses.current.filter((row) => !backendIds.has(row.id));
-    setWarehouses([...localOnly, ...inventoryWarehouseDirectory]);
+    setWarehouses([...inventoryWarehouseDirectory]);
   };
 
   const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
     if (editTarget) {
-      if (editTarget.id.startsWith('wd-')) {
-        setWarehouses((prev) =>
-          prev.map((warehouse) =>
-            warehouse.id === editTarget.id ? { ...warehouse, ...data } : warehouse
-          )
-        );
-        sessionOnlyWarehouses.current = sessionOnlyWarehouses.current.map((warehouse) =>
-          warehouse.id === editTarget.id ? { ...warehouse, ...data } : warehouse
-        );
-        writeLocalWarehouses(sessionOnlyWarehouses.current);
-        setFormOpen(false);
-        setEditTarget(null);
-        return;
-      }
-
       const run = async () => {
         await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}`, {
           name: data.name,
@@ -833,35 +796,13 @@ export default function WarehousesPage() {
     };
 
     run().catch((err) => {
-      const status = (err as { status?: number }).status;
-      const msg = err instanceof Error ? err.message : '';
-      const routeMissing = status === 404 || msg.toLowerCase().includes('route not found');
-      if (!routeMissing) {
-        if (process.env.NODE_ENV !== 'production') console.error('Warehouse create error:', err);
-        error("We couldn't create the warehouse. Please try again.");
-        return;
-      }
-      const localWarehouse: Warehouse = {
-        id: `wd-${Date.now()}`,
-        name: data.name,
-        location: data.location ?? '',
-        description: data.description ?? '',
-        isActive: data.isActive ?? true,
-        inventoryBalances: [],
-        stockMovements: [],
-      };
-      if (routeMissing) {
-        sessionOnlyWarehouses.current = [localWarehouse, ...sessionOnlyWarehouses.current];
-        writeLocalWarehouses(sessionOnlyWarehouses.current);
-        setWarehouses((prev) => [localWarehouse, ...prev]);
-        setSelectedWarehouseId(localWarehouse.id);
-      }
+      if (process.env.NODE_ENV !== 'production') console.error('Warehouse create error:', err);
+      error("We couldn't create the warehouse. Please try again.");
     });
   };
 
   useEffect(() => {
     let isMounted = true;
-    sessionOnlyWarehouses.current = readLocalWarehouses();
 
     void loadInventoryDataset()
       .finally(() => {

@@ -156,33 +156,6 @@ const replaceArray = <T>(target: T[], next: T[] | undefined) => {
   target.splice(0, target.length, ...(next ?? []));
 };
 
-const LOCAL_WAREHOUSES_KEY = 'inventory.localWarehouses.v1';
-
-const readLocalWarehouses = (): WarehouseDirectoryRecord[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(LOCAL_WAREHOUSES_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Partial<WarehouseDirectoryRecord>[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((row): row is Partial<WarehouseDirectoryRecord> & { id: string; name: string } =>
-        Boolean(row && typeof row.id === 'string' && typeof row.name === 'string')
-      )
-      .map((row) => ({
-        id: row.id,
-        name: row.name,
-        location: row.location ?? '',
-        description: row.description ?? '',
-        isActive: row.isActive ?? true,
-        inventoryBalances: Array.isArray(row.inventoryBalances) ? row.inventoryBalances : [],
-        stockMovements: Array.isArray(row.stockMovements) ? row.stockMovements : [],
-      }));
-  } catch {
-    return [];
-  }
-};
-
 const formatDateLabel = (raw: string) => {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
@@ -278,14 +251,6 @@ const hasMeaningfulDataset = (dataset: InventoryDatasetResponse) => {
 
 const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockWarehouseDirectoryData, dataset.warehouseDirectoryData);
-  const localWarehouses = readLocalWarehouses();
-  if (localWarehouses.length > 0) {
-    const backendIds = new Set(mockWarehouseDirectoryData.map((warehouse) => warehouse.id));
-    const localOnly = localWarehouses.filter((warehouse) => !backendIds.has(warehouse.id));
-    if (localOnly.length > 0) {
-      mockWarehouseDirectoryData.splice(0, 0, ...localOnly);
-    }
-  }
   replaceArray(mockSuppliers, dataset.suppliers);
   replaceArray(mockPurchaseOrders, dataset.purchaseOrders);
   replaceArray(mockPurchaseOrderLines, dataset.purchaseOrderLines);
@@ -316,23 +281,8 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockUnitItems, normalizedUnitItems);
   replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
 
-  // Warehouses reflect backend first, then include locally persisted additions
-  // when backend create endpoint is not available yet.
+  // Warehouses come from backend dataset only.
   replaceArray(mockWarehouses, dataset.warehouses ?? []);
-  if (localWarehouses.length > 0) {
-    const knownIds = new Set(mockWarehouses.map((warehouse) => warehouse.id));
-    const localWarehouseRows: Warehouse[] = localWarehouses
-      .filter((warehouse) => !knownIds.has(warehouse.id))
-      .map((warehouse) => ({
-        id: warehouse.id,
-        name: warehouse.name,
-        location: warehouse.location,
-        createdAt: new Date().toISOString().slice(0, 10),
-      }));
-    if (localWarehouseRows.length > 0) {
-      mockWarehouses.splice(0, 0, ...localWarehouseRows);
-    }
-  }
 
   if (dataset.supplierDirectoryData && dataset.supplierDirectoryData.length > 0) {
     replaceArray(mockSupplierDirectoryData, dataset.supplierDirectoryData);
