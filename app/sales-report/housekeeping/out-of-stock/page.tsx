@@ -65,6 +65,7 @@ export default function HousekeepingOutOfStockPage() {
     return () => window.removeEventListener('inventory:movement-updated', onInventoryUpdated);
   }, []);
 
+
   const itemSelectOptions = [
     { value: '', label: 'Select item…' },
     ...inventoryItems.map((p) => ({
@@ -79,6 +80,8 @@ export default function HousekeepingOutOfStockPage() {
       .filter((wh) => wh.isActive)
       .map((w) => ({ value: w.id, label: w.name })),
   ];
+
+
 
   const updateLine = (id: string, field: keyof OutOfStockLine, value: string) => {
     setLines((prev) =>
@@ -104,6 +107,37 @@ export default function HousekeepingOutOfStockPage() {
     setNotes('');
     void fetchInventory(true);
   };
+
+  if (loading) {
+    return (
+      <div style={{ fontFamily: 'Poppins' }} className="animate-pulse">
+        <div className="mb-4">
+          <div className="h-5 w-36 bg-gray-200 rounded mb-3" />
+          <div className="h-8 w-64 bg-gray-200 rounded mb-2" />
+          <div className="h-4 w-full max-w-xl bg-gray-100 rounded" />
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 max-w-4xl space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="h-10 w-full bg-gray-100 rounded-lg" />
+            <div className="h-10 w-full bg-gray-100 rounded-lg" />
+          </div>
+          <div className="border-t border-gray-200 pt-5 space-y-3">
+            <div className="h-4 w-40 bg-gray-100 rounded" />
+            <div className="space-y-2">
+              <div className="h-12 w-full bg-gray-50 rounded-lg border border-gray-100" />
+              <div className="h-12 w-full bg-gray-50 rounded-lg border border-gray-100" />
+            </div>
+            <div className="h-5 w-32 bg-gray-100 rounded" />
+          </div>
+          <div className="h-20 w-full bg-gray-50 rounded-lg border border-gray-100" />
+          <div className="flex gap-3">
+            <div className="h-10 w-32 bg-gray-200 rounded-lg" />
+            <div className="h-10 w-28 bg-gray-100 rounded-lg" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ fontFamily: 'Poppins' }}>

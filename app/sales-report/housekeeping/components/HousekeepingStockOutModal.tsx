@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import Link from 'next/link';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 import SingleDatePicker from '@/components/SingleDatePicker';
+import { useToast } from '@/app/sales-report/inventory/hooks/useToast';
+import { useMockAuth } from '@/contexts/MockAuthContext';
 import { processStockOut } from '@/app/sales-report/inventory/lib/inventoryLedger';
 import {
   loadInventoryDataset,
@@ -173,7 +174,7 @@ function LineItemRow({
   const avail = sourceWarehouse && whBalance !== undefined
     ? whBalance.quantity
     : (product ? product.currentStock : 0);
-  const over = !!(product && item.quantity && parseInt(item.quantity, 10) > avail);
+  const over = !!(product && item.quantity && parseInt(item.quantity) > avail);
 
   const itemOptions = sourceWarehouse && wh
     ? wh.inventoryBalances
@@ -234,7 +235,7 @@ function LineItemRow({
         )}
         <input
           type="number"
-          min={1}
+          min="1"
           value={item.quantity}
           onChange={(e) => onUpdate(index, 'quantity', e.target.value)}
           placeholder="0"
@@ -245,7 +246,6 @@ function LineItemRow({
         )}
       </div>
       <button
-        type="button"
         onClick={() => onRemove(index)}
         style={{
           width: 36,
@@ -272,7 +272,6 @@ function AddItemBtn({ onAdd, accent }: { onAdd: () => void; accent: string }) {
   const [hov, setHov] = useState(false);
   return (
     <button
-      type="button"
       onClick={onAdd}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
@@ -296,19 +295,23 @@ function AddItemBtn({ onAdd, accent }: { onAdd: () => void; accent: string }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// HOUSEKEEPING STOCK OUT MODAL (Unit flow only, same as inventory)
-// ═══════════════════════════════════════════════════════════════════
-interface HousekeepingStockOutModalProps {
-  onClose: () => void;
+interface UnitDraft {
+  confirmedBy: string;
+  idNumber: string;
+  unit: string;
+  booking: string;
+  reason: string;
+  srcWarehouse: string;
+  date: string;
+  reference: string;
+  notes: string;
+  items: LineItem[];
 }
 
-export default function HousekeepingStockOutModal({ onClose }: HousekeepingStockOutModalProps) {
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [, setRefreshTick] = useState(0);
-  const [confirmedBy, setConfirmedBy] = useState('');
-  const [idNumber, setIdNumber] = useState('');
+function UnitForm({ onDraftChange }: { onDraftChange: (draft: UnitDraft) => void }) {
+  const authState = useMockAuth();
+  const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
+  const [idNumber, setIdNumber] = useState(authState.user?.id || '');
   const [unit, setUnit] = useState('');
   const [booking, setBooking] = useState('');
   const [reason, setReason] = useState('');
@@ -317,15 +320,254 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [recordedItemsCount, setRecordedItemsCount] = useState(0);
-
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
-  const rem = (i: number) =>
-    setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
+  const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
   const bk = BOOKINGS.find((b) => b.id === booking);
+
+  useEffect(() => {
+    onDraftChange({
+      confirmedBy,
+      idNumber,
+      unit,
+      booking,
+      reason,
+      srcWarehouse,
+      date,
+      reference,
+      notes,
+      items,
+    });
+  }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, notes, items, onDraftChange]);
+
   const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 14,
+          marginBottom: 14,
+        }}
+      >
+        <Field label="Confirmed By" required hint="Your name">
+          <input
+            type="text"
+            value={confirmedBy}
+            readOnly
+            placeholder="e.g. Maria Santos"
+            style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+          />
+        </Field>
+        <Field label="ID Number" required hint="Employee/Staff ID">
+          <input
+            type="text"
+            value={idNumber}
+            readOnly
+            placeholder="e.g. EMP-2025-002"
+            style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+          />
+        </Field>
+      </div>
+      <div style={{ borderTop: `1.5px dashed ${C.lightGray}`, margin: '14px 0 22px' }} />
+      <SectionLabel label="UNIT & BOOKING" color={C.darkTeal} />
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 14,
+          marginBottom: 14,
+        }}
+      >
+        <Field label="Unit / Room" required>
+          <InventoryDropdown
+            value={unit}
+            onChange={(value) => setUnit(value)}
+            options={[
+              { value: '', label: 'Select unit…' },
+              ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
+            ]}
+            placeholder="Select unit…"
+            placeholderWhen=""
+            hideIcon={true}
+            fullWidth={true}
+            minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
+          />
+        </Field>
+        <Field label="Link to Booking" hint="Optional">
+          <InventoryDropdown
+            value={booking}
+            onChange={(value) => setBooking(value)}
+            options={[
+              { value: '', label: 'Select booking…' },
+              ...BOOKINGS.map((b) => ({ value: b.id, label: `${b.code} · ${b.guest}` })),
+            ]}
+            placeholder="Select booking…"
+            placeholderWhen=""
+            hideIcon={true}
+            fullWidth={true}
+            minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
+          />
+        </Field>
+      </div>
+
+      {bk && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '14px 18px',
+            background: C.unBookingBg,
+            borderRadius: 12,
+            borderLeft: `3px solid ${C.unBookingBorder}`,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: 12,
+          }}
+        >
+          {[
+            { l: 'Guest', v: bk.guest },
+            { l: 'Stay', v: `${bk.checkIn} → ${bk.checkOut}` },
+            { l: 'Unit', v: bk.unit },
+          ].map((m) => (
+            <div key={m.l}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: C.unBookingText,
+                  fontWeight: 700,
+                  letterSpacing: 0.8,
+                  marginBottom: 3,
+                  fontFamily: 'Poppins',
+                }}
+              >
+                {m.l}
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.unBtn, fontFamily: 'Poppins' }}>
+                {m.v}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 14,
+          marginBottom: 14,
+        }}
+      >
+        <Field label="Reason" required>
+          <InventoryDropdown
+            value={reason}
+            onChange={(value) => setReason(value)}
+            options={[
+              { value: '', label: 'Select reason…' },
+              ...REASONS_UN.map((r) => ({ value: r, label: r })),
+            ]}
+            placeholder="Select reason…"
+            placeholderWhen=""
+            hideIcon={true}
+            fullWidth={true}
+            minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
+          />
+        </Field>
+        <Field label="Pull from Warehouse" required>
+          <InventoryDropdown
+            value={srcWarehouse}
+            onChange={(value) => setSrcWarehouse(value)}
+            options={[
+              { value: '', label: 'Select warehouse…' },
+              ...warehouses.map((w) => ({ value: w.id, label: w.name })),
+            ]}
+            placeholder="Select warehouse…"
+            placeholderWhen=""
+            hideIcon={true}
+            fullWidth={true}
+            minWidthClass="min-w-0"
+            align="left"
+            backdropZIndexClass="z-[10005]"
+            menuZIndexClass="z-[10010]"
+            useFixedPosition={true}
+          />
+        </Field>
+        <Field label="Date" required>
+          <SingleDatePicker
+            value={date}
+            onChange={setDate}
+            placeholder="Select date"
+            calendarZIndex={10020}
+          />
+        </Field>
+        <Field label="Reference No." hint="Optional">
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="e.g. BK-2025-001"
+            style={inputStyle}
+          />
+        </Field>
+      </div>
+
+      <div style={{ borderTop: `1.5px dashed ${C.lightGray}`, margin: '8px 0 22px' }} />
+      <SectionLabel label="ITEMS TO ALLOCATE TO UNIT" color={C.darkTeal} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {items.map((it, i) => (
+          <LineItemRow
+            key={i}
+            item={it}
+            index={i}
+            onUpdate={upd}
+            onRemove={rem}
+            sourceWarehouse={srcWarehouse}
+          />
+        ))}
+      </div>
+      <AddItemBtn
+        onAdd={() => setItems((p) => [...p, { productId: '', quantity: '' }])}
+        accent={C.unBtn}
+      />
+
+      <Field label="Notes" style={{ marginTop: 16 }}>
+        <textarea
+          rows={2}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Additional remarks for this unit allocation…"
+          style={{ ...inputStyle, resize: 'vertical' }}
+        />
+      </Field>
+    </>
+  );
+}
+
+interface HousekeepingStockOutModalProps {
+  onClose: () => void;
+}
+
+export default function HousekeepingStockOutModal({ onClose }: HousekeepingStockOutModalProps) {
+  const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [, setRefreshTick] = useState(0);
+  const { error } = useToast();
+  const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [recordedItemsCount, setRecordedItemsCount] = useState(0);
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -334,9 +576,10 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
 
   // Same data loading as inventory StockOutModal: loadInventoryDataset + refresh on movement/focus
   useEffect(() => {
-    void loadInventoryDataset().finally(() => {
-      setRefreshTick((tick) => tick + 1);
-    });
+    void loadInventoryDataset()
+      .finally(() => {
+        setRefreshTick((tick) => tick + 1);
+      });
 
     const refresh = () => {
       void loadInventoryDataset(true).finally(() => {
@@ -367,40 +610,47 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
 
   const handleSubmit = async () => {
     try {
-      if (!unit || !srcWarehouse || !reason || !date) {
-        alert('Please fill unit, source warehouse, reason, and date.');
+      if (!unitDraft) {
+        error('Form is still loading. Please try again.');
+        return;
+      }
+      if (!unitDraft.unit || !unitDraft.srcWarehouse || !unitDraft.reason || !unitDraft.date) {
+        error('Please fill unit, source warehouse, reason, and date.');
         return;
       }
 
-      const validItems = items.filter(
+      const validItems = unitDraft.items.filter(
         (entry) => entry.productId && Number(entry.quantity) > 0
       );
       if (!validItems.length) {
-        alert('Add at least one item with quantity.');
+        error('Add at least one item with quantity.');
         return;
       }
 
       for (const entry of validItems) {
         await processStockOut({
           productId: entry.productId,
-          warehouseId: srcWarehouse,
+          warehouseId: unitDraft.srcWarehouse,
           quantity: Number(entry.quantity),
-          reason,
-          date,
-          reference: reference || booking || undefined,
-          notes: notes || undefined,
-          createdBy: confirmedBy || undefined,
-          unitId: unit,
+          reason: unitDraft.reason,
+          date: unitDraft.date,
+          reference: unitDraft.reference || unitDraft.booking || undefined,
+          notes: unitDraft.notes || undefined,
+          createdBy: unitDraft.confirmedBy || undefined,
+          unitId: unitDraft.unit,
         });
       }
 
-      setRecordedItemsCount(validItems.length);
+      setRecordedItemsCount(
+        unitDraft.items.filter((e) => e.productId && Number(e.quantity) > 0).length
+      );
       setShowSuccessModal(true);
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') {
-        console.error('Housekeeping stock-out error:', err);
+        // eslint-disable-next-line no-console
+        console.error('Stock-out error:', err);
       }
-      alert('We couldn\'t complete the stock-out. Please try again.');
+      error('We couldn’t complete the stock-out. Please try again.');
     }
   };
 
@@ -476,50 +726,27 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                   Allocate items to a room or unit
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div
-                  style={{
-                    background: 'rgba(255,255,255,0.18)',
-                    borderRadius: 8,
-                    padding: '7px 13px',
-                    color: C.white,
-                    fontSize: 12,
-                    fontWeight: 700,
-                    fontFamily: 'Poppins',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  UNIT / ROOM
-                </div>
-                <button
-                  type="button"
-                  onClick={handleClose}
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: '50%',
-                    border: 'none',
-                    background: 'rgba(255,255,255,0.18)',
-                    color: C.white,
-                    cursor: 'pointer',
-                    fontSize: 20,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'background 0.15s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.3)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.18)')}
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                onClick={handleClose}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'rgba(255,255,255,0.18)',
+                  color: C.white,
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.3)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.18)')}
+              >
+                ×
+              </button>
             </div>
           )}
 
@@ -536,249 +763,30 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                     Stock out logged successfully
                   </h2>
                   <p className="text-[12px] text-gray-600 mt-0.5">
-                    {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''} allocated to unit
+                    {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''} deducted from inventory
                   </p>
                 </div>
               </div>
               <p className="text-[13px] text-gray-700 mb-5">
-                You can review movements in Inventory → Stock Movement History.
+                You can review movements in the Stock Movement History.
               </p>
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   className="px-4 py-2 text-[13px] rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  onClick={handleClose}
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    handleClose();
+                  }}
                 >
                   Close
                 </button>
-                <Link
-                  href="/sales-report/inventory/stock-movements"
-                  className="px-4 py-2 text-[13px] rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold hover:opacity-95 no-underline inline-block text-center"
-                  onClick={() => setTimeout(onClose, 0)}
-                >
-                  View Stock Movements
-                </Link>
               </div>
             </div>
           ) : (
             <>
               <div style={{ flex: 1, overflowY: 'auto', padding: '26px 28px' }}>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <Field label="Confirmed By" required hint="Your name">
-                    <input
-                      type="text"
-                      value={confirmedBy}
-                      onChange={(e) => setConfirmedBy(e.target.value)}
-                      placeholder="e.g. Maria Santos"
-                      style={inputStyle}
-                    />
-                  </Field>
-                  <Field label="ID Number" required hint="Employee/Staff ID">
-                    <input
-                      type="text"
-                      value={idNumber}
-                      onChange={(e) => setIdNumber(e.target.value)}
-                      placeholder="e.g. EMP-2025-002"
-                      style={inputStyle}
-                    />
-                  </Field>
-                </div>
-                <div style={{ borderTop: `1.5px dashed ${C.lightGray}`, margin: '14px 0 22px' }} />
-                <SectionLabel label="UNIT & BOOKING" color={C.darkTeal} />
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <Field label="Unit / Room" required>
-                    <InventoryDropdown
-                      value={unit}
-                      onChange={(value) => setUnit(value)}
-                      options={[
-                        { value: '', label: 'Select unit…' },
-                        ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
-                      ]}
-                      placeholder="Select unit…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
-                  <Field label="Link to Booking" hint="Optional">
-                    <InventoryDropdown
-                      value={booking}
-                      onChange={(value) => setBooking(value)}
-                      options={[
-                        { value: '', label: 'Select booking…' },
-                        ...BOOKINGS.map((b) => ({ value: b.id, label: `${b.code} · ${b.guest}` })),
-                      ]}
-                      placeholder="Select booking…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
-                </div>
-
-                {bk && (
-                  <div
-                    style={{
-                      marginBottom: 16,
-                      padding: '14px 18px',
-                      background: C.unBookingBg,
-                      borderRadius: 12,
-                      borderLeft: `3px solid ${C.unBookingBorder}`,
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                      gap: 12,
-                    }}
-                  >
-                    {[
-                      { l: 'Guest', v: bk.guest },
-                      { l: 'Stay', v: `${bk.checkIn} → ${bk.checkOut}` },
-                      { l: 'Unit', v: bk.unit },
-                    ].map((m) => (
-                      <div key={m.l}>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: C.unBookingText,
-                            fontWeight: 700,
-                            letterSpacing: 0.8,
-                            marginBottom: 3,
-                            fontFamily: 'Poppins',
-                          }}
-                        >
-                          {m.l}
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: C.unBtn, fontFamily: 'Poppins' }}>
-                          {m.v}
-                        </div>
-                      </div>
-                    ))}
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                      <Link
-                        href={`/sales-report/finance/bookings/${bk.id}`}
-                        style={{ fontSize: 12, fontWeight: 600, color: C.darkTeal, fontFamily: 'Poppins' }}
-                      >
-                        View booking →
-                      </Link>
-                    </div>
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <Field label="Reason" required>
-                    <InventoryDropdown
-                      value={reason}
-                      onChange={(value) => setReason(value)}
-                      options={[
-                        { value: '', label: 'Select reason…' },
-                        ...REASONS_UN.map((r) => ({ value: r, label: r })),
-                      ]}
-                      placeholder="Select reason…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
-                  <Field label="Pull from Warehouse" required>
-                    <InventoryDropdown
-                      value={srcWarehouse}
-                      onChange={(value) => setSrcWarehouse(value)}
-                      options={[
-                        { value: '', label: 'Select warehouse…' },
-                        ...warehouses.map((w) => ({ value: w.id, label: w.name })),
-                      ]}
-                      placeholder="Select warehouse…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
-                  <Field label="Date" required>
-                    <SingleDatePicker
-                      value={date}
-                      onChange={setDate}
-                      placeholder="Select date"
-                      calendarZIndex={10020}
-                    />
-                  </Field>
-                  <Field label="Reference No." hint="Optional">
-                    <input
-                      value={reference}
-                      onChange={(e) => setReference(e.target.value)}
-                      placeholder="e.g. BK-2025-001"
-                      style={inputStyle}
-                    />
-                  </Field>
-                </div>
-
-                <div style={{ borderTop: `1.5px dashed ${C.lightGray}`, margin: '8px 0 22px' }} />
-                <SectionLabel label="ITEMS TO ALLOCATE TO UNIT" color={C.darkTeal} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {items.map((it, i) => (
-                    <LineItemRow
-                      key={i}
-                      item={it}
-                      index={i}
-                      onUpdate={upd}
-                      onRemove={rem}
-                      sourceWarehouse={srcWarehouse}
-                    />
-                  ))}
-                </div>
-                <AddItemBtn
-                  onAdd={() => setItems((p) => [...p, { productId: '', quantity: '' }])}
-                  accent={C.unBtn}
-                />
-
-                <Field label="Notes" style={{ marginTop: 16 }}>
-                  <textarea
-                    rows={2}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Additional remarks for this unit allocation…"
-                    style={{ ...inputStyle, resize: 'vertical' }}
-                  />
-                </Field>
+                <UnitForm onDraftChange={setUnitDraft} />
               </div>
 
               <div
@@ -797,7 +805,6 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                 </span>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button
-                    type="button"
                     onClick={handleClose}
                     style={{
                       background: 'none',
@@ -814,7 +821,6 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
                     Cancel
                   </button>
                   <button
-                    type="button"
                     onClick={handleSubmit}
                     style={{
                       background: C.unBtn,

@@ -1,38 +1,31 @@
 'use client';
 
 import React from 'react';
+import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 
 /** One row: item id/name + either loss or broken (mutually exclusive) */
 export type ItemRow = { item: string; type: 'loss' | 'broken' | null };
 
-/** Predefined items when inventory is not used */
-export const REPORT_ITEMS = [
-  'Towel set',
-  'Remote control',
-  'Glass / vase',
-  'Lamp',
-  'Carpet',
-  'Mirror',
-  'Chair',
-  'Table',
-  'Bedding',
-  'Kitchenware',
-];
-
 const emptyRow: ItemRow = { item: '', type: null };
+
+// Fallback list for report items when no itemOptions are provided
+const REPORT_ITEMS: string[] = [];
 
 export type ItemOption = { value: string; label: string };
 
 interface LostBrokenItemsTableProps {
   rows: ItemRow[];
   onRowsChange: (rows: ItemRow[]) => void;
-  /** When provided, use these options (e.g. from inventory) instead of REPORT_ITEMS */
-  itemOptions?: ItemOption[];
-  /** When true, disable the table (e.g. while inventory is loading) */
+  itemOptions: ItemOption[];
   disabled?: boolean;
 }
 
-export function LostBrokenItemsTable({ rows, onRowsChange, itemOptions, disabled = false }: LostBrokenItemsTableProps) {
+export function LostBrokenItemsTable({
+  rows,
+  onRowsChange,
+  itemOptions,
+  disabled = false,
+}: LostBrokenItemsTableProps) {
   const addRow = () => onRowsChange([...rows, { ...emptyRow }]);
 
   const removeRow = (index: number) => {
@@ -80,17 +73,17 @@ export function LostBrokenItemsTable({ rows, onRowsChange, itemOptions, disabled
             {rows.map((row, index) => (
               <tr key={index} className="hover:bg-gray-50/50">
                 <td className="px-3 py-2">
-                  <select
+                  <InventoryDropdown
                     value={row.item}
-                    onChange={(e) => updateRow(index, 'item', e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-md border border-gray-200 bg-white text-sm text-gray-900 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
-                  >
-                    {options.map((opt) => (
-                      <option key={opt.value || 'empty'} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(value) => updateRow(index, 'item', value)}
+                    options={options}
+                    placeholder="Select item"
+                    placeholderWhen=""
+                    fullWidth
+                    align="left"
+                    minWidthClass="min-w-0"
+                    hideIcon
+                  />
                 </td>
                 <td className="px-3 py-2 text-center">
                   <input

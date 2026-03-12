@@ -70,6 +70,7 @@ export async function GET() {
   const headers = { 'Content-Type': 'application/json' };
 
   if (!BACKEND_URL) {
+    // No backend configured – return an empty dataset and let the UI handle "no data" states.
     return NextResponse.json(emptyDataset, { headers });
   }
 
@@ -118,6 +119,7 @@ export async function GET() {
       const message = error instanceof Error ? error.message : String(error);
       console.warn('Inventory dataset backend unreachable:', message);
     }
+    // On error, return an empty dataset instead of injecting mock items.
     return NextResponse.json(emptyDataset, { headers });
   }
 }
