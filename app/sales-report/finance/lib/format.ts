@@ -27,13 +27,24 @@ export function formatPHPForChart(value: number | undefined | null): string {
     return `PHP ${millions.toFixed(1)}M`;
   }
 
-  // Ten-thousands and hundred-thousands: use k with no decimals.
-  if (n >= 10_000) {
+  // Hundred-thousands: use k with no decimals (e.g. 200k).
+  if (n >= 100_000) {
     return `PHP ${Math.round(n / 1_000)}k`;
   }
 
-  // Below 10,000: show plain number without decimals.
-  return `PHP ${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  // Ten-thousands but below hundred-thousands: show full value with two decimals.
+  if (n >= 10_000) {
+    return `PHP ${n.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  // Below 10,000: show full value with two decimals (currency-style).
+  return `PHP ${n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 /**
@@ -115,16 +126,26 @@ export function formatTime(time?: string): string {
   return `${hours}:${minutes} ${period}`;
 }
 
-/**
- * Format numbers for display. Uses k/M for hundred thousands and millions; otherwise two decimals.
- */
 export function formatNumber(value: number | undefined | null): string {
   const n = value != null && Number.isFinite(value) ? value : 0;
+
+  // Millions:
+  // - Show whole millions with no decimals when remainder < 100k (e.g. 1,050,000 → "1m")
+  // - Show one decimal when there is at least 100k remainder (e.g. 1,200,000 → "1.2m")
   if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`;
+    const millions = n / 1_000_000;
+    const remainder = n % 1_000_000;
+    if (remainder < 100_000) {
+      return `${Math.round(millions)}m`;
+    }
+    return `${millions.toFixed(1)}m`;
   }
+
+  // Hundred-thousands: compact "k" form (e.g. 100,000 → "100k", 450,000 → "450k")
   if (n >= 100_000) {
     return `${Math.round(n / 1_000)}k`;
   }
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Below 100,000: show the full integer with grouping and NO decimal places
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }

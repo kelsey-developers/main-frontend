@@ -4,11 +4,6 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
-import { LostBrokenItemsTable, type ItemRow } from '../components/LostBrokenItemsTable';
-import {
-  inventoryItems,
-  loadInventoryDataset,
-} from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 /** Unit from GET /api/units (backend may use title or name) */
 type UnitOption = {
@@ -20,6 +15,13 @@ type UnitOption = {
   property_type?: string;
 };
 
+type BookingOption = {
+  id: string;
+  guest: string;
+  checkIn: string;
+  checkOut: string;
+};
+
 /** Payload sent to POST /api/housekeeping/reports */
 type ReportPayload = {
   unitId: string;
@@ -27,8 +29,7 @@ type ReportPayload = {
   bookingId?: string;
   location?: string;
   reportedAt: string;
-  description?: string;
-  reasonOfDamage?: string;
+  description: string;
   reportedBy?: string;
   items: Array<{ item: string; type: 'loss' | 'broken' }>;
 };
@@ -75,15 +76,18 @@ type ProofFile = { file: File; preview?: string };
 
 export type ReportCategory = 'loss' | 'broken';
 
-const emptyRow: ItemRow = { item: '', type: null };
-
 export default function HousekeepingReportPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
+  const [employeeId, setEmployeeId] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
+  const [employeeLoading, setEmployeeLoading] = useState(false);
+  const [employeeError, setEmployeeError] = useState<string | null>(null);
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [unitsError, setUnitsError] = useState<string | null>(null);
-  const [inventoryLoading, setInventoryLoading] = useState(true);
-  const [inventoryRefreshTick, setInventoryRefreshTick] = useState(0);
+  const [bookings, setBookings] = useState<BookingOption[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,33 +115,74 @@ export default function HousekeepingReportPage() {
 
   useEffect(() => {
     let cancelled = false;
-    async function fetchInventory() {
-      setInventoryLoading(true);
+    async function fetchRecentBookings() {
+      setBookingsLoading(true);
+      setBookingsError(null);
       try {
-        await loadInventoryDataset(true);
+        const data = await apiClient.get<
+          Array<{
+            id: string;
+            check_in_date: string;
+            check_out_date: string;
+            client?: { first_name?: string; last_name?: string };
+          }> | { message?: string }
+        >('/api/market/bookings/my');
+
+        if (!Array.isArray(data)) {
+          if (!cancelled) {
+            setBookings([]);
+          }
+          return;
+        }
+
+        const today = new Date(todayStr + 'T00:00:00');
+        const cutoff = new Date(today);
+        cutoff.setDate(cutoff.getDate() - 11); // ~ a week and a half ago
+
+        const recent = data
+          .map<BookingOption | null>((b) => {
+            const guest =
+              [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ').trim() ||
+              'Guest';
+            const ci = new Date(b.check_in_date + 'T00:00:00');
+            if (Number.isNaN(ci.getTime())) return null;
+            if (ci < cutoff || ci > today) return null;
+            return {
+              id: b.id,
+              guest,
+              checkIn: b.check_in_date,
+              checkOut: b.check_out_date,
+            };
+          })
+          .filter((b): b is BookingOption => b != null);
+
         if (!cancelled) {
-          setInventoryRefreshTick((t) => t + 1);
+          setBookings(recent);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setBookingsError(err instanceof Error ? err.message : 'Failed to load bookings');
+          setBookings([]);
         }
       } finally {
         if (!cancelled) {
-          setInventoryLoading(false);
+          setBookingsLoading(false);
         }
       }
     }
-    void fetchInventory();
+    void fetchRecentBookings();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [todayStr]);
 
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
-  const [itemRows, setItemRows] = useState<ItemRow[]>([{ ...emptyRow }]);
   const [description, setDescription] = useState('');
-  const [reason, setReason] = useState('');
   const [proofFiles, setProofFiles] = useState<ProofFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedBookingId, setSelectedBookingId] = useState<string>('');
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
 
@@ -146,16 +191,73 @@ export default function HousekeepingReportPage() {
     ...units.map((u) => ({ value: u.id, label: unitDisplayLabel(u) })),
   ];
 
-  const itemOptions = useMemo(
-    () => [
-      { value: '', label: inventoryLoading ? 'Loading items…' : 'Select an item' },
-      ...inventoryItems.map((item) => ({
-        value: item.name,
-        label: item.name,
+  const bookingDropdownOptions = useMemo(
+    () =>
+      bookings.map((b) => ({
+        value: b.id,
+        label: `${b.id} · ${b.guest} · ${b.checkIn} → ${b.checkOut}`,
       })),
-    ],
-    [inventoryLoading, inventoryRefreshTick]
+    [bookings],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const trimmedId = employeeId.trim();
+    if (!trimmedId) {
+      setEmployeeName('');
+      setEmployeeError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    async function fetchEmployee() {
+      setEmployeeLoading(true);
+      setEmployeeError(null);
+      try {
+        const data = await apiClient.get<
+          | { id?: number | string; firstName?: string; lastName?: string; fullname?: string }
+          | { user?: { id?: number | string; firstName?: string; lastName?: string; fullname?: string } }
+        >(`/api/users/${encodeURIComponent(trimmedId)}`, { signal: controller.signal });
+
+        if (cancelled) return;
+
+        const userRecord = (data as any).user ?? data;
+        if (!userRecord) {
+          setEmployeeName('');
+          setEmployeeError('Employee not found');
+          return;
+        }
+
+        const fullName =
+          (userRecord.fullname as string) ||
+          [userRecord.firstName, userRecord.lastName].filter(Boolean).join(' ').trim();
+
+        if (!fullName) {
+          setEmployeeName('');
+          setEmployeeError('Employee not found');
+          return;
+        }
+
+        setEmployeeName(fullName);
+        setEmployeeError(null);
+      } catch (err) {
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return;
+        setEmployeeName('');
+        setEmployeeError(err instanceof Error ? err.message : 'Failed to load employee');
+      } finally {
+        if (!cancelled) {
+          setEmployeeLoading(false);
+        }
+      }
+    }
+
+    void fetchEmployee();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [employeeId]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files?.length) return;
@@ -183,13 +285,10 @@ export default function HousekeepingReportPage() {
     });
   }, []);
 
-  const hasValidItemEntry = itemRows.some(
-    (r) => r.item !== '' && (r.type === 'loss' || r.type === 'broken')
-  );
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUnitId || !hasValidItemEntry || !selectedUnit) return;
+    const trimmedDescription = description.trim();
+    if (!selectedUnitId || !selectedUnit || !trimmedDescription || !employeeId.trim() || !employeeName.trim()) return;
     setSubmitError(null);
     setIsSubmitting(true);
 
@@ -197,13 +296,11 @@ export default function HousekeepingReportPage() {
     const payload: ReportPayload = {
       unitId: selectedUnitId,
       unit: unitName,
+      bookingId: selectedBookingId || undefined,
       location: selectedUnit.location ?? selectedUnit.city,
       reportedAt: todayStr,
-      description: description || undefined,
-      reasonOfDamage: reason || undefined,
-      items: itemRows
-        .filter((r) => r.item !== '' && (r.type === 'loss' || r.type === 'broken'))
-        .map((r) => ({ item: r.item, type: r.type! })),
+      description: trimmedDescription,
+      items: [],
     };
 
     try {
@@ -213,9 +310,8 @@ export default function HousekeepingReportPage() {
       );
       setSubmitted(true);
       setSelectedUnitId('');
-      setItemRows([{ ...emptyRow }]);
       setDescription('');
-      setReason('');
+      setSelectedBookingId('');
       proofFiles.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
       setProofFiles([]);
     } catch (err) {
@@ -259,16 +355,6 @@ export default function HousekeepingReportPage() {
         </p>
       </div>
 
-      {inventoryLoading && (
-        <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 flex items-center gap-3">
-          <svg className="animate-spin h-5 w-5 text-[#0B5858]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span>Loading inventory items…</span>
-        </div>
-      )}
-
       {submitted && (
         <div className="mb-6 p-4 rounded-xl bg-[#0B5858]/10 border border-[#0B5858]/20 text-[#0B5858]">
           <p className="font-medium">Report submitted.</p>
@@ -287,74 +373,121 @@ export default function HousekeepingReportPage() {
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <form id="housekeeping-report-form" onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="report-unit" className="block text-sm font-medium text-gray-700 mb-2">
-                Unit <span className="text-red-500">*</span>
-              </label>
-              <InventoryDropdown
-                value={selectedUnitId}
-                onChange={setSelectedUnitId}
-                options={unitOptions}
-                placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
-                placeholderWhen=""
-                hideIcon
-                fullWidth
-                minWidthClass="min-w-0"
-                align="left"
-                disabled={unitsLoading}
-              />
-              {unitsError && (
-                <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
-              )}
-              {units.length === 0 && !unitsLoading && !unitsError && (
-                <p className="mt-2 text-sm text-gray-500">No units available.</p>
-              )}
-              {selectedUnit && (
-                <p className="mt-2 text-xs text-gray-500">
-                  {(selectedUnit.location ?? selectedUnit.city) && (
-                    <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
+              <div className="flex flex-col sm:flex-row gap-3 mb-2">
+                <div className="flex-1 min-w-0 text-[13px]">
+                    <span className="block font-medium text-gray-700 mb-2">
+                      Employee ID No.<span className="text-red-500">*</span>
+                    </span>
+                  <input
+                    id="employee-id-input"
+                    type="text"
+                    value={employeeId}
+                    onChange={(e) => setEmployeeId(e.target.value)}
+                    placeholder="Enter employee ID"
+                    className="w-full px-3 py-2 text-md rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+                  />
+                </div>
+                <div className="flex-1 min-w-0 text-[13px]">
+                  <label className="block  text-gray-500 mb-2">
+                    Employee name
+                  </label>
+                  <input
+                    type="text"
+                    value={
+                      employeeLoading
+                        ? 'Loading…'
+                        : employeeName || (employeeId.trim() ? 'No match found' : '')
+                    }
+                    disabled
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400"
+                  />
+                  {employeeError && (
+                    <p className="mt-1 text-xs text-amber-600">{employeeError}</p>
                   )}
-                  {selectedUnit.property_type && (
-                    <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
-                  )}
-                </p>
-              )}
+                </div>
+              </div>
             </div>
 
             <div>
-              <span className="block text-sm font-medium text-gray-700 mb-2">
-                Lost or broken items <span className="text-red-500">*</span>
-              </span>
-              <p className="text-xs text-gray-500 mb-2">
-                Select an item and choose either Loss or Broken per row. Add more rows as needed.
-              </p>
-              <LostBrokenItemsTable rows={itemRows} onRowsChange={setItemRows} itemOptions={itemOptions} />
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 min-w-0">
+                <span className="block text-sm font-medium text-gray-700 mb-2">
+                  Unit <span className="text-red-500">*</span>
+                </span>
+                  <InventoryDropdown
+                    value={selectedUnitId}
+                    onChange={setSelectedUnitId}
+                    options={unitOptions}
+                    placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
+                    placeholderWhen=""
+                    hideIcon
+                    fullWidth
+                    minWidthClass="min-w-0"
+                    align="left"
+                    disabled={unitsLoading}
+                  />
+                  {unitsError && (
+                    <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
+                  )}
+                  {units.length === 0 && !unitsLoading && !unitsError && (
+                    <p className="mt-2 text-sm text-gray-500">No units available.</p>
+                  )}
+                  {selectedUnit && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      {(selectedUnit.location ?? selectedUnit.city) && (
+                        <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
+                      )}
+                      {selectedUnit.property_type && (
+                        <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-gray-700 mb-2">
+                    Booking <span className="text-red-500">*</span>
+                  </span>
+                  <InventoryDropdown
+                    value={selectedBookingId}
+                    onChange={setSelectedBookingId}
+                    options={[
+                      {
+                        value: '',
+                        label: bookingsLoading ? 'Loading bookings…' : 'No booking linked',
+                      },
+                      ...bookingDropdownOptions,
+                    ]}
+                    placeholder={bookingsLoading ? 'Loading bookings…' : 'Link a booking (optional)'}
+                    placeholderWhen=""
+                    hideIcon
+                    fullWidth
+                    minWidthClass="min-w-0"
+                    align="left"
+                    disabled={bookingsLoading || bookings.length === 0}
+                  />
+                  {bookingsError && (
+                    <p className="mt-2 text-md text-amber-600">{bookingsError}</p>
+                  )}
+                  {bookings.length === 0 && !bookingsLoading && !bookingsError && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      No recent bookings found within the last week and a half.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div>
               <label htmlFor="report-description" className="block text-sm font-medium text-gray-700 mb-2">
-                Description (optional)
+                Description <span className="text-red-500">*</span>
               </label>
               <textarea
                 id="report-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                rows={3}
+                rows={4}
                 placeholder="Any additional notes..."
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors resize-y"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="report-reason" className="block text-sm font-medium text-gray-700 mb-2">
-                Reason / cause (optional)
-              </label>
-              <input
-                id="report-reason"
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. guest damage, wear and tear"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
+                className="w-full px-4 py-2.5 h-55 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors resize-none overflow-y-scroll"
               />
             </div>
 
@@ -432,7 +565,7 @@ export default function HousekeepingReportPage() {
         <button
           type="submit"
           form="housekeeping-report-form"
-          disabled={!selectedUnitId || !hasValidItemEntry || isSubmitting}
+          disabled={!selectedUnitId || !description.trim() || isSubmitting}
           className="w-full sm:w-auto px-6 py-2.5 rounded-lg font-medium text-white bg-[#0B5858] hover:bg-[#0a4a4a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isSubmitting ? 'Submitting…' : 'Submit report'}
