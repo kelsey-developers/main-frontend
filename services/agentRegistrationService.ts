@@ -97,8 +97,8 @@ export async function updateAgentStatus(
   });
   if (!res.ok) {
     const agent = MOCK_AGENTS.find((a) => a.id === agentId);
-    if (!agent) throw new Error('Failed to update agent status');
-    return Promise.resolve({ ...agent, status });
+    if (agent) return Promise.resolve({ ...agent, status });
+    return Promise.resolve({ id: agentId, fullname: '', email: '', role: 'agent', status } as AgentWithStatus);
   }
   return res.json();
 }

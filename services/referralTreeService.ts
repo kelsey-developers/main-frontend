@@ -129,38 +129,30 @@ const MOCK_TREE: ReferralNode = {
   ],
 };
 
+/** Mock proof-of-payment image URLs for paid registrations (placeholder; real app would use uploaded receipt images) */
+const MOCK_PROOF_URL = 'https://picsum.photos/600/400?random=receipt';
+
 const MOCK_PENDING_REGISTRATIONS: PendingRegistration[] = [
-  {
-    id: 'reg-001',
-    fullname: 'Diana Luna',
-    email: 'diana.luna@example.com',
-    contactNumber: '+63 917 555 1234',
-    recruitedById: 'agent-001',
-    recruitedByName: 'Juan Dela Cruz',
-    registrationFeeStatus: 'paid',
-    status: 'pending',
-    appliedAt: d(2),
-  },
-  {
-    id: 'reg-002',
-    fullname: 'Kevin Uy',
-    email: 'kevin.uy@example.com',
-    contactNumber: '+63 928 555 5678',
-    registrationFeeStatus: 'unpaid',
-    status: 'pending',
-    appliedAt: d(1),
-  },
-  {
-    id: 'reg-003',
-    fullname: 'Rosa Bautista',
-    email: 'rosa.bautista@example.com',
-    contactNumber: '+63 939 555 9012',
-    recruitedById: 'agent-002',
-    recruitedByName: 'Maria Santos',
-    registrationFeeStatus: 'paid',
-    status: 'approved',
-    appliedAt: d(4),
-  },
+  { id: 'reg-001', fullname: 'Diana Luna', email: 'diana.luna@example.com', contactNumber: '+63 917 555 1234', recruitedById: 'agent-001', recruitedByName: 'Juan Dela Cruz', registrationFeeStatus: 'paid', status: 'pending', appliedAt: d(2), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-002', fullname: 'Kevin Uy', email: 'kevin.uy@example.com', contactNumber: '+63 928 555 5678', registrationFeeStatus: 'unpaid', status: 'pending', appliedAt: d(1) },
+  { id: 'reg-003', fullname: 'Rosa Bautista', email: 'rosa.bautista@example.com', contactNumber: '+63 939 555 9012', recruitedById: 'agent-002', recruitedByName: 'Maria Santos', registrationFeeStatus: 'paid', status: 'approved', appliedAt: d(4), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-004', fullname: 'Eduardo Lim', email: 'eduardo.lim@example.com', contactNumber: '+63 905 555 2345', recruitedById: 'agent-001', recruitedByName: 'Juan Dela Cruz', registrationFeeStatus: 'paid', status: 'pending', appliedAt: d(3), notes: 'Referred from Facebook group.', proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-005', fullname: 'Liza Morales', email: 'liza.morales@example.com', contactNumber: '+63 918 555 6789', registrationFeeStatus: 'unpaid', status: 'pending', appliedAt: d(1) },
+  { id: 'reg-006', fullname: 'Francisco Reyes', email: 'francisco.reyes@example.com', contactNumber: '+63 919 555 3456', recruitedById: 'agent-003', recruitedByName: 'Roberto Cruz', registrationFeeStatus: 'paid', status: 'approved', appliedAt: d(5), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-007', fullname: 'Tina Villar', email: 'tina.villar@example.com', contactNumber: '+63 920 555 4567', registrationFeeStatus: 'paid', status: 'rejected', appliedAt: d(6), notes: 'Duplicate application.', proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-008', fullname: 'Hector Dizon', email: 'hector.dizon@example.com', contactNumber: '+63 921 555 5678', recruitedById: 'agent-002', recruitedByName: 'Maria Santos', registrationFeeStatus: 'unpaid', status: 'pending', appliedAt: d(0) },
+  { id: 'reg-009', fullname: 'Nina Castillo', email: 'nina.castillo@example.com', contactNumber: '+63 922 555 6789', registrationFeeStatus: 'paid', status: 'pending', appliedAt: d(2), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-010', fullname: 'Oscar Navarro', email: 'oscar.navarro@example.com', contactNumber: '+63 923 555 7890', recruitedById: 'agent-004', recruitedByName: 'Pedro Flores', registrationFeeStatus: 'paid', status: 'approved', appliedAt: d(7), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-011', fullname: 'Paula Chua', email: 'paula.chua@example.com', contactNumber: '+63 924 555 8901', registrationFeeStatus: 'unpaid', status: 'rejected', appliedAt: d(8) },
+  { id: 'reg-012', fullname: 'Quinn Tan', email: 'quinn.tan@example.com', contactNumber: '+63 925 555 9012', recruitedById: 'agent-001', recruitedByName: 'Juan Dela Cruz', registrationFeeStatus: 'paid', status: 'pending', appliedAt: d(1), notes: 'Previous cleaner, wants to try agent side.', proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-013', fullname: 'Rita Ong', email: 'rita.ong@example.com', contactNumber: '+63 926 555 0123', registrationFeeStatus: 'paid', status: 'approved', appliedAt: d(9), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-014', fullname: 'Sergio Ramos', email: 'sergio.ramos@example.com', contactNumber: '+63 927 555 1234', recruitedById: 'agent-003', recruitedByName: 'Roberto Cruz', registrationFeeStatus: 'unpaid', status: 'pending', appliedAt: d(0) },
+  { id: 'reg-015', fullname: 'Uma Santos', email: 'uma.santos@example.com', contactNumber: '+63 928 555 2345', registrationFeeStatus: 'paid', status: 'approved', appliedAt: d(10), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-016', fullname: 'Vicente Torres', email: 'vicente.torres@example.com', contactNumber: '+63 929 555 3456', registrationFeeStatus: 'paid', status: 'rejected', appliedAt: d(11), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-017', fullname: 'Wendy Lim', email: 'wendy.lim@example.com', contactNumber: '+63 930 555 4567', recruitedById: 'agent-002', recruitedByName: 'Maria Santos', registrationFeeStatus: 'paid', status: 'pending', appliedAt: d(2), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-018', fullname: 'Xavier Yu', email: 'xavier.yu@example.com', contactNumber: '+63 931 555 5678', registrationFeeStatus: 'unpaid', status: 'pending', appliedAt: d(1) },
+  { id: 'reg-019', fullname: 'Yolanda Cruz', email: 'yolanda.cruz@example.com', contactNumber: '+63 932 555 6789', recruitedById: 'agent-004', recruitedByName: 'Pedro Flores', registrationFeeStatus: 'paid', status: 'approved', appliedAt: d(12), proofOfPaymentUrl: MOCK_PROOF_URL },
+  { id: 'reg-020', fullname: 'Zachary Bautista', email: 'zachary.bautista@example.com', contactNumber: '+63 933 555 7890', registrationFeeStatus: 'paid', status: 'pending', appliedAt: d(0), proofOfPaymentUrl: MOCK_PROOF_URL },
 ];
 
 // ─── Service Functions ────────────────────────────────────────────────────────

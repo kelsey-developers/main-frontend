@@ -38,4 +38,6 @@ export interface PendingRegistration {
   status: 'pending' | 'approved' | 'rejected';
   appliedAt: string; // ISO
   notes?: string;
+  /** URL to proof of payment (e.g. receipt image or document) */
+  proofOfPaymentUrl?: string;
 }
