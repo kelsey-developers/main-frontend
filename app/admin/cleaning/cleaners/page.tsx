@@ -36,13 +36,13 @@ function CleanerCard({ cleaner }: { cleaner: Cleaner }) {
     >
       {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#6366F1] to-[#4F46E5] flex items-center justify-center shrink-0">
-          <span className="text-sm font-bold text-white">{initials}</span>
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#0B5858] to-[#073A3A] flex items-center justify-center shrink-0">
+          <span className="text-sm font-bold text-white" style={{ fontFamily: 'Poppins' }}>{initials}</span>
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-bold text-gray-900 truncate">{cleaner.name}</h3>
           <p className="text-xs text-gray-500 truncate">{cleaner.email}</p>
-          <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${sc.classes}`}>
+          <span className="inline-flex items-center gap-1 mt-1 px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
             <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
             {sc.label}
           </span>
@@ -65,12 +65,12 @@ function CleanerCard({ cleaner }: { cleaner: Cleaner }) {
       {cleaner.assignedProperties.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {cleaner.assignedProperties.slice(0, 3).map((p) => (
-            <span key={p} className="px-2 py-0.5 bg-[#0B5858]/5 text-[#0B5858] rounded-md text-[10px] font-semibold border border-[#0B5858]/10">
+            <span key={p} className="inline-flex px-2 py-1 rounded-full text-xs font-medium text-gray-600 bg-gray-100">
               {p.replace('prop-00', 'P')}
             </span>
           ))}
           {cleaner.assignedProperties.length > 3 && (
-            <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-md text-[10px] font-semibold">
+            <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium text-gray-500 bg-gray-50">
               +{cleaner.assignedProperties.length - 3} more
             </span>
           )}
@@ -140,7 +140,7 @@ export default function CleanersPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
       {/* Toast */}
       {toast && (
@@ -153,23 +153,22 @@ export default function CleanersPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors mb-1">
-            <Link href="/admin/cleaning" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Cleaning Management
-            </Link>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Cleaner Directory</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{cleaners.length} cleaners registered</p>
+          <Link href="/admin/cleaning" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors mb-1" style={{ fontFamily: 'Poppins' }}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Cleaning Management
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>Cleaner Directory</h1>
+          <p className="text-sm text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>{cleaners.length} cleaners registered</p>
         </div>
         <button
           type="button"
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d7a7a] transition-colors cursor-pointer shadow-sm shadow-[#0B5858]/20"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer shadow-sm shadow-[#0B5858]/20 shrink-0"
+          style={{ fontFamily: 'Poppins', fontWeight: 600 }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -220,7 +219,7 @@ export default function CleanersPage() {
                   key={key}
                   type="button"
                   onClick={() => setStatusFilter(key)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${statusFilter === key ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                  className={`inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${statusFilter === key ? 'bg-[#0B5858] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 >
                   {label} ({count})
                 </button>

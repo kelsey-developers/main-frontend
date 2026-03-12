@@ -59,7 +59,7 @@ function JobHistoryTab({ jobs }: { jobs: CleaningJob[] }) {
         <button
           type="button"
           onClick={() => setStatusFilter('')}
-          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${!statusFilter ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+          className={`inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${!statusFilter ? 'bg-[#0B5858] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
         >
           All ({jobs.length})
         </button>
@@ -72,7 +72,8 @@ function JobHistoryTab({ jobs }: { jobs: CleaningJob[] }) {
               key={s}
               type="button"
               onClick={() => setStatusFilter(s === statusFilter ? '' : s)}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${statusFilter === s ? sc.classes : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+              className="inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer chip-shadow"
+              style={statusFilter === s ? sc.chipStyle : { backgroundColor: '#f5f5f4', color: '#57534e' }}
             >
               {sc.label} ({count})
             </button>
@@ -110,7 +111,7 @@ function JobHistoryTab({ jobs }: { jobs: CleaningJob[] }) {
                         {job.unitName && <p className="text-xs text-gray-400">{job.unitName}</p>}
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${tc.bgColor} ${tc.color}`}>
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={tc.chipStyle}>
                           {tc.label}
                         </span>
                       </td>
@@ -123,8 +124,8 @@ function JobHistoryTab({ jobs }: { jobs: CleaningJob[] }) {
                         {job.actualDuration && <p className="text-[10px] text-gray-400">actual</p>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${sc.classes}`}>
-                          <span className={`w-1 h-1 rounded-full ${sc.dot}`} />
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                           {sc.label}
                         </span>
                       </td>
@@ -206,12 +207,25 @@ function PerformanceTab({ cleaner, jobs }: { cleaner: Cleaner; jobs: CleaningJob
               </p>
             </div>
           </div>
-          <div className="mt-3 text-xs text-gray-500">
-            {avgActualDuration < avgEstDuration
-              ? `✓ On average ${durationLabel(avgEstDuration - avgActualDuration)} faster than estimated`
-              : avgActualDuration > avgEstDuration
-              ? `⚠ On average ${durationLabel(avgActualDuration - avgEstDuration)} slower than estimated`
-              : '✓ Exactly on time on average'}
+          <div className="mt-3 text-xs text-gray-500 flex items-center gap-1.5" style={{ fontFamily: 'Poppins' }}>
+            {avgActualDuration < avgEstDuration && (
+              <>
+                <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                On average {durationLabel(avgEstDuration - avgActualDuration)} faster than estimated
+              </>
+            )}
+            {avgActualDuration > avgEstDuration && (
+              <>
+                <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                On average {durationLabel(avgActualDuration - avgEstDuration)} slower than estimated
+              </>
+            )}
+            {avgActualDuration === avgEstDuration && (
+              <>
+                <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Exactly on time on average
+              </>
+            )}
           </div>
         </div>
       )}
@@ -244,7 +258,7 @@ function PerformanceTab({ cleaner, jobs }: { cleaner: Cleaner; jobs: CleaningJob
             const pct = jobs.length > 0 ? Math.round((count / jobs.length) * 100) : 0;
             return (
               <div key={type} className="flex items-center gap-3">
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border w-28 justify-center ${tc.bgColor} ${tc.color}`}>
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium w-28 justify-center chip-shadow" style={tc.chipStyle}>
                   {tc.label}
                 </span>
                 <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -283,9 +297,9 @@ function PropertiesTab({ cleaner }: { cleaner: Cleaner }) {
                     <span className={`text-sm font-semibold ${assigned ? 'text-[#0B5858]' : 'text-gray-600'}`}>{p.name}</span>
                   </div>
                   {assigned ? (
-                    <span className="text-[10px] font-bold text-[#0B5858] bg-[#0B5858]/10 px-2 py-0.5 rounded-full">Assigned</span>
+                    <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium text-[#0B5858] bg-[#0B5858]/10">Assigned</span>
                   ) : (
-                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Not Assigned</span>
+                    <span className="inline-flex px-2 py-1 rounded-full text-xs font-medium text-gray-500 bg-gray-100">Not Assigned</span>
                   )}
                 </div>
               );
@@ -345,12 +359,12 @@ export default function CleanerDetailPage({ params }: Props) {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
       {/* Breadcrumb */}
       <div>
-        <Link href="/admin/cleaning/cleaners" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors mb-1">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <Link href="/admin/cleaning/cleaners" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors mb-1" style={{ fontFamily: 'Poppins' }}>
+          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           Cleaner Directory
@@ -360,16 +374,16 @@ export default function CleanerDetailPage({ params }: Props) {
       {/* Profile header */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-          {/* Avatar */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#6366F1] to-[#4F46E5] flex items-center justify-center shrink-0">
-            <span className="text-xl font-bold text-white">{initials}</span>
+          {/* Avatar - brand teal */}
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#0B5858] to-[#073A3A] flex items-center justify-center shrink-0 shadow-md shadow-[#0B5858]/20">
+            <span className="text-xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{initials}</span>
           </div>
 
           {/* Info */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <h1 className="text-xl font-bold text-gray-900">{cleaner.name}</h1>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${sc.classes}`}>
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
                 <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                 {sc.label}
               </span>
@@ -428,7 +442,7 @@ export default function CleanerDetailPage({ params }: Props) {
           >
             {label}
             {count !== undefined && (
-              <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-bold ${activeTab === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+              <span className={`inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full text-xs font-medium ${activeTab === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
                 {count}
               </span>
             )}

@@ -106,11 +106,11 @@ export default function ScheduleJobModal({ prefillDate, prefillPropertyId, prefi
         className="bg-white w-full max-w-lg rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 overflow-hidden animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header - design system typography */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Schedule Cleaning Job</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Assign a cleaning task to a property and cleaner</p>
+            <h2 className="text-lg font-bold text-gray-900" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>Schedule Cleaning Job</h2>
+            <p className="text-xs text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>Assign a cleaning task to a property and cleaner</p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -152,7 +152,8 @@ export default function ScheduleJobModal({ prefillDate, prefillPropertyId, prefi
                     key={t}
                     type="button"
                     onClick={() => setJobType(t)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${jobType === t ? `${tc.bgColor} ${tc.color}` : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}
+                    className="inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer chip-shadow"
+                    style={jobType === t ? tc.chipStyle : { backgroundColor: '#f5f5f4', color: '#57534e' }}
                   >
                     {tc.label}
                   </button>
@@ -240,7 +241,7 @@ export default function ScheduleJobModal({ prefillDate, prefillPropertyId, prefi
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">
               Cancel
             </button>
-            <button type="submit" disabled={submitting} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d7a7a] transition-colors cursor-pointer disabled:opacity-50">
+            <button type="submit" disabled={submitting} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer disabled:opacity-50" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>
               {submitting ? 'Scheduling…' : 'Schedule Job'}
             </button>
           </div>

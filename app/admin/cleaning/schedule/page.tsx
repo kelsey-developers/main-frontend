@@ -67,23 +67,24 @@ export default function CleaningSchedulePage() {
   const monthJobs = jobs.filter((j) => j.scheduledDate.startsWith(monthStr));
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-5">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-5">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <Link href="/admin/cleaning" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors mb-1">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link href="/admin/cleaning" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-[#0B5858] transition-colors mb-1" style={{ fontFamily: 'Poppins' }}>
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Cleaning Management
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Cleaning Calendar</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>Cleaning Calendar</h1>
         </div>
         <button
           type="button"
           onClick={() => { setScheduleDate(''); setShowSchedule(true); }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d7a7a] transition-colors cursor-pointer shadow-sm"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer shadow-sm shrink-0"
+          style={{ fontFamily: 'Poppins', fontWeight: 600 }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -118,7 +119,7 @@ export default function CleaningSchedulePage() {
             {(['scheduled', 'in_progress', 'completed', 'verified', 'cancelled'] as const).map((s) => {
               const sc = JOB_STATUS_CONFIG[s];
               return (
-                <span key={s} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${sc.classes}`}>
+                <span key={s} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
                   <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                   {sc.label}
                 </span>
@@ -161,9 +162,9 @@ export default function CleaningSchedulePage() {
                         className="block bg-gray-50 rounded-xl p-3 border border-gray-100 hover:border-[#0B5858]/20 hover:bg-[#0B5858]/3 transition-colors"
                       >
                         <div className="flex items-center gap-1.5 mb-1">
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border ${tc.bgColor} ${tc.color}`}>{tc.label}</span>
-                          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${sc.classes}`}>
-                            <span className={`w-1 h-1 rounded-full ${sc.dot}`} />
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={tc.chipStyle}>{tc.label}</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                             {sc.label}
                           </span>
                         </div>

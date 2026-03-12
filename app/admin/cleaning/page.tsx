@@ -10,12 +10,13 @@ import ScheduleJobModal from './components/ScheduleJobModal';
 
 const TODAY = new Date().toISOString().split('T')[0];
 
+/** Summary stat card - design system aligned */
 function SummaryCard({ label, value, sub, color }: { label: string; value: number | string; sub?: string; color?: string }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">{label}</p>
-      <p className={`text-3xl font-bold ${color ?? 'text-gray-900'}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    <div className="bg-white rounded-xl sm:rounded-2xl border border-gray-100 shadow-sm p-5">
+      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2" style={{ fontFamily: 'Poppins' }}>{label}</p>
+      <p className={`text-2xl sm:text-3xl font-bold ${color ?? 'text-gray-900'}`} style={{ fontFamily: 'Poppins', fontWeight: 700 }}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1" style={{ fontFamily: 'Poppins' }}>{sub}</p>}
     </div>
   );
 }
@@ -112,8 +113,7 @@ export default function AdminCleaningPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Toast */}
       {toast && (
         <div className={`fixed top-20 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold border animate-fade-in-up ${toast.type === 'success' ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-red-600 text-white border-red-600'}`}>
@@ -125,20 +125,20 @@ export default function AdminCleaningPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-start justify-between">
+      {/* Header - breadcrumb + title */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <p className="text-xs text-gray-400 mb-0.5">Admin · Cleaning Management</p>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Cleaning Management</h1>
+          <p className="text-xs text-gray-400 mb-0.5" style={{ fontFamily: 'Poppins' }}>Admin · Cleaning Management</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>Cleaning Management</h1>
         </div>
-        <div className="flex gap-2">
-          <Link href="/admin/cleaning/schedule" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/cleaning/schedule" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer shadow-sm" style={{ fontFamily: 'Poppins' }}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Calendar
           </Link>
-          <Link href="/admin/cleaning/cleaners" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer shadow-sm">
+          <Link href="/admin/cleaning/cleaners" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 bg-white hover:bg-gray-50 transition-colors cursor-pointer shadow-sm" style={{ fontFamily: 'Poppins' }}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
@@ -208,7 +208,7 @@ export default function AdminCleaningPage() {
                   key={s}
                   type="button"
                   onClick={() => setStatusFilter(s)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${statusFilter === s ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'}`}
+                  className={`inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${statusFilter === s ? 'bg-[#0B5858] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                 >
                   {label} ({count})
                 </button>
