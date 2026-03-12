@@ -1,6 +1,12 @@
 import { apiClient } from '@/lib/api/client';
-import type { ItemCategory, ItemType, ReplenishmentItem } from '../types';
-import { loadInventoryDataset, inventoryDashboardSummary, inventoryItems } from './inventoryDataStore';
+import type { ReplenishmentItem } from '../types';
+import {
+  loadInventoryDataset,
+  inventoryDashboardSummary,
+  inventoryItems,
+  inventoryWarehouseDirectory,
+  getWarehouseUnitAllocations,
+} from './inventoryDataStore';
 
 type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
 
@@ -19,25 +25,6 @@ export interface LedgerMovementInput {
 export interface StockOutInput extends LedgerMovementInput {
   unitId?: string;
   transferToWarehouseId?: string;
-}
-
-export interface NewItemStockInInput {
-  sku: string;
-  name: string;
-  category: ItemCategory;
-  itemType: ItemType;
-  unit: string;
-  minStock: number;
-  isActive?: boolean;
-  supplierId?: string;
-  initialStocks: Array<{
-    warehouseId: string;
-    quantity: number;
-    reason?: string;
-    date?: string;
-    reference?: string;
-    notes?: string;
-  }>;
 }
 
 export interface LedgerResult {
@@ -77,6 +64,14 @@ const emitInventoryMovementUpdated = (detail: {
   window.dispatchEvent(new CustomEvent('inventory:movement-updated', { detail }));
 };
 
+const getAvailableQuantity = (productId: string, warehouseId: string): number => {
+  const wh = inventoryWarehouseDirectory.find((w) => w.id === warehouseId);
+  const bal = wh?.inventoryBalances?.find((b) => b.productId === productId);
+  if (bal != null) return bal.quantity;
+  const item = inventoryItems.find((p) => p.id === productId);
+  return item?.warehouseId === warehouseId ? (item?.currentStock ?? 0) : 0;
+};
+
 const buildLedgerResult = (productId: string, movementIds: string[]): LedgerResult => {
   const item = inventoryItems.find((entry) => entry.id === productId);
   if (!item) {
@@ -95,9 +90,9 @@ const buildLedgerResult = (productId: string, movementIds: string[]): LedgerResu
 const postMovement = async (
   input: LedgerMovementInput,
   type: 'IN' | 'OUT' | 'ADJUSTMENT',
-  overrides?: Partial<{ warehouseId: string; referenceId: string; notes: string }>
+  overrides?: Partial<{ warehouseId: string; referenceId: string; notes: string; unitId?: string }>
 ) => {
-  const payload = {
+  const payload: Record<string, unknown> = {
     productId: input.productId,
     warehouseId: overrides?.warehouseId ?? input.warehouseId,
     type,
@@ -107,50 +102,49 @@ const postMovement = async (
     referenceId: overrides?.referenceId ?? input.reference,
     notes: overrides?.notes ?? input.notes,
   };
+  if (overrides?.unitId) payload.unitId = overrides.unitId;
 
   const response = await apiClient.post<InventoryMovementResponse>('/api/inventory/movements', payload);
   return response.movement.id;
 };
 
-const toCategoryCode = (value: string) =>
-  value
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'OTHER';
+/** Input for manual stock adjustments (cycle count, corrections). Quantity: positive = add, negative = remove. */
+export type StockAdjustmentInput = LedgerMovementInput;
 
-const ensureCategoryId = async (categoryName: ItemCategory): Promise<string> => {
-  const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
-    '/api/product-categories'
-  );
-
-  const normalizedName = categoryName.toLowerCase();
-  const code = toCategoryCode(categoryName);
-  const existing = categories.find(
-    (category) => category.name.toLowerCase() === normalizedName || category.code === code
-  );
-  if (existing) return existing.id;
-
-  const created = await apiClient.post<{ id: string }>('/api/product-categories', {
-    code,
-    name: categoryName,
-    description: `Auto-created for category ${categoryName}`,
-  });
-
-  return created.id;
-};
-
-export const processStockIn = async (input: LedgerMovementInput): Promise<LedgerResult> => {
-  if (input.quantity <= 0) {
-    throw new Error('Quantity must be greater than zero.');
+/**
+ * Manual adjustments are sent as IN (add) or OUT (remove) with referenceType 'manual_adjustment'
+ * for backend compatibility. Many backends only support IN/OUT with positive quantities and
+ * do not handle ADJUSTMENT type or negative quantities. The frontend normalizes these to
+ * display as "adjustment" in the UI based on referenceType.
+ */
+export const processStockAdjustment = async (input: StockAdjustmentInput): Promise<LedgerResult> => {
+  if (input.quantity === 0) {
+    throw new Error('Adjustment quantity cannot be zero.');
   }
 
-  const movementId = await postMovement(input, 'IN');
-  await loadInventoryDataset(true);
+  const isAdd = input.quantity > 0;
+  if (!isAdd) {
+    const absQty = Math.abs(input.quantity);
+    const avail = getAvailableQuantity(input.productId, input.warehouseId);
+    if (avail < absQty) {
+      throw new Error(
+        `Remove quantity (${absQty}) exceeds available stock (${avail}) in this warehouse. Cannot go negative.`
+      );
+    }
+  }
 
+  const absQty = Math.abs(input.quantity);
+  const movementId = await postMovement(
+    { ...input, quantity: absQty, referenceType: 'MANUAL' },
+    isAdd ? 'IN' : 'OUT',
+    undefined
+  );
+
+  await loadInventoryDataset(true);
   const result = buildLedgerResult(input.productId, [movementId]);
+
   emitInventoryMovementUpdated({
-    source: 'stock-in',
+    source: 'stock-out',
     movementIds: [movementId],
     productId: input.productId,
   });
@@ -158,58 +152,78 @@ export const processStockIn = async (input: LedgerMovementInput): Promise<Ledger
   return result;
 };
 
-export const createItemAndProcessStockIn = async (
-  input: NewItemStockInInput
-): Promise<{ item: ReplenishmentItem; movementIds: string[] }> => {
-  if (!input.name.trim()) throw new Error('Item name is required.');
-  if (!input.sku.trim()) throw new Error('SKU is required.');
-  if (!input.initialStocks.length) throw new Error('At least one warehouse stock line is required.');
+export type WriteOffType = 'warehouse' | 'unit';
 
-  const categoryId = await ensureCategoryId(input.category);
+export interface UnitWriteOffInput {
+  warehouseId: string;
+  unitId: string;
+  productId: string;
+  quantity: number;
+  reason: string;
+  date: string;
+  notes?: string;
+  createdBy?: string;
+}
 
-  const product = await apiClient.post<{ id: string }>('/api/products', {
-    sku: input.sku,
-    name: input.name,
-    unit: input.unit,
-    itemType: input.itemType === 'consumable' ? 'consumable' : 'non_consumable',
-    reorderLevel: Math.max(0, input.minStock),
-    supplierId: input.supplierId || undefined,
-    categoryId,
+export const processUnitWriteOff = async (input: UnitWriteOffInput): Promise<LedgerResult> => {
+  if (input.quantity <= 0) {
+    throw new Error('Quantity must be greater than zero.');
+  }
+
+  const allocations = getWarehouseUnitAllocations(input.warehouseId);
+  const unitAlloc = allocations.find((a) => a.unitId === input.unitId);
+  const itemAlloc = unitAlloc?.items.find((i) => i.productId === input.productId);
+  const allocated = itemAlloc?.quantity ?? 0;
+
+  if (allocated < input.quantity) {
+    throw new Error(
+      `Quantity (${input.quantity}) exceeds allocated stock (${allocated}) in this unit. Cannot go negative.`
+    );
+  }
+
+  await apiClient.post('/api/inventory/allocations', {
+    productId: input.productId,
+    unitId: input.unitId,
+    quantityDelta: -input.quantity,
   });
 
-  const movementIds: string[] = [];
-  for (const stockLine of input.initialStocks) {
-    const movementId = await apiClient.post<InventoryMovementResponse>('/api/inventory/movements', {
-      productId: product.id,
-      warehouseId: stockLine.warehouseId,
-      type: 'IN',
-      quantity: stockLine.quantity,
-      reason: stockLine.reason,
-      referenceType: mapReferenceType(undefined, stockLine.reference),
-      referenceId: stockLine.reference,
-      notes: stockLine.notes,
-    });
-    movementIds.push(movementId.movement.id);
-  }
+  const movementId = await postMovement(
+    {
+      productId: input.productId,
+      warehouseId: input.warehouseId,
+      quantity: input.quantity,
+      reason: input.reason,
+      date: input.date,
+      referenceType: 'DAMAGE',
+      notes: input.notes,
+    },
+    'OUT',
+    { referenceId: input.unitId, unitId: input.unitId }
+  );
 
   await loadInventoryDataset(true);
-  const createdItem = inventoryItems.find((entry) => entry.id === product.id);
-  if (!createdItem) {
-    throw new Error('Product was created but could not be loaded into inventory list.');
-  }
+
+  const result = buildLedgerResult(input.productId, [movementId]);
 
   emitInventoryMovementUpdated({
-    source: 'stock-in',
-    movementIds,
-    productId: product.id,
+    source: 'stock-out',
+    movementIds: [movementId],
+    productId: input.productId,
   });
 
-  return { item: createdItem, movementIds };
+  return result;
 };
 
 export const processStockOut = async (input: StockOutInput): Promise<LedgerResult> => {
   if (input.quantity <= 0) {
     throw new Error('Quantity must be greater than zero.');
+  }
+
+  const avail = getAvailableQuantity(input.productId, input.warehouseId);
+  if (avail < input.quantity) {
+    throw new Error(
+      `Quantity (${input.quantity}) exceeds available stock (${avail}) in this warehouse. Cannot go negative.`
+    );
   }
 
   const movementIds: string[] = [];

@@ -32,19 +32,28 @@ const MOVEMENT_STATUS_CONFIG: Record<
     textClass: 'text-red-700',
     dotColor: '#f10e3b',
   },
+  adjustment: {
+    label: 'Adjustment',
+    bgClass: 'bg-blue-50 border border-blue-200',
+    textClass: 'text-blue-700',
+    dotColor: '#0369a1',
+  },
 };
 
 const TYPE_COLOR: Record<StockMovementType, string> = {
   in: '#28950e',
   out: '#f10e3b',
+  adjustment: '#0369a1',
 };
 
 const TYPE_SIGN: Record<StockMovementType, string> = {
   in: '+',
   out: '-',
+  adjustment: '+/-',
 };
 
 function Qty({ type, quantity }: { type: StockMovementType; quantity: number }) {
+  const sign = type === 'adjustment' ? (quantity >= 0 ? '+' : '') : TYPE_SIGN[type];
   return (
     <span
       style={{
@@ -54,8 +63,8 @@ function Qty({ type, quantity }: { type: StockMovementType; quantity: number }) 
         fontFamily: 'Poppins',
       }}
     >
-      {TYPE_SIGN[type]}
-      {Math.abs(quantity)}
+      {sign}
+      {type === 'adjustment' ? quantity : Math.abs(quantity)}
     </span>
   );
 }

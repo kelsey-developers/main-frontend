@@ -1,17 +1,80 @@
 'use client';
 
 import { useEffect, useMemo, useState, type TouchEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { ReplenishmentItem } from '../types';
 import StatusBadge from './StatusBadge';
+import NoneBadge, { isNoneLike } from './NoneBadge';
 import {
   inventoryStockMovements,
   inventoryUnitStockMovements,
   inventoryPurchaseOrders,
   inventoryPurchaseOrderLines,
   inventorySupplierDirectory,
+  inventoryDamageAdjustments,
+  inventoryWarehouseDirectory,
 } from '../lib/inventoryDataStore';
+import { listDamageIncidents, type DamageIncident } from '@/lib/api/damageIncidents';
+
+/** When true, use mock damage incidents instead of API (for testing) */
+const USE_MOCK_DAMAGE = process.env.NEXT_PUBLIC_USE_MOCK_DAMAGE_INCIDENTS === 'true';
+
+/** Mock damage incidents for testing - returns incidents that include the given productId */
+function getMockDamageIncidents(productId: string): DamageIncident[] {
+  return [
+    {
+      id: 'mock-di-001',
+      reportDate: '2025-03-10',
+      dateReported: '2025-03-10T14:30:00',
+      description: 'Guest damage - stained beyond use during checkout',
+      cause: 'Guest negligence',
+      reportedBy: 'Housekeeping Staff',
+      estimatedCost: 450,
+      actualCost: 420,
+      status: 'resolved',
+      createdAt: '2025-03-10T14:30:00',
+      items: [
+        { productId, quantity: 2, itemCost: 210 },
+      ],
+    },
+    {
+      id: 'mock-di-002',
+      reportDate: '2025-03-08',
+      description: 'Wear and tear from repeated use',
+      cause: 'Normal wear',
+      reportedBy: 'Warehouse Staff',
+      status: 'open',
+      items: [
+        { productId, quantity: 1, itemCost: 150 },
+      ],
+    },
+    {
+      id: 'mock-di-003',
+      reportDate: '2025-03-05',
+      description: 'Mold damage in storage area',
+      cause: 'Storage conditions',
+      reportedBy: 'Inventory Manager',
+      estimatedCost: 300,
+      status: 'in-review',
+      items: [
+        { productId, quantity: 3, itemCost: 100 },
+      ],
+    },
+    {
+      id: 'mock-di-004',
+      reportDate: '2025-03-01',
+      description: 'Broken during transport',
+      cause: 'Handling',
+      reportedBy: 'Delivery Staff',
+      status: 'resolved',
+      items: [
+        { productId, quantity: 1 },
+      ],
+    },
+  ];
+}
 
 interface AuditTrailModalProps {
   item: ReplenishmentItem | null;
@@ -60,6 +123,11 @@ interface DamageAdjustmentView {
   reportedBy: string;
   reviewedDate?: string;
   reviewedBy?: string;
+  /** For "View details" expansion */
+  incidentId?: string;
+  cause?: string;
+  estimatedCost?: number;
+  itemCost?: number;
 }
 
 interface PurchaseOrderView {
@@ -295,22 +363,8 @@ const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMob
           </div>
           {c.isStatus ? (
             <StatusBadge active={c.value === 'Active'} />
-          ) : c.label === 'SUPPLIER' && !c.value ? (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '4px 10px',
-                borderRadius: '9999px',
-                fontSize: '11px',
-                fontWeight: 700,
-                color: '#64748b',
-                background: '#f1f5f9',
-                border: '1px solid #e2e8f0',
-              }}
-            >
-              None
-            </span>
+          ) : (c.label === 'WAREHOUSE' || c.label === 'SUPPLIER') && isNoneLike(c.value) ? (
+            <NoneBadge />
           ) : (
             <>
               <div style={{ fontSize: '13.5px', fontWeight: 700, color: c.clickable ? B.primary : c.color }}>{c.value}</div>
@@ -323,7 +377,38 @@ const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMob
   );
 };
 
-const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMobile: boolean }) => {
+const StorageDistributionSection = ({
+  item,
+  isMobile,
+  productId,
+  mainWarehouseId,
+  unit,
+}: {
+  item: AuditItem;
+  isMobile: boolean;
+  productId: string;
+  mainWarehouseId?: string;
+  unit: string;
+}) => {
+  // Main warehouse quantity
+  const mainWarehouseQty = useMemo(() => {
+    if (!mainWarehouseId) return null;
+    const wh = inventoryWarehouseDirectory.find((w) => w.id === mainWarehouseId);
+    const bal = wh?.inventoryBalances?.find((b) => b.productId === productId);
+    return bal && bal.quantity > 0 ? bal.quantity : null;
+  }, [productId, mainWarehouseId]);
+
+  // Other warehouses where this product has stock (excluding main warehouse)
+  const otherWarehouses = useMemo(() => {
+    return inventoryWarehouseDirectory
+      .filter((wh) => wh.isActive && wh.id !== mainWarehouseId)
+      .map((wh) => {
+        const bal = wh.inventoryBalances?.find((b) => b.productId === productId);
+        return bal && bal.quantity > 0 ? { name: wh.name, quantity: bal.quantity } : null;
+      })
+      .filter((x): x is { name: string; quantity: number } => x != null);
+  }, [productId, mainWarehouseId]);
+
   // Extract unit distributions from movements
   const unitDistributions = useMemo(() => {
     const distributions: Record<string, { name: string; quantity: number }> = {};
@@ -362,15 +447,84 @@ const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMob
           </svg>
           <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>MAIN WAREHOUSE</span>
         </div>
-        <div style={{ paddingLeft: '24px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
-            {item.warehouse}
+        <div style={{ paddingLeft: '24px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+              {isNoneLike(item.warehouse) ? <NoneBadge /> : item.warehouse}
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+              Primary storage location
+            </div>
           </div>
-          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-            Primary storage location
-          </div>
+          {mainWarehouseQty != null && (
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                color: B.primary,
+                background: '#e8f4f4',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {mainWarehouseQty} {unit}
+            </span>
+          )}
         </div>
       </div>
+
+      {/* Other Warehouses */}
+      {otherWarehouses.length > 0 && (
+        <>
+          <div style={{ height: '1px', background: '#e8f4f4', margin: '12px 0' }} />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 14V6L8 2L14 6V14H2Z" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M5 14V9H11V14" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>ALSO IN OTHER WAREHOUSES</span>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: '8px',
+              paddingLeft: '24px',
+            }}>
+              {otherWarehouses.map((wh, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    background: '#e8f4f4',
+                    border: `1px solid ${B.tint20}`,
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: B.dark }}>{wh.name}</span>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: B.primary,
+                      background: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {wh.quantity} {unit}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Unit Distributions */}
       {unitDistributions.length > 0 && (
@@ -404,14 +558,17 @@ const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMob
                   }}
                 >
                   <span style={{ fontSize: '12px', fontWeight: 600, color: B.dark }}>{dist.name}</span>
-                  <span style={{ 
-                    fontSize: '11px', 
-                    fontWeight: 700, 
-                    color: B.primary,
-                    background: 'white',
-                    padding: '2px 6px',
-                    borderRadius: '4px'
-                  }}>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      color: B.primary,
+                      background: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {dist.quantity} {item.movements[0]?.unit || 'pcs'}
                   </span>
                 </div>
@@ -437,8 +594,11 @@ const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMob
 };
 
 const DamageCard = ({ d }: { d: DamageAdjustmentView }) => {
+  const [expanded, setExpanded] = useState(false);
   const sev = SEV_STYLE[d.severity];
   const dst = DST_STYLE[d.status];
+  const hasDetails = d.incidentId || d.cause || d.estimatedCost != null || d.itemCost != null;
+
   return (
     <div
       style={{
@@ -511,6 +671,56 @@ const DamageCard = ({ d }: { d: DamageAdjustmentView }) => {
           </span>
         )}
       </div>
+
+      {hasDetails && (
+        <>
+          {expanded ? (
+            <div
+              style={{
+                marginTop: '12px',
+                paddingTop: '12px',
+                borderTop: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                fontSize: '12px',
+                color: '#475569',
+              }}
+            >
+              {d.incidentId && (
+                <div><strong style={{ color: '#64748b' }}>Incident ID:</strong> <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{d.incidentId}</code></div>
+              )}
+              {d.cause && (
+                <div><strong style={{ color: '#64748b' }}>Cause:</strong> {d.cause}</div>
+              )}
+              {d.estimatedCost != null && (
+                <div><strong style={{ color: '#64748b' }}>Estimated cost:</strong> PHP {d.estimatedCost.toLocaleString()}</div>
+              )}
+              {d.itemCost != null && (
+                <div><strong style={{ color: '#64748b' }}>Item cost:</strong> PHP {d.itemCost.toLocaleString()}</div>
+              )}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            style={{
+              marginTop: '10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: B.primary,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              textAlign: 'left',
+              fontFamily: 'Poppins',
+            }}
+          >
+            {expanded ? 'Hide details' : 'View details'}
+          </button>
+        </>
+      )}
     </div>
   );
 };
@@ -657,7 +867,24 @@ const mapPOStatus = (value?: string): POStatus => {
   return 'Pending';
 };
 
-const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
+interface ApiDamageItem {
+  id: string;
+  incidentId: string;
+  productId: string;
+  quantity: number;
+  notes?: string;
+  reportedAt?: string;
+  reportedBy?: string;
+  status?: string;
+  cause?: string;
+  estimatedCost?: number;
+  itemCost?: number;
+}
+
+const normalizeAuditItem = (
+  source: ReplenishmentItem,
+  apiDamageForProduct?: ApiDamageItem[]
+): AuditItem => {
   // Use live data: source.stockMovements if provided, else inventoryStockMovements + unit movements
   const getMovementRows = (): Movement[] => {
     if (source.stockMovements && source.stockMovements.length > 0) {
@@ -698,7 +925,7 @@ const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
           id: id ?? `mv-${index + 1}`,
           date: toDateText(sm.createdAt) ?? '',
           time: toTimeText(sm.createdAt) ?? '',
-          type: (movement as { type?: 'in' | 'out' }).type ?? 'out',
+          type: (movement as { type?: MovementType }).type ?? 'out',
           qty: sm.quantity,
           unit: source.unit,
           notes: (sm.notes || 'No note provided.').trim(),
@@ -723,20 +950,44 @@ const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
   };
   const movementRows = getMovementRows();
 
-  const damageRows: DamageAdjustmentView[] = source.damageAdjustments && source.damageAdjustments.length > 0
-    ? source.damageAdjustments.map((damage, index) => ({
-        id: damage.id ?? `da-${index + 1}`,
-        qty: damage.quantity,
-        unit: source.unit,
-        severity: mapDamageSeverity(damage.severity),
-        status: mapDamageStatus(damage.status),
-        description: (damage.notes || 'No description provided.').trim(),
-        reportedDate: toDateText(damage.reportedAt) || SAMPLE_ITEM.damageAdjustments[Math.min(index, SAMPLE_ITEM.damageAdjustments.length - 1)].reportedDate,
-        reportedBy: damage.reportedBy || 'Unknown User',
-        reviewedDate: toDateText(damage.reviewedAt),
-        reviewedBy: damage.reviewedBy,
+  const localDamage = (source.damageAdjustments && source.damageAdjustments.length > 0)
+    ? source.damageAdjustments
+    : inventoryDamageAdjustments.filter((d) => d.productId === source.id);
+  const apiDamage = apiDamageForProduct ?? [];
+  const damageSource = apiDamage.length > 0
+    ? apiDamage.map((d) => ({
+        id: d.id,
+        productId: d.productId,
+        quantity: d.quantity,
+        severity: undefined as 'low' | 'medium' | 'high' | undefined,
+        status: d.status as 'open' | 'in-review' | 'resolved' | 'rejected' | undefined,
+        notes: d.notes,
+        reportedAt: d.reportedAt,
+        reportedBy: d.reportedBy,
+        reviewedAt: undefined,
+        reviewedBy: undefined,
+        incidentId: d.incidentId,
+        cause: d.cause,
+        estimatedCost: d.estimatedCost,
+        itemCost: d.itemCost,
       }))
-    : SAMPLE_ITEM.damageAdjustments;
+    : localDamage;
+  const damageRows: DamageAdjustmentView[] = damageSource.map((damage, index) => ({
+    id: damage.id ?? `da-${index + 1}`,
+    qty: damage.quantity,
+    unit: source.unit,
+    severity: mapDamageSeverity(damage.severity ?? ''),
+    status: mapDamageStatus(damage.status ?? ''),
+    description: (damage.notes || 'No description provided.').trim(),
+    reportedDate: toDateText(damage.reportedAt) || SAMPLE_ITEM.damageAdjustments[Math.min(index, SAMPLE_ITEM.damageAdjustments.length - 1)].reportedDate,
+    reportedBy: damage.reportedBy || 'Unknown User',
+    reviewedDate: toDateText(damage.reviewedAt),
+    reviewedBy: damage.reviewedBy,
+    incidentId: (damage as { incidentId?: string }).incidentId,
+    cause: (damage as { cause?: string }).cause,
+    estimatedCost: (damage as { estimatedCost?: number }).estimatedCost,
+    itemCost: (damage as { itemCost?: number }).itemCost,
+  }));
 
   const getLastPO = (): PurchaseOrderView | null => {
     const productLines = inventoryPurchaseOrderLines
@@ -799,6 +1050,64 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
   const [swipeStartY, setSwipeStartY] = useState<number | null>(null);
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
   const [movementRefreshTick, setMovementRefreshTick] = useState(0);
+  const [apiDamageForProduct, setApiDamageForProduct] = useState<ApiDamageItem[]>([]);
+
+  useEffect(() => {
+    if (!item?.id) {
+      setApiDamageForProduct([]);
+      return;
+    }
+    if (USE_MOCK_DAMAGE) {
+      const incidents = getMockDamageIncidents(item.id);
+      const items: ApiDamageItem[] = [];
+      for (const inc of incidents) {
+        for (const it of inc.items ?? []) {
+          if (it.productId === item.id) {
+            items.push({
+              id: inc.id + (it.id ?? '') + it.productId,
+              incidentId: inc.id,
+              productId: it.productId,
+              quantity: it.quantity,
+              notes: inc.description,
+              reportedAt: inc.reportDate ?? inc.dateReported ?? inc.createdAt,
+              reportedBy: inc.reportedBy,
+              status: inc.status,
+              cause: inc.cause,
+              estimatedCost: inc.estimatedCost,
+              itemCost: it.itemCost,
+            });
+          }
+        }
+      }
+      setApiDamageForProduct(items);
+      return;
+    }
+    void listDamageIncidents()
+      .then((incidents) => {
+        const items: ApiDamageItem[] = [];
+        for (const inc of incidents) {
+          for (const it of inc.items ?? []) {
+            if (it.productId === item.id) {
+              items.push({
+                id: inc.id + (it.id ?? '') + it.productId,
+                incidentId: inc.id,
+                productId: it.productId,
+                quantity: it.quantity,
+                notes: inc.description,
+                reportedAt: inc.reportDate ?? inc.dateReported ?? inc.createdAt,
+                reportedBy: inc.reportedBy,
+                status: inc.status,
+                cause: inc.cause,
+                estimatedCost: inc.estimatedCost,
+                itemCost: it.itemCost,
+              });
+            }
+          }
+        }
+        setApiDamageForProduct(items);
+      })
+      .catch(() => setApiDamageForProduct([]));
+  }, [item?.id]);
 
   useEffect(() => {
     setMounted(true);
@@ -839,8 +1148,8 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
   const viewItem = useMemo(() => {
     if (!item) return null;
-    return normalizeAuditItem(item);
-  }, [item, movementRefreshTick]);
+    return normalizeAuditItem(item, apiDamageForProduct);
+  }, [item, movementRefreshTick, apiDamageForProduct]);
 
   if (!viewItem || !mounted) return null;
   const pendingDamage = viewItem.damageAdjustments.filter((d) => d.status !== 'Resolved').length;
@@ -980,7 +1289,13 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
           <Divider />
 
           <SectionLabel>Storage & Distribution</SectionLabel>
-          <StorageDistributionSection item={viewItem} isMobile={isMobile} />
+          <StorageDistributionSection
+            item={viewItem}
+            isMobile={isMobile}
+            productId={item.id}
+            mainWarehouseId={item.warehouseId}
+            unit={item.unit || 'pcs'}
+          />
 
           <Divider />
 
@@ -998,8 +1313,8 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
           <Divider />
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <SectionLabel>Damage Adjustments</SectionLabel>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <SectionLabel>Recent damage incidents</SectionLabel>
             {viewItem.damageAdjustments.length > 0 && (
               <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', background: pendingDamage > 0 ? '#fef2f2' : '#f0fdf4', color: pendingDamage > 0 ? '#dc2626' : '#15803d', marginTop: '-8px' }}>
                 {viewItem.damageAdjustments.length} report{viewItem.damageAdjustments.length !== 1 ? 's' : ''}
@@ -1007,9 +1322,37 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {viewItem.damageAdjustments.map((d) => (
-              <DamageCard key={d.id} d={d} />
-            ))}
+            {viewItem.damageAdjustments.length > 0 ? (
+              <>
+                {viewItem.damageAdjustments.slice(0, 3).map((d) => (
+                  <DamageCard key={d.id} d={d} />
+                ))}
+                <Link
+                  href="/sales-report/inventory/damage-reports"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: B.primary,
+                    marginTop: '4px',
+                    fontFamily: 'Poppins',
+                  }}
+                >
+                  {viewItem.damageAdjustments.length > 3
+                    ? `See all ${viewItem.damageAdjustments.length} incident reports`
+                    : 'See all incident reports'}
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M4.5 2L8 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Link>
+              </>
+            ) : (
+              <div style={{ border: `1px solid ${B.tint20}`, borderRadius: '12px', padding: '24px 16px', background: 'white', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+                No damage incident found
+              </div>
+            )}
           </div>
 
           <Divider />

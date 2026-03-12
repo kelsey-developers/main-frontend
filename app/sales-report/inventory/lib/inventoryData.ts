@@ -61,7 +61,7 @@ export interface WarehouseInventoryBalanceRow {
 
 export interface WarehouseMovementRow {
   id: string;
-  type: 'in' | 'out' | 'transfer';
+  type: 'in' | 'out' | 'adjustment';
   productName: string;
   quantity: number;
   date: string;
@@ -256,7 +256,37 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   replaceArray(mockPurchaseOrders, dataset.purchaseOrders);
   replaceArray(mockPurchaseOrderLines, dataset.purchaseOrderLines);
   replaceArray(mockGoodsReceipts, dataset.goodsReceipts);
-  replaceArray(mockStockMovements, dataset.stockMovements);
+  const stockMovements = Array.isArray(dataset.stockMovements) ? dataset.stockMovements : [];
+  const normalizedStockMovements = stockMovements.map((m) => {
+    if (!m || typeof m !== 'object') return m;
+    const obj = m as { type?: string; referenceType?: string; quantity?: number };
+    const rawType = String(obj.type ?? '').toLowerCase();
+    const refType = String(obj.referenceType ?? '').toLowerCase();
+
+    // Backend may return type 'ADJUSTMENT' or convert to IN/OUT with referenceType 'manual_adjustment'
+    const isAdjustment =
+      rawType === 'adjustment' ||
+      refType === 'manual_adjustment';
+
+    if (isAdjustment) {
+      const qty = typeof obj.quantity === 'number' ? obj.quantity : 0;
+      // Backend may store ADJUSTMENT as IN/OUT; convert to signed quantity for adjustment display
+      const signedQty =
+        rawType === 'adjustment'
+          ? qty
+          : rawType === 'out' && refType === 'manual_adjustment'
+            ? -Math.abs(qty)
+            : Math.abs(qty);
+      return { ...m, type: 'adjustment' as const, quantity: signedQty };
+    }
+
+    const canonical = rawType === 'in' ? 'in' : 'out';
+    if (canonical !== obj.type) {
+      return { ...m, type: canonical };
+    }
+    return m;
+  });
+  replaceArray(mockStockMovements, normalizedStockMovements);
   replaceArray(mockDamageAdjustments, dataset.damageAdjustments);
   const replenishmentItems = Array.isArray(dataset.replenishmentItems) ? dataset.replenishmentItems : [];
   const normalizedItems = replenishmentItems.map((item) => {
@@ -547,10 +577,12 @@ export const updateInventoryItem = (
   mockReplenishmentItems[idx] = merged;
 
   // Sync warehouse directory inventoryBalances for this product
+  // reorderLevel: only set when creating NEW balance (use product.minStock as default).
+  // Existing balances keep their warehouse-specific reorderLevel (not overwritten).
   const productId = itemId;
   const quantity = merged.currentStock;
   const productName = merged.name;
-  const reorderLevel = merged.minStock;
+  const defaultReorderLevel = merged.minStock;
   const targetWarehouseId = merged.warehouseId;
 
   for (const wh of mockWarehouseDirectoryData) {
@@ -560,14 +592,14 @@ export const updateInventoryItem = (
         ...wh.inventoryBalances[balanceIdx],
         quantity,
         productName,
-        reorderLevel,
+        // Preserve existing warehouse-specific reorderLevel; do not overwrite
       };
     } else if (wh.id === targetWarehouseId && quantity > 0) {
       wh.inventoryBalances.push({
         productId,
         productName,
         quantity,
-        reorderLevel,
+        reorderLevel: defaultReorderLevel,
       });
     }
   }
@@ -592,3 +624,24 @@ export const updateInventoryItem = (
   return true;
 };
 
+/**
+ * Updates the minimum stock (threshold) for a unit item.
+ * Unit items have per-unit minStock; this does not affect product-level minStock.
+ */
+export const updateUnitItemMinStock = (itemId: string, minStock: number): boolean => {
+  const idx = mockUnitItems.findIndex((i) => i.id === itemId);
+  if (idx < 0) return false;
+
+  const safeValue = Math.max(0, minStock);
+  mockUnitItems[idx] = { ...mockUnitItems[idx], minStock: safeValue };
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('inventory:movement-updated', { detail: { source: 'unit-threshold', itemId } }));
+    apiClient
+      .patch(`/api/inventory/unit-items/${itemId}`, { minStock: safeValue })
+      .catch(() => {
+        // Backend may not support this; in-memory update is applied
+      });
+  }
+  return true;
+};

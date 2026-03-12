@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
@@ -9,6 +9,8 @@ import SingleDatePicker from '@/components/SingleDatePicker';
 import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
 import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems, inventoryPurchaseOrders, inventoryPurchaseOrderLines } from '../../lib/inventoryDataStore';
+import { useProductDetails, useAllProducts } from '../../hooks/useProductNames';
+import type { ReplenishmentItem } from '../../types';
 import { getLastUnitPriceForProduct } from '../../helpers/purchaseOrderHelpers';
 import { useToast } from '../../hooks/useToast';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
@@ -44,8 +46,8 @@ function CreatePurchaseOrderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prePopItemId = searchParams.get('itemId');
-  const { success } = useToast();
-  const [, setRefreshTick] = useState(0);
+  const { success, error } = useToast();
+  const [refreshTick, setRefreshTick] = useState(0);
   const [showCreateItemModal, setShowCreateItemModal] = useState(false);
   const [isCreatingItem, setIsCreatingItem] = useState(false);
   const [createItemTargetLineId, setCreateItemTargetLineId] = useState<string | null>(null);
@@ -57,6 +59,7 @@ function CreatePurchaseOrderPageContent() {
     itemType: 'consumable' as 'consumable' | 'reusable',
     reorderLevel: '0',
     unitCost: '0',
+    customCategoryName: '',
   });
 
   const [form, setForm] = useState({
@@ -78,12 +81,28 @@ function CreatePurchaseOrderPageContent() {
   const [activeItemPickerLineId, setActiveItemPickerLineId] = useState<string | null>(null);
   const [itemPickerQuery, setItemPickerQuery] = useState('');
   const [itemPickerPosition, setItemPickerPosition] = useState({ top: 0, left: 0, width: 420 });
+  const [editingCell, setEditingCell] = useState<{ lineId: string; field: 'quantity' | 'unitPrice'; rawValue: string } | null>(null);
 
   useEffect(() => {
     void loadInventoryDataset()
       .finally(() => {
         if (prePopItemId && !hasPrepopulatedRef.current) {
-          const item = inventoryItems.find((candidate) => candidate.id === prePopItemId);
+          let item = inventoryItems.find((candidate) => candidate.id === prePopItemId);
+          if (!item) {
+            const line = inventoryPurchaseOrderLines.find((l) => l.productId === prePopItemId);
+            if (line) {
+              item = {
+                id: line.productId,
+                sku: line.productId,
+                name: line.productName || `Product #${line.productId}`,
+                unit: 'pcs',
+                minStock: 0,
+                shortfall: 0,
+                unitCost: line.unitPrice ?? 0,
+                currentsupplierId: '',
+              } as ReplenishmentItem;
+            }
+          }
           if (item) {
             setForm((prev) => ({
               ...prev,
@@ -146,6 +165,32 @@ function CreatePurchaseOrderPageContent() {
     };
   }, [prePopItemId]);
 
+  const productIdsToFetch = useMemo(() => {
+    const inventoryIds = new Set(inventoryItems.map((i) => i.id));
+    return [...new Set(
+      inventoryPurchaseOrderLines
+        .filter((l) => l.productId && !inventoryIds.has(l.productId) && !l.productName)
+        .map((l) => l.productId!)
+    )];
+  }, [inventoryItems, inventoryPurchaseOrderLines, refreshTick]);
+  const fetchedProductDetails = useProductDetails(productIdsToFetch);
+  const allProductsFromApi = useAllProducts(refreshTick);
+
+  // Sync line item productNames when we fetch names for placeholder products.
+  useEffect(() => {
+    setLineItems((items) => {
+      const needsUpdate = items.some(
+        (l) => l.productId && fetchedProductDetails[l.productId] && l.productName?.startsWith('Product #')
+      );
+      if (!needsUpdate) return items;
+      return items.map((line) =>
+        line.productId && fetchedProductDetails[line.productId] && line.productName?.startsWith('Product #')
+          ? { ...line, productName: fetchedProductDetails[line.productId].name }
+          : line
+      );
+    });
+  }, [fetchedProductDetails]);
+
   lineItemsRef.current = lineItems;
 
   // Keep the item picker popover anchored to the active row input while scrolling/resizing.
@@ -207,6 +252,68 @@ function CreatePurchaseOrderPageContent() {
 
   const usedProductIds = new Set(lineItems.map((line) => line.productId).filter(Boolean));
 
+  // Include products from PO lines that may not be in replenishmentItems (e.g. new items with no stock yet),
+  // so users can still access them if an ongoing order was not confirmed.
+  // Also include products from the API that exist in the DB but aren't in replenishment (e.g. newly created
+  // items with no stock, or items from cancelled POs like Betadine).
+  const poCreateProductCandidates = useMemo((): ReplenishmentItem[] => {
+    const inventoryIds = new Set(inventoryItems.map((i) => i.id));
+    const fromPOLines: ReplenishmentItem[] = [];
+    const seen = new Set<string>();
+    for (const line of inventoryPurchaseOrderLines) {
+      if (!line.productId || inventoryIds.has(line.productId) || seen.has(line.productId)) continue;
+      seen.add(line.productId);
+      const fetched = fetchedProductDetails[line.productId];
+      fromPOLines.push({
+        id: line.productId,
+        sku: fetched?.sku ?? line.productId,
+        name: fetched?.name || line.productName || `Product #${line.productId}`,
+        type: 'consumable',
+        category: 'Other',
+        unit: 'pcs',
+        currentStock: 0,
+        minStock: 0,
+        shortfall: 0,
+        unitCost: line.unitPrice ?? 0,
+        totalValue: 0,
+        warehouseId: '',
+        warehouseName: '',
+        isActive: true,
+        createdAt: '',
+        updatedAt: '',
+        currentsupplierId: '',
+        supplierName: '',
+      } as ReplenishmentItem);
+    }
+    const fromApi: ReplenishmentItem[] = [];
+    for (const p of allProductsFromApi) {
+      if (inventoryIds.has(p.id) || seen.has(p.id)) continue;
+      seen.add(p.id);
+      const lastPrice = getLastUnitPriceForProduct(p.id, inventoryPurchaseOrders, inventoryPurchaseOrderLines);
+      fromApi.push({
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        type: 'consumable',
+        category: 'Other',
+        unit: p.unit,
+        currentStock: 0,
+        minStock: p.minStock,
+        shortfall: 0,
+        unitCost: lastPrice > 0 ? lastPrice : p.unitCost,
+        totalValue: 0,
+        warehouseId: '',
+        warehouseName: '',
+        isActive: true,
+        createdAt: '',
+        updatedAt: '',
+        currentsupplierId: '',
+        supplierName: '',
+      } as ReplenishmentItem);
+    }
+    return [...inventoryItems, ...fromPOLines, ...fromApi];
+  }, [inventoryItems, inventoryPurchaseOrderLines, fetchedProductDetails, allProductsFromApi, refreshTick]);
+
   const resetCreateItemForm = () => {
     setCreateItemForm({
       name: '',
@@ -216,24 +323,41 @@ function CreatePurchaseOrderPageContent() {
       itemType: 'consumable',
       reorderLevel: '0',
       unitCost: '0',
+      customCategoryName: '',
     });
   };
 
   const handleCreateNewItem = async () => {
     if (!createItemForm.name.trim()) return;
+    const effectiveCategory =
+      createItemForm.category === '__create_new__'
+        ? createItemForm.customCategoryName.trim()
+        : createItemForm.category;
+    if (!effectiveCategory) {
+      error('Please select a category or enter a new category name.');
+      return;
+    }
+    const normalized = createItemForm.name.trim().toLowerCase();
+    const isDuplicate = inventoryItems.some(
+      (item) => (item.name ?? '').trim().toLowerCase() === normalized
+    );
+    if (isDuplicate) {
+      error('An item with this name already exists. Product names must be unique (case-insensitive).');
+      return;
+    }
     setIsCreatingItem(true);
     try {
       const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
         '/api/product-categories'
       );
-      const normalized = createItemForm.category.toLowerCase();
-      const existing = categories.find((c) => c.name.toLowerCase() === normalized);
+      const catNormalized = effectiveCategory.toLowerCase();
+      const existing = categories.find((c) => c.name.toLowerCase() === catNormalized);
       const categoryId =
         existing?.id ??
         (await apiClient.post<{ id: string }>('/api/product-categories', {
-          code: createItemForm.category.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-          name: createItemForm.category,
-          description: `Auto-created for category ${createItemForm.category}`,
+          code: effectiveCategory.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
+          name: effectiveCategory,
+          description: `Auto-created for category ${effectiveCategory}`,
         })).id;
 
       const skuValue = createItemForm.sku.trim() || `SKU-${Date.now()}`;
@@ -285,11 +409,12 @@ function CreatePurchaseOrderPageContent() {
   };
 
   const handleRemoveLineItem = (lineId: string) => {
+    setEditingCell((prev) => (prev?.lineId === lineId ? null : prev));
     setLineItems(lineItems.filter((line) => line.id !== lineId));
   };
 
   const handleSelectProductForLine = (lineId: string, productId: string) => {
-    const product = inventoryItems.find((entry) => entry.id === productId);
+    const product = poCreateProductCandidates.find((entry) => entry.id === productId);
     if (!product) return;
 
     // Use item's default supplier for PO when supplier not yet set
@@ -297,6 +422,7 @@ function CreatePurchaseOrderPageContent() {
       setForm((prev) => ({ ...prev, supplierId: product.currentsupplierId }));
     }
 
+    setEditingCell((prev) => (prev?.lineId === lineId ? null : prev));
     setLineItems((prev) => {
       const existingIndex = prev.findIndex((line) => line.productId === product.id && line.id !== lineId);
       const targetIndex = prev.findIndex((line) => line.id === lineId);
@@ -333,22 +459,46 @@ function CreatePurchaseOrderPageContent() {
     ensureTrailingEmptyRow();
   };
 
-  const handleUpdateLineItem = (lineId: string, field: 'quantity' | 'unitPrice', rawValue: number | string) => {
-    const str = typeof rawValue === 'number' ? String(rawValue) : String(rawValue).replace(/\D/g, '');
-    const numeric = str === '' ? 0 : parseInt(str, 10);
-    let clean = Number.isFinite(numeric) ? numeric : 0;
+  const handleCellFocus = (lineId: string, field: 'quantity' | 'unitPrice', currentValue: number) => {
+    setEditingCell({
+      lineId,
+      field,
+      rawValue: currentValue === 0 && field === 'unitPrice' ? '' : String(currentValue),
+    });
+  };
 
-    if (field === 'quantity') {
-      clean = Math.max(1, Math.floor(clean || 0)); // minimum 1, whole number
-    } else {
-      clean = Math.max(0, clean || 0); // unit price can't be negative
-    }
-
-    setLineItems((prev) =>
-      prev.map((l) =>
-        l.id === lineId ? { ...l, [field]: clean } : l
-      )
+  const handleCellChange = (lineId: string, field: 'quantity' | 'unitPrice', rawInput: string) => {
+    const digits = String(rawInput).replace(/\D/g, '');
+    const normalized = digits.replace(/^0+(?=\d)/, '') || digits;
+    setEditingCell((prev) =>
+      prev && prev.lineId === lineId && prev.field === field
+        ? { ...prev, rawValue: normalized }
+        : { lineId, field, rawValue: normalized }
     );
+  };
+
+  const handleCellBlur = (lineId: string, field: 'quantity' | 'unitPrice') => {
+    setEditingCell((prev) => {
+      if (!prev || prev.lineId !== lineId || prev.field !== field) return prev;
+      const digits = prev.rawValue.replace(/\D/g, '');
+      const normalized = digits.replace(/^0+(?=\d)/, '') || digits;
+      const numeric = normalized === '' ? 0 : parseInt(normalized, 10);
+      const value = Number.isFinite(numeric) ? numeric : 0;
+      const clean = field === 'quantity'
+        ? Math.max(1, Math.floor(value || 0))
+        : Math.max(0, Math.floor(value || 0));
+
+      setLineItems((items) =>
+        items.map((l) => (l.id === lineId ? { ...l, [field]: clean } : l))
+      );
+      return null;
+    });
+  };
+
+  const getCellDisplayValue = (line: POLineItem, field: 'quantity' | 'unitPrice'): string => {
+    const isEditing = editingCell?.lineId === line.id && editingCell?.field === field;
+    if (isEditing) return editingCell.rawValue;
+    return String(line[field]);
   };
 
   const totalAmount = lineItems.reduce((sum, line) => sum + (line.productId ? line.quantity * line.unitPrice : 0), 0);
@@ -388,6 +538,7 @@ function CreatePurchaseOrderPageContent() {
         notes: `Ordered: ${form.orderDate} | Expected: ${form.expectedDelivery}`,
         items: realRows.map((line) => ({
           productId: line.productId,
+          productName: line.productName || undefined,
           quantityOrdered: line.quantity,
           // Backend requires unitCost (if provided) to be positive. Omit when unknown/zero.
           ...(line.unitPrice > 0 ? { unitCost: line.unitPrice } : {}),
@@ -757,9 +908,13 @@ function CreatePurchaseOrderPageContent() {
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          value={line.unitPrice}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleUpdateLineItem(line.id, 'unitPrice', e.target.value)}
+                          value={getCellDisplayValue(line, 'unitPrice')}
+                          onFocus={(e) => {
+                            e.target.select();
+                            handleCellFocus(line.id, 'unitPrice', line.unitPrice);
+                          }}
+                          onChange={(e) => handleCellChange(line.id, 'unitPrice', e.target.value)}
+                          onBlur={() => handleCellBlur(line.id, 'unitPrice')}
                           className="w-28 bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-700 text-right outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e] disabled:opacity-50"
                           style={{ fontFamily: 'Poppins' }}
                           disabled={!line.productId}
@@ -770,9 +925,13 @@ function CreatePurchaseOrderPageContent() {
                           type="text"
                           inputMode="numeric"
                           pattern="[0-9]*"
-                          value={line.quantity}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => handleUpdateLineItem(line.id, 'quantity', e.target.value)}
+                          value={getCellDisplayValue(line, 'quantity')}
+                          onFocus={(e) => {
+                            e.target.select();
+                            handleCellFocus(line.id, 'quantity', line.quantity);
+                          }}
+                          onChange={(e) => handleCellChange(line.id, 'quantity', e.target.value)}
+                          onBlur={() => handleCellBlur(line.id, 'quantity')}
                           className="w-20 bg-transparent px-2 py-1.5 rounded-md text-[13px] text-gray-700 text-right outline-none focus:bg-white focus:ring-2 focus:ring-[#cce8e8] focus:border focus:border-[#05807e] disabled:opacity-50"
                           style={{ fontFamily: 'Poppins' }}
                           disabled={!line.productId}
@@ -927,13 +1086,25 @@ function CreatePurchaseOrderPageContent() {
                   <InventoryDropdown
                     value={createItemForm.category}
                     onChange={(value) => setCreateItemForm((p) => ({ ...p, category: value }))}
-                    options={ITEM_CATEGORIES.map((c) => ({ value: c, label: c }))}
+                    options={[
+                      ...ITEM_CATEGORIES.map((c) => ({ value: c, label: c })),
+                      { value: '__create_new__', label: '+ Create new category...' },
+                    ]}
                     fullWidth={true}
                     minWidthClass="min-w-0"
                     align="left"
                     backdropZIndexClass="z-[10025]"
                     menuZIndexClass="z-[10030]"
                   />
+                  {createItemForm.category === '__create_new__' && (
+                    <input
+                      type="text"
+                      value={createItemForm.customCategoryName}
+                      onChange={(e) => setCreateItemForm((p) => ({ ...p, customCategoryName: e.target.value }))}
+                      placeholder="Enter new category name"
+                      className="w-full px-3.5 py-2.5 rounded-lg border-[1.5px] border-gray-200 text-[13px] outline-none focus:border-[#05807e] focus:ring-2 focus:ring-[#cce8e8] mt-2"
+                    />
+                  )}
                 </div>
 
                 <div>
@@ -998,7 +1169,11 @@ function CreatePurchaseOrderPageContent() {
               </button>
               <button
                 type="button"
-                disabled={isCreatingItem || !createItemForm.name.trim()}
+                disabled={
+                  isCreatingItem ||
+                  !createItemForm.name.trim() ||
+                  (createItemForm.category === '__create_new__' ? !createItemForm.customCategoryName.trim() : false)
+                }
                 className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white text-[13px] font-semibold hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={() => void handleCreateNewItem()}
               >
@@ -1035,7 +1210,7 @@ function CreatePurchaseOrderPageContent() {
               const activeLine = lineItems.find((l) => l.id === activeItemPickerLineId);
               const activeProductId = activeLine?.productId || '';
 
-              const candidates = inventoryItems
+              const candidates = poCreateProductCandidates
                 .filter((item) => {
                   if (!query) return true;
                   const hay = normalizeSearch(`${item.name} ${item.sku}`);
@@ -1114,7 +1289,7 @@ function CreatePurchaseOrderPageContent() {
           <div className="rounded-2xl bg-white px-5 py-4 shadow-xl border border-white/20 flex items-center gap-3" style={{ fontFamily: 'Poppins' }}>
             <div className="w-5 h-5 border-2 border-[#0B5858]/30 border-t-[#0B5858] rounded-full animate-spin" />
             <div className="text-sm text-gray-800 font-medium">
-              Submitting purchase order…
+              Creating purchase order…
             </div>
           </div>
         </div>
@@ -1181,7 +1356,7 @@ function CreatePurchaseOrderPageContent() {
           className="create-po-btn flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white rounded-lg text-[13px] font-semibold transition-all hover:shadow-lg hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0B5858] disabled:opacity-60 disabled:cursor-not-allowed"
           style={{ fontFamily: 'Poppins', boxShadow: '0 2px 8px rgba(11,88,88,0.2)' }}
         >
-          {isSubmitting ? 'Submitting…' : 'Create Purchase Order'}
+          {isSubmitting ? 'Creating…' : 'Create Purchase Order'}
         </button>
       </div>
     </>

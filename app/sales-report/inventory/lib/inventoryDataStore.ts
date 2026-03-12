@@ -21,6 +21,7 @@ export {
   mockUnitStockMovements as inventoryUnitStockMovements,
   getDisplayableInventoryItems,
   updateInventoryItem,
+  updateUnitItemMinStock,
   normalizeUnit,
 } from './inventoryData';
 

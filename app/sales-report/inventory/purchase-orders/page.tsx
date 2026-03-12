@@ -1,6 +1,7 @@
 'use client';
 
 import React, { Fragment, useState, useMemo, useEffect } from 'react';
+import { useProductNames } from '../hooks/useProductNames';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -41,6 +42,7 @@ function EditPOModal({
   onClose: () => void;
   onSave: (data: { supplierId: string; expectedDelivery: string }) => void;
 }) {
+  const { error } = useToast();
   const [form, setForm] = useState({
     supplierId: po.supplierId,
     expectedDelivery: po.expectedDelivery.split('T')[0], // Format as YYYY-MM-DD
@@ -83,6 +85,14 @@ function EditPOModal({
     const nextErrors = validate();
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
+      return;
+    }
+
+    const noChanges =
+      form.supplierId === po.supplierId &&
+      form.expectedDelivery === po.expectedDelivery.split('T')[0];
+    if (noChanges) {
+      error('No changes were made. Cancel or close to exit.');
       return;
     }
 
@@ -207,6 +217,16 @@ function DetailDrawer({
   const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
   const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
 
+  const productIdsToFetch = useMemo(() => {
+    const inventoryIds = new Set(inventoryItems.map((i) => i.id));
+    return [...new Set(
+      poLines
+        .filter((l) => l.productId && !inventoryIds.has(l.productId) && !l.productName)
+        .map((l) => l.productId!)
+    )];
+  }, [po.id, poLines, inventoryItems]);
+  const fetchedProductNames = useProductNames(productIdsToFetch);
+
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
   useEffect(() => {
     const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
@@ -260,7 +280,24 @@ function DetailDrawer({
                 {po.id.toUpperCase()}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              {po.status !== "cancelled" && (
+                <button
+                  onClick={() => onEditPO(po)}
+                  className="rounded-lg border-0 flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:scale-105 active:scale-95"
+                  style={{
+                    width: 34, height: 34,
+                    background: "rgba(255,255,255,0.2)", color: "white",
+                    cursor: "pointer",
+                  }}
+                  title="Edit PO"
+                  aria-label="Edit PO"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              )}
               <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
               <button onClick={handleClose} className="rounded-full border-0 text-2xl flex items-center justify-center flex-shrink-0 transition-colors"
                 style={{
@@ -361,7 +398,7 @@ function DetailDrawer({
                     const item = inventoryItems.find(x => x.id === line.productId);
                     return (
                       <tr key={line.id} className={`border-b border-[#e5e7eb] ${i % 2 === 0 ? 'bg-white' : 'bg-[#f4f7f7]'}`}>
-                        <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{item?.name || `Product #${line.productId}`}</td>
+                        <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{line.productName || item?.name || fetchedProductNames[line.productId] || `Product #${line.productId}`}</td>
                         <td className="px-3 py-3 text-[12.5px] text-[#374151]">{line.quantity}</td>
                         <td className="px-3 py-3 text-[12px] text-[#9ca3af]">{item?.unit || 'pcs'}</td>
                         <td className="px-3 py-3 text-[12.5px] text-[#374151]">{formatPhp(line.unitPrice)}</td>
@@ -485,11 +522,11 @@ function DetailDrawer({
             <button 
               onClick={() => onEditPO(po)}
               disabled={po.status === "cancelled"}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold text-sm rounded-lg transition-all hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed" 
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold text-sm rounded-lg transition-all duration-150 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100" 
               style={{ boxShadow: '0 2px 8px rgba(11,88,88,0.2)' }}
             >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+              <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             Edit PO
           </button>
@@ -606,7 +643,21 @@ function PurchaseOrdersPageContent() {
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [goodsReceiptModalPO, setGoodsReceiptModalPO] = useState<PurchaseOrder | null>(null);
   const [editPOTarget, setEditPOTarget] = useState<PurchaseOrder | null>(null);
+  const [cancelPOConfirmTarget, setCancelPOConfirmTarget] = useState<PurchaseOrder | null>(null);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    if (!cancelPOConfirmTarget) return;
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCancelPOConfirmTarget(null);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', fn);
+    return () => {
+      window.removeEventListener('keydown', fn);
+      document.body.style.overflow = '';
+    };
+  }, [cancelPOConfirmTarget]);
   const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
@@ -805,9 +856,14 @@ function PurchaseOrdersPageContent() {
   };
 
   const handleCancelPO = (po: PurchaseOrder) => {
-    if (!confirm(`Are you sure you want to cancel Purchase Order ${po.id.toUpperCase()}? This action cannot be undone.`)) {
-      return;
-    }
+    setCancelPOConfirmTarget(po);
+  };
+
+  const handleConfirmCancelPO = () => {
+    const po = cancelPOConfirmTarget;
+    if (!po) return;
+
+    setCancelPOConfirmTarget(null);
 
     const run = async () => {
       await apiClient.patch(`/api/purchase-orders/${po.id}`, {
@@ -1215,6 +1271,66 @@ function PurchaseOrdersPageContent() {
           onClose={() => setEditPOTarget(null)}
           onSave={handleEditPO}
         />
+      )}
+
+      {/* Cancel PO Confirmation Modal (stock out success styling) */}
+      {cancelPOConfirmTarget && createPortal(
+        <div
+          onClick={() => setCancelPOConfirmTarget(null)}
+          className="fixed inset-0 flex items-center justify-center z-[10001] p-4"
+          style={{
+            background: 'rgba(17, 24, 39, 0.38)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-[22px] w-full max-w-[448px] overflow-hidden shadow-2xl"
+            style={{
+              boxShadow: '0 24px 80px rgba(0,0,0,0.22)',
+            }}
+          >
+            <div className="p-6" style={{ fontFamily: 'Poppins' }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-[16px] font-semibold text-gray-900">
+                    Cancel Purchase Order?
+                  </h2>
+                  <p className="text-[12px] text-gray-600 mt-0.5">
+                    {cancelPOConfirmTarget.id.toUpperCase()}
+                  </p>
+                </div>
+              </div>
+              <p className="text-[13px] text-gray-700 mb-5">
+                Are you sure you want to cancel this purchase order? This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-4 py-2 text-[13px] rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                  style={{ fontFamily: 'Poppins' }}
+                  onClick={() => setCancelPOConfirmTarget(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 text-[13px] rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold hover:opacity-95 transition-opacity"
+                  style={{ fontFamily: 'Poppins' }}
+                  onClick={handleConfirmCancelPO}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

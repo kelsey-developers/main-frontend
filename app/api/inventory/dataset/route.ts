@@ -17,6 +17,7 @@ type InventoryDataset = {
   purchaseOrderLines: unknown[];
   goodsReceipts: unknown[];
   stockMovements: unknown[];
+  damageAdjustments: unknown[];
   replenishmentItems: unknown[];
   units?: unknown[];
   unitItems?: unknown[];
@@ -39,6 +40,7 @@ const emptyDataset: InventoryDataset = {
   purchaseOrderLines: [],
   goodsReceipts: [],
   stockMovements: [],
+  damageAdjustments: [],
   replenishmentItems: [],
   units: [],
   unitItems: [],
@@ -62,6 +64,7 @@ function ensureDatasetShape(raw: unknown): typeof emptyDataset {
       purchaseOrderLines: Array.isArray(o.purchaseOrderLines) ? o.purchaseOrderLines : emptyDataset.purchaseOrderLines,
       goodsReceipts: Array.isArray(o.goodsReceipts) ? o.goodsReceipts : emptyDataset.goodsReceipts,
       stockMovements: Array.isArray(o.stockMovements) ? o.stockMovements : emptyDataset.stockMovements,
+      damageAdjustments: Array.isArray(o.damageAdjustments) ? o.damageAdjustments : emptyDataset.damageAdjustments,
       replenishmentItems: Array.isArray(o.replenishmentItems) ? o.replenishmentItems : emptyDataset.replenishmentItems,
       units: Array.isArray(o.units) ? o.units : emptyDataset.units,
       unitItems: Array.isArray(o.unitItems) ? o.unitItems : emptyDataset.unitItems,

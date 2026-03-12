@@ -1,6 +1,6 @@
 export type ItemType = 'consumable' | 'reusable';
 export type ItemCategory = 'Cleaning' | 'Hygiene' | 'Food & Drinks' | 'Cooking' | 'Appliances' | 'furniture' | 'Cloth & Sheets' | 'Kitchenware' | 'Other';
-export type StockMovementType = 'in' | 'out';
+export type StockMovementType = 'in' | 'out' | 'adjustment';
 export type DamageStatus = 'open' | 'in-review' | 'resolved' | 'rejected';
 export type StockStatus = 'out' | 'critical' | 'low' | 'ok';
 
@@ -75,6 +75,7 @@ export interface PurchaseOrderLine {
   id: string;
   poId: string;
   productId: string;
+  productName?: string;
   quantity: number;
   unitPrice: number;
   receivedQuantity: number;
@@ -170,5 +171,5 @@ export interface InventoryUnit {
 export interface InventoryFeatureLink {
   href: string;
   title: string;
-  icon: 'items' | 'suppliers' | 'warehouses' | 'purchaseOrders' | 'stockMovements';
+  icon: 'items' | 'suppliers' | 'warehouses' | 'purchaseOrders' | 'stockMovements' | 'damageReports';
 }

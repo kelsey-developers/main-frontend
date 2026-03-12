@@ -13,9 +13,10 @@ import {
 } from '../lib/inventoryDataStore';
 import type { EnhancedMovement } from '../helpers/types';
 import { exportStockMovementsToCsv, exportStockMovementsToPdf } from '../helpers/exportHelpers';
+import NoneBadge, { isNoneLike } from '../components/NoneBadge';
 
 type MovementView = 'warehouse' | 'unit';
-type MovementType = 'in' | 'out';
+type MovementType = 'in' | 'out' | 'adjustment';
 type ReferenceType = 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL';
 
 const MOVEMENT_VIEW_STORAGE_KEY = 'inventory.stockMovements.view';
@@ -25,7 +26,7 @@ type WarehouseMovementRow = {
   productName: string;
   warehouseName: string;
   unitName?: string;
-  type: MovementType;
+  type: MovementType; // 'in' | 'out' | 'adjustment' (adjustment: quantity is signed)
   quantity: number;
   createdBy: string;
   reason: string;
@@ -64,7 +65,9 @@ const normalizeDateTime = (value?: string) => {
 const getTypeBadgeClasses = (type: MovementType) =>
   type === 'in'
     ? 'bg-green-50 text-green-700 border border-green-200'
-    : 'bg-red-50 text-red-700 border border-red-200';
+    : type === 'adjustment'
+      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+      : 'bg-red-50 text-red-700 border border-red-200';
 
 const Tag = ({ label, className }: { label: string; className: string }) => (
   <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${className}`}>
@@ -144,14 +147,25 @@ export default function StockMovementsPage() {
       list.sort((a, b) => a.ts - b.ts);
       const currentBalance = currentBalanceByKey.get(key) ?? 0;
       const netDelta = list.reduce(
-        (sum, { movement }) => sum + (movement.type === 'in' ? movement.quantity : -movement.quantity),
+        (sum, { movement }) =>
+          sum +
+          (movement.type === 'adjustment'
+            ? movement.quantity
+            : movement.type === 'in'
+              ? movement.quantity
+              : -movement.quantity),
         0
       );
       const openingBalance = currentBalance - netDelta;
       let balance = openingBalance;
       for (const { movement } of list) {
         const before = balance;
-        const delta = movement.type === 'in' ? movement.quantity : -movement.quantity;
+        const delta =
+          movement.type === 'adjustment'
+            ? movement.quantity
+            : movement.type === 'in'
+              ? movement.quantity
+              : -movement.quantity;
         balance += delta;
         computedBeforeAfter.set(movement.id, { before, after: balance });
       }
@@ -167,7 +181,7 @@ export default function StockMovementsPage() {
         productName: byProductId.get(movement.productId) || 'Unknown Product',
         warehouseName: byWarehouseId.get(movement.warehouseId || '') || 'Unknown Warehouse',
         unitName: movement.unitName,
-        type: movement.type,
+        type: (String(movement.type).toLowerCase() === 'adjustment' ? 'adjustment' : movement.type === 'in' ? 'in' : 'out') as MovementType,
         quantity: movement.quantity,
         createdBy: movement.createdBy || 'Admin User',
         reason: movement.reason || movement.notes || 'N/A',
@@ -201,6 +215,7 @@ export default function StockMovementsPage() {
       { value: 'all', label: 'All Types' },
       { value: 'in', label: 'In' },
       { value: 'out', label: 'Out' },
+      { value: 'adjustment', label: 'Adjustment' },
     ],
     []
   );
@@ -506,13 +521,20 @@ export default function StockMovementsPage() {
       const stockOut = filteredWarehouseRows
         .filter((movement) => movement.type === 'out')
         .reduce((sum, movement) => sum + movement.quantity, 0);
+      const adjustmentNet = filteredWarehouseRows
+        .filter((movement) => movement.type === 'adjustment')
+        .reduce((sum, movement) => sum + movement.quantity, 0);
 
-      return [
+      const stats: Array<{ label: string; value: number | string; gradient: string }> = [
         { label: 'Total Records', value: filteredWarehouseRows.length, gradient: 'from-[#0B5858] to-[#0a4a4a]' },
         { label: 'Stock In', value: `+${stockIn}`, gradient: 'from-green-600 to-green-700' },
         { label: 'Stock Out', value: `-${stockOut}`, gradient: 'from-red-500 to-red-600' },
-        { label: 'Ref Types', value: new Set(filteredWarehouseRows.map((row) => row.referenceType)).size, gradient: 'from-indigo-500 to-indigo-600' },
       ];
+      if (adjustmentNet !== 0) {
+        stats.push({ label: 'Adjustments', value: adjustmentNet >= 0 ? `+${adjustmentNet}` : `${adjustmentNet}`, gradient: 'from-blue-500 to-blue-600' });
+      }
+      stats.push({ label: 'Ref Types', value: new Set(filteredWarehouseRows.map((row) => row.referenceType)).size, gradient: 'from-indigo-500 to-indigo-600' });
+      return stats;
     }
 
     const totalOut = filteredUnitRows.reduce((sum, row) => sum + row.quantity, 0);
@@ -814,20 +836,32 @@ export default function StockMovementsPage() {
                           <div className="text-[11px] text-gray-500">{row.recordedTime || '-'}</div>
                         </td>
                         <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">{row.productName}</td>
-                        <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">{row.warehouseName}</td>
                         <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
-                          {row.unitName ? row.unitName : <OptionalValueBadge />}
+                          {isNoneLike(row.warehouseName) ? <NoneBadge /> : row.warehouseName}
+                        </td>
+                        <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
+                          {isNoneLike(row.unitName) ? <NoneBadge /> : row.unitName}
                         </td>
                         <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
-                          <Tag label={row.type === 'in' ? 'In' : 'Out'} className={getTypeBadgeClasses(row.type)} />
+                          <Tag
+                            label={row.type === 'in' ? 'In' : row.type === 'adjustment' ? 'Adjustment' : 'Out'}
+                            className={getTypeBadgeClasses(row.type)}
+                          />
                         </td>
                         <td
                           className={`px-4 py-3 align-top text-right text-[12.5px] font-bold ${
-                            row.type === 'in' ? 'text-green-600' : 'text-red-600'
+                            row.type === 'in'
+                              ? 'text-green-600'
+                              : row.type === 'adjustment'
+                                ? row.quantity >= 0
+                                  ? 'text-blue-600'
+                                  : 'text-amber-600'
+                                : 'text-red-600'
                           }`}
                         >
-                          {row.type === 'in' ? '+' : '-'}
-                          {row.quantity}
+                          {row.type === 'adjustment'
+                            ? (row.quantity >= 0 ? '+' : '') + row.quantity
+                            : (row.type === 'in' ? '+' : '-') + Math.abs(row.quantity)}
                         </td>
                         <td className="px-4 py-3 text-right text-[12px] text-gray-700 whitespace-normal break-words align-top">
                           {row.beforeQuantity !== undefined ? (
@@ -887,9 +921,11 @@ export default function StockMovementsPage() {
                       <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">
                         {row.productName}
                       </td>
-                      <td className="px-4 py-3 text-[12.5px] text-gray-700 whitespace-normal break-words align-top">{row.unitName}</td>
                       <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
-                        {row.sourceWarehouseName}
+                        {isNoneLike(row.unitName) ? <NoneBadge /> : row.unitName}
+                      </td>
+                      <td className="px-4 py-3 text-[12px] text-gray-600 whitespace-normal break-words align-top">
+                        {isNoneLike(row.sourceWarehouseName) ? <NoneBadge /> : row.sourceWarehouseName}
                       </td>
                       <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
                         <Tag label="Out" className={getTypeBadgeClasses('out')} />
@@ -972,16 +1008,23 @@ export default function StockMovementsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Tag
-                        label={row.type === 'in' ? 'In' : 'Out'}
+                        label={row.type === 'in' ? 'In' : row.type === 'adjustment' ? 'Adjustment' : 'Out'}
                         className={getTypeBadgeClasses(row.type)}
                       />
                       <div
                         className={`text-[13px] font-bold ${
-                          row.type === 'in' ? 'text-green-600' : 'text-red-600'
+                          row.type === 'in'
+                            ? 'text-green-600'
+                            : row.type === 'adjustment'
+                              ? row.quantity >= 0
+                                ? 'text-blue-600'
+                                : 'text-amber-600'
+                              : 'text-red-600'
                         }`}
                       >
-                        {row.type === 'in' ? '+' : '-'}
-                        {row.quantity}
+                        {row.type === 'adjustment'
+                          ? (row.quantity >= 0 ? '+' : '') + row.quantity
+                          : (row.type === 'in' ? '+' : '-') + Math.abs(row.quantity)}
                       </div>
                     </div>
                   </div>
@@ -989,12 +1032,14 @@ export default function StockMovementsPage() {
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
                     <div className="flex items-center gap-1 min-w-0">
                       <span className="font-semibold text-gray-500">WH:</span>
-                      <span className="break-words">{row.warehouseName}</span>
+                      <span className="break-words">
+                        {isNoneLike(row.warehouseName) ? <NoneBadge /> : row.warehouseName}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1 min-w-0">
                       <span className="font-semibold text-gray-500">Unit:</span>
                       <span className="break-words">
-                        {row.unitName ? row.unitName : <OptionalValueBadge />}
+                        {isNoneLike(row.unitName) ? <NoneBadge /> : row.unitName}
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -1065,11 +1110,15 @@ export default function StockMovementsPage() {
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-600">
                   <div className="flex items-center gap-1 min-w-0">
                     <span className="font-semibold text-gray-500">Unit:</span>
-                    <span className="break-words">{row.unitName}</span>
+                    <span className="break-words">
+                      {isNoneLike(row.unitName) ? <NoneBadge /> : row.unitName}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1 min-w-0">
                     <span className="font-semibold text-gray-500">From:</span>
-                    <span className="break-words">{row.sourceWarehouseName}</span>
+                    <span className="break-words">
+                      {isNoneLike(row.sourceWarehouseName) ? <NoneBadge /> : row.sourceWarehouseName}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="font-semibold text-gray-500">Stock:</span>

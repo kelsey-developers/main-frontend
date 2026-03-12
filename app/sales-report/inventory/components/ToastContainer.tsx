@@ -20,7 +20,7 @@ export default function ToastContainer({ toasts, onRemove }: ToastContainerProps
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 pointer-events-none"
+      className="fixed inset-0 z-[10050] flex items-center justify-center p-4 pointer-events-none"
       aria-live="polite"
       aria-label="Notifications"
     >

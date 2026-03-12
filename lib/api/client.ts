@@ -6,6 +6,7 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/goods-receipts',
   '/api/product-categories',
   '/api/market', // bookings, damage-incidents via market-backend (finance dashboard)
+  '/api/damage-incidents',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';

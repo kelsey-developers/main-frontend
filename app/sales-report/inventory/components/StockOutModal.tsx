@@ -12,7 +12,6 @@ import { processStockOut } from '../lib/inventoryLedger';
 import { 
   loadInventoryDataset,
   inventoryItems, 
-  getDisplayableInventoryItems,
   inventoryWarehouseDirectory,
   inventoryUnits,
 } from '../lib/inventoryDataStore';
@@ -148,7 +147,7 @@ function SectionLabel({ label, color }: { label: string; color?: string }) {
 
 // ─── Stock pill ──────────────────────────────────────────────────
 function StockPill({ available, reorder, unit }: { available: number; reorder: number; unit: string }) {
-  const low = available <= reorder;
+  const low = reorder > 0 && available < reorder;
   return (
     <span
       style={{
@@ -194,23 +193,34 @@ function LineItemRow({
   const wh = sourceWarehouse
     ? inventoryWarehouseDirectory.find((w) => w.id === sourceWarehouse)
     : undefined;
-  const whBalance = wh?.inventoryBalances.find((b) => b.productId === item.productId);
-  const avail = sourceWarehouse && whBalance !== undefined
-    ? whBalance.quantity
-    : (product ? product.currentStock : 0);
-  const over = !!(product && item.quantity && parseInt(item.quantity) > avail);
+  const balances = wh?.inventoryBalances ?? [];
+  const whBalance = balances.find((b) => b.productId === item.productId);
+  // Use warehouse-specific balance when available; avoid product.currentStock when no warehouse balance exists (it may be from another warehouse)
+  const avail = sourceWarehouse
+    ? (whBalance?.quantity ?? (product?.warehouseId === sourceWarehouse ? (product?.currentStock ?? 0) : 0))
+    : (product?.currentStock ?? 0);
+  const over = !!(item.quantity && parseInt(item.quantity) > avail);
 
-  const itemOptions = sourceWarehouse && wh
-    ? wh.inventoryBalances
-        .filter((b) => b.quantity > 0)
-        .map((b) => {
-          const p = inventoryItems.find((i) => i.id === b.productId);
-          return { value: b.productId, label: `${p?.sku ?? b.productId} — ${b.productName}` };
-        })
-    : getDisplayableInventoryItems().map((p) => ({
-        value: p.id,
-        label: `${p.sku} — ${p.name}`,
-      }));
+  // Warehouse stock-out: only show items that have stock in the selected warehouse
+  const itemOptions = (() => {
+    if (!sourceWarehouse) {
+      return []; // Must select warehouse first
+    }
+    if (!wh) {
+      return []; // Warehouse not found in directory
+    }
+    const fromBalances = (balances as Array<{ productId: string; productName: string; quantity: number }>)
+      .filter((b) => b.quantity > 0)
+      .map((b) => {
+        const p = inventoryItems.find((i) => i.id === b.productId);
+        return { value: b.productId, label: `${p?.sku ?? b.productId} — ${b.productName}` };
+      });
+    if (fromBalances.length > 0) return fromBalances;
+    // Fallback: replenishment items whose default warehouse matches and have stock
+    return inventoryItems
+      .filter((p) => p.warehouseId === sourceWarehouse && (p.currentStock ?? 0) > 0)
+      .map((p) => ({ value: p.id, label: `${p.sku} — ${p.name}` }));
+  })();
 
   return (
     <div
@@ -236,7 +246,14 @@ function LineItemRow({
           value={item.productId || ''}
           onChange={(value) => onUpdate(index, 'productId', value)}
           options={[
-            { value: '', label: sourceWarehouse ? 'Select item…' : 'Select warehouse first' },
+            {
+              value: '',
+              label: !sourceWarehouse
+                ? 'Select warehouse first'
+                : itemOptions.length === 0
+                  ? 'No items in this warehouse'
+                  : 'Select item…',
+            },
             ...itemOptions,
           ]}
           placeholder="Select item…"
@@ -249,7 +266,13 @@ function LineItemRow({
           menuZIndexClass="z-[10010]"
           useFixedPosition={true}
         />
-        {product && <StockPill available={avail} reorder={product.minStock} unit={product.unit} />}
+        {item.productId && itemOptions.some((opt) => opt.value === item.productId) && (
+          <StockPill
+            available={avail}
+            reorder={sourceWarehouse && whBalance ? whBalance.reorderLevel : (product?.minStock ?? 0)}
+            unit={product?.unit ?? 'pcs'}
+          />
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {index === 0 && (
@@ -932,6 +955,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
   const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [recordedItemsCount, setRecordedItemsCount] = useState(0);
+  const [wasAdjustment, setWasAdjustment] = useState(false);
 
   // Animate in
   useEffect(() => {
@@ -990,7 +1014,6 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
           error('Please select destination warehouse for transfer.');
           return;
         }
-
         const validItems = warehouseDraft.items.filter(
           (entry) => entry.productId && Number(entry.quantity) > 0
         );
@@ -999,21 +1022,36 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
           return;
         }
 
+        // Validate quantities do not exceed warehouse stock
+        {
+          const wh = inventoryWarehouseDirectory.find((w) => w.id === warehouseDraft.warehouse);
+          const balances = wh?.inventoryBalances ?? [];
+          for (const entry of validItems) {
+            const bal = balances.find((b) => b.productId === entry.productId);
+            const avail = bal?.quantity ?? inventoryItems.find((p) => p.id === entry.productId)?.currentStock ?? 0;
+            if (avail < Number(entry.quantity)) {
+              const name = inventoryItems.find((p) => p.id === entry.productId)?.name ?? entry.productId;
+              error(`Quantity for ${name} exceeds available stock (${avail}) in this warehouse.`);
+              return;
+            }
+          }
+        }
         for (const entry of validItems) {
+          const qty = Number(entry.quantity);
           await processStockOut({
-            productId: entry.productId,
-            warehouseId: warehouseDraft.warehouse,
-            quantity: Number(entry.quantity),
-            reason: warehouseDraft.reason,
-            date: warehouseDraft.date,
-            reference: warehouseDraft.reference || undefined,
-            notes: warehouseDraft.notes || undefined,
-            createdBy: warehouseDraft.confirmedBy || undefined,
-            transferToWarehouseId:
-              warehouseDraft.reason === 'Inter-warehouse Transfer'
-                ? warehouseDraft.toWarehouse
-                : undefined,
-          });
+              productId: entry.productId,
+              warehouseId: warehouseDraft.warehouse,
+              quantity: qty,
+              reason: warehouseDraft.reason,
+              date: warehouseDraft.date,
+              reference: warehouseDraft.reference || undefined,
+              notes: warehouseDraft.notes || undefined,
+              createdBy: warehouseDraft.confirmedBy || undefined,
+              transferToWarehouseId:
+                warehouseDraft.reason === 'Inter-warehouse Transfer'
+                  ? warehouseDraft.toWarehouse
+                  : undefined,
+            });
         }
       } else {
         if (!unitDraft) {
@@ -1031,6 +1069,19 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
         if (!validItems.length) {
           error('Add at least one item with quantity.');
           return;
+        }
+
+        // Validate quantities do not exceed warehouse stock (prevent negative stock)
+        const wh = inventoryWarehouseDirectory.find((w) => w.id === unitDraft.srcWarehouse);
+        const balances = wh?.inventoryBalances ?? [];
+        for (const entry of validItems) {
+          const bal = balances.find((b) => b.productId === entry.productId);
+          const avail = bal?.quantity ?? inventoryItems.find((p) => p.id === entry.productId)?.currentStock ?? 0;
+          if (avail < Number(entry.quantity)) {
+            const name = inventoryItems.find((p) => p.id === entry.productId)?.name ?? entry.productId;
+            error(`Quantity for ${name} exceeds available stock (${avail}) in this warehouse.`);
+            return;
+          }
         }
 
         for (const entry of validItems) {
@@ -1051,6 +1102,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
       setRecordedItemsCount(
         isWH ? warehouseDraft!.items.filter((e) => e.productId && Number(e.quantity) > 0).length : unitDraft!.items.filter((e) => e.productId && Number(e.quantity) > 0).length
       );
+      setWasAdjustment(false);
       setShowSuccessModal(true);
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') {
@@ -1213,10 +1265,11 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
               </div>
               <div>
                 <h2 className="text-[16px] font-semibold text-gray-900">
-                  Stock out logged successfully
+                  {wasAdjustment ? 'Adjustment recorded successfully' : 'Stock out logged successfully'}
                 </h2>
                 <p className="text-[12px] text-gray-600 mt-0.5">
-                  {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''} deducted from inventory
+                  {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''}{' '}
+                  {wasAdjustment ? 'adjusted (POSTed to backend)' : 'deducted from inventory'}
                 </p>
               </div>
             </div>
@@ -1270,7 +1323,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
               }}
             >
               <span style={{ fontSize: 12, color: C.midGray, fontFamily: 'Poppins' }}>
-                <span style={{ color: C.red }}>*</span> Required · Logged as <strong>Stock Out</strong>
+                <span style={{ color: C.red }}>*</span> Required · Logged as{' '}
+                <strong>{warehouseDraft?.reason === 'Cycle Count / Manual Adjustment (corrections only)' ? 'Adjustment (POST)' : 'Stock Out'}</strong>
               </span>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button

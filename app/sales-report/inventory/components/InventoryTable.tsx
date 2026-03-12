@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ReplenishmentItem } from '../types';
 import { updateInventoryItem } from '../lib/inventoryDataStore';
+import { getItemQuantityForWarehouse, getItemReorderForWarehouse } from '../helpers/itemsHelpers';
 import AuditTrailModal from './AuditTrailModal';
 import EditItemModal from './EditItemModal';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
@@ -17,6 +18,10 @@ interface ReplenishmentTableProps {
   hideEditButton?: boolean;
   isUnitView?: boolean;
   isLoading?: boolean;
+  /** When null = all warehouses (aggregate quantity). When set = per-warehouse quantity. Default null. */
+  warehouseId?: string | null;
+  /** When provided and isUnitView, shows an edit-threshold button per row. */
+  onEditThreshold?: (item: ReplenishmentItem) => void;
 }
 
 type StockStatus = 'out' | 'critical' | 'low' | 'ok';
@@ -125,15 +130,21 @@ const InventoryTableSkeleton = () => {
   );
 };
 
-const StockCell = ({ item, isUnitView = false }: { item: ReplenishmentItem; isUnitView?: boolean }) => {
+const StockCell = ({
+  item,
+  isUnitView = false,
+  warehouseId = null,
+}: {
+  item: ReplenishmentItem;
+  isUnitView?: boolean;
+  warehouseId?: string | null;
+}) => {
   const [hovered, setHovered] = useState(false);
-  const status = getStockStatus(item.currentStock, isUnitView ? 0 : item.minStock);
+  const displayQty = isUnitView ? item.currentStock : getItemQuantityForWarehouse(item.id, warehouseId ?? null);
+  const displayMin = isUnitView ? (item.minStock ?? 0) : getItemReorderForWarehouse(item, warehouseId ?? null);
+  const status = getStockStatus(displayQty, displayMin);
   const cfg = STATUS_CONFIG[status];
-  const ratio = isUnitView
-    ? item.currentStock > 0
-      ? 1
-      : 0
-    : Math.min(item.currentStock / Math.max(item.minStock, 1), 1);
+  const ratio = displayMin > 0 ? Math.min(displayQty / displayMin, 1) : (displayQty > 0 ? 1 : 0);
   const pct = Math.round(ratio * 100);
 
   return (
@@ -151,7 +162,7 @@ const StockCell = ({ item, isUnitView = false }: { item: ReplenishmentItem; isUn
             color: status === 'ok' ? '#0f172a' : cfg.color,
           }}
         >
-          {item.currentStock}
+          {displayQty}
         </span>
         <span
           className="text-[9.5px] sm:text-[10.5px] font-semibold px-1.5 py-0.5 rounded tracking-wide"
@@ -175,23 +186,23 @@ const StockCell = ({ item, isUnitView = false }: { item: ReplenishmentItem; isUn
             }}
           />
         </div>
-        {!isUnitView && (
+        {displayMin > 0 && (
           <span
             className="text-[9px] sm:text-[10px] whitespace-nowrap"
             style={{ fontFamily: "'DM Mono', monospace", color: '#b0bcc8' }}
           >
-            of {item.minStock}
+            of {displayMin}
           </span>
         )}
       </div>
 
       {/* Hover tooltip */}
-      {hovered && !isUnitView && (
+      {hovered && displayMin > 0 && (
         <div
           className="absolute bottom-full left-2 sm:left-3 mb-2 bg-gray-800 text-white text-[10px] sm:text-[11px] px-2 py-1.5 rounded-md whitespace-nowrap z-30 pointer-events-none shadow-lg"
           style={{ fontFamily: 'Poppins' }}
         >
-          Min. threshold: <strong>{item.minStock} {item.unit}</strong>
+          Min. threshold: <strong>{displayMin} {item.unit}</strong>
           <span className="text-gray-400 ml-1.5">({pct}% filled)</span>
         </div>
       )}
@@ -200,31 +211,53 @@ const StockCell = ({ item, isUnitView = false }: { item: ReplenishmentItem; isUn
 };
 
 // ── ShortfallCell ─────────────────────────────────────────────────────────
-const ShortfallCell = ({ 
-  item, 
-  onStartOrder, 
-  isUnitView = false 
-}: { 
-  item: ReplenishmentItem; 
+const ShortfallCell = ({
+  item,
+  onStartOrder,
+  isUnitView = false,
+  warehouseId = null,
+}: {
+  item: ReplenishmentItem;
   onStartOrder: (item: ReplenishmentItem) => void;
   isUnitView?: boolean;
+  warehouseId?: string | null;
 }) => {
   if (isUnitView) {
+    const min = item.minStock ?? 0;
+    const shortfall = min > 0 ? Math.max(0, min - item.currentStock) : 0;
+    if (shortfall === 0) {
+      return (
+        <div className="px-2 py-3 sm:px-3 sm:py-4 flex justify-center">
+          <span
+            className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11.5px] font-semibold rounded-full px-2.5 sm:px-3 py-1"
+            style={{ color: '#15803d', background: '#f0fdf4' }}
+          >
+            <CheckIcon color="#15803d" />
+            OK
+          </span>
+        </div>
+      );
+    }
+    const status = getStockStatus(item.currentStock, min);
+    const cfg = STATUS_CONFIG[status];
     return (
       <div className="px-2 py-3 sm:px-3 sm:py-4 flex justify-center">
         <span
           className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11.5px] font-semibold rounded-full px-2.5 sm:px-3 py-1"
-          style={{ color: '#64748b', background: '#f1f5f9' }}
+          style={{ color: cfg.color, background: cfg.bg }}
         >
-          N/A
+          <ArrowDownIcon color={cfg.color} size={12} />
+          {shortfall} {item.unit}
         </span>
       </div>
     );
   }
 
-  const status = getStockStatus(item.currentStock, item.minStock);
+  const displayQty = getItemQuantityForWarehouse(item.id, warehouseId ?? null);
+  const displayMin = getItemReorderForWarehouse(item, warehouseId ?? null);
+  const status = getStockStatus(displayQty, displayMin);
   const cfg = STATUS_CONFIG[status];
-  const shortfall = getShortfall(item.currentStock, item.minStock);
+  const shortfall = getShortfall(displayQty, displayMin);
 
   if (shortfall === 0) {
     return (
@@ -310,14 +343,16 @@ const RestockAlert = ({ count }: { count: number }) => {
 };
 
 // ── Main Component ─────────────────────────────────────────────────────────
-const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({ 
-  items, 
+const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
+  items,
   limitRows = true,
   onItemClick,
   redirectOnClick = false,
   hideEditButton = false,
   isUnitView = false,
   isLoading = false,
+  warehouseId = null,
+  onEditThreshold,
 }) => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -335,23 +370,31 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
           item.category.toLowerCase().includes(query)
       )
       .sort((a, b) => {
+        const qtyA = isUnitView ? a.currentStock : getItemQuantityForWarehouse(a.id, warehouseId);
+        const qtyB = isUnitView ? b.currentStock : getItemQuantityForWarehouse(b.id, warehouseId);
+        const minA = isUnitView ? (a.minStock ?? 0) : getItemReorderForWarehouse(a, warehouseId);
+        const minB = isUnitView ? (b.minStock ?? 0) : getItemReorderForWarehouse(b, warehouseId);
         if (sortBy === 'name') return a.name.localeCompare(b.name);
         if (sortBy === 'category') return a.category.localeCompare(b.category);
-        if (sortBy === 'stock') return a.currentStock - b.currentStock;
+        if (sortBy === 'stock') return qtyA - qtyB;
         if (sortBy === 'shortfall') {
-          return getShortfall(b.currentStock, isUnitView ? 0 : b.minStock) - getShortfall(a.currentStock, isUnitView ? 0 : a.minStock);
+          const shortA = getShortfall(qtyA, minA);
+          const shortB = getShortfall(qtyB, minB);
+          return shortB - shortA;
         }
         return 0;
       });
     return result;
-  }, [items, searchQuery, sortBy, isUnitView]);
+  }, [items, searchQuery, sortBy, isUnitView, warehouseId]);
 
   const needsRestockCount: number = useMemo(() => {
     if (isUnitView) {
-      return items.filter((i) => i.currentStock === 0).length;
+      return items.filter((i) => getStockStatus(i.currentStock, i.minStock ?? 0) !== 'ok').length;
     }
-    return items.filter((i) => getStockStatus(i.currentStock, i.minStock) !== 'ok').length;
-  }, [items, isUnitView]);
+    return items.filter(
+      (i) => getStockStatus(getItemQuantityForWarehouse(i.id, warehouseId), getItemReorderForWarehouse(i, warehouseId)) !== 'ok'
+    ).length;
+  }, [items, isUnitView, warehouseId]);
 
   const handleStartOrder = (item: ReplenishmentItem) => {
     router.push(`/sales-report/inventory/purchase-orders/create?itemId=${item.id}`);
@@ -401,7 +444,12 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
             {/* Column headers */}
             <div
               className="grid px-3 bg-gradient-to-r from-[#0b5858] to-[#05807e] rounded-t-xl sticky top-0 z-10"
-              style={{ gridTemplateColumns: hideEditButton ? '100px 1fr 120px 110px 190px 150px' : '100px 1fr 120px 110px 190px 150px 70px', minWidth: 'max(100%, 600px)' }}
+              style={{
+                gridTemplateColumns: hideEditButton && !onEditThreshold
+                  ? '100px 1fr 120px 110px 190px 150px'
+                  : '100px 1fr 120px 110px 190px 150px 70px',
+                minWidth: 'max(100%, 600px)',
+              }}
             >
               {[
                 { label: 'SKU', align: 'left' },
@@ -410,7 +458,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                 { label: 'TYPE', align: 'center' },
                 { label: 'STOCK', align: 'left' },
                 { label: 'SHORTFALL', align: 'center' },
-                ...(hideEditButton ? [] : [{ label: 'ACTIONS', align: 'center' }]),
+                ...(hideEditButton && !onEditThreshold ? [] : [{ label: 'ACTIONS', align: 'center' }]),
               ].map((col, i) => (
                 <div
                   key={i}
@@ -443,7 +491,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                   }
                 `}</style>
                 {filtered.map((item, idx) => {
-                  const status = getStockStatus(item.currentStock, isUnitView ? 0 : item.minStock);
+                  const status = getStockStatus(item.currentStock, item.minStock ?? 0);
 
                   const handleRowClick = () => {
                     if (onItemClick) {
@@ -466,7 +514,12 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                       className={`grid px-3 items-center transition-colors cursor-pointer hover:bg-[#e8f4f4] ${
                         idx < filtered.length - 1 ? 'border-b border-[#e8f4f4]' : ''
                       }`}
-                      style={{ gridTemplateColumns: hideEditButton ? '100px 1fr 120px 110px 190px 150px' : '100px 1fr 120px 110px 190px 150px 70px', minWidth: 'max(100%, 600px)' }}
+                      style={{
+                        gridTemplateColumns: hideEditButton && !onEditThreshold
+                          ? '100px 1fr 120px 110px 190px 150px'
+                          : '100px 1fr 120px 110px 190px 150px 70px',
+                        minWidth: 'max(100%, 600px)',
+                      }}
                       onClick={handleRowClick}
                     >
                       {/* SKU */}
@@ -508,21 +561,39 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                       </div>
 
                       {/* Stock — bar + count + unit, threshold in hover tooltip */}
-                      <StockCell item={item} isUnitView={isUnitView} />
+                      <StockCell item={item} isUnitView={isUnitView} warehouseId={warehouseId} />
 
                       {/* Shortfall */}
-                      <ShortfallCell item={item} onStartOrder={handleStartOrder} isUnitView={isUnitView} />
+                      <ShortfallCell item={item} onStartOrder={handleStartOrder} isUnitView={isUnitView} warehouseId={warehouseId} />
 
                       {/* Actions */}
                       {!hideEditButton && (
                         <div className="px-2 sm:px-3 py-3 sm:py-5 flex items-center justify-center">
                           <button
                             onClick={handleEditClick}
-                            className="text-[#05807e] hover:text-[#0b5858] transition-colors p-1.5 rounded hover:bg-[#e8f4f4]"
+                            className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
                             title="Edit item"
+                            aria-label="Edit item"
                           >
                             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                               <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                      {hideEditButton && onEditThreshold && isUnitView && (
+                        <div className="px-2 sm:px-3 py-3 sm:py-5 flex items-center justify-center">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditThreshold(item);
+                            }}
+                            className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
+                            title="Edit minimum threshold"
+                            aria-label="Edit minimum threshold"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path d="M2 12h12M4 8v4M8 6v6M12 4v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           </button>
                         </div>

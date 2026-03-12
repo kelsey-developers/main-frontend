@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import type { PurchaseOrder, PurchaseOrderLine } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import { useToast } from '../hooks/useToast';
+import { useProductNames } from '../hooks/useProductNames';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 import { inventoryPurchaseOrderLines, inventoryWarehouseDirectory, inventoryItems } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
@@ -83,6 +84,16 @@ export default function GoodsReceiptModal({
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
+
+  const productIdsToFetch = useMemo(() => {
+    const inventoryIds = new Set(inventoryItems.map((i) => i.id));
+    return [...new Set(
+      poLines
+        .filter((l) => l.productId && !inventoryIds.has(l.productId) && !l.productName)
+        .map((l) => l.productId!)
+    )];
+  }, [poLines, inventoryItems]);
+  const fetchedProductNames = useProductNames(productIdsToFetch);
 
   // Auto-fill warehouse from PO line items' stored warehouse (most common among products)
   const defaultWarehouseId = (() => {
@@ -360,7 +371,7 @@ export default function GoodsReceiptModal({
               gap: 12,
             }}
           >
-            <Field label="Received By" hint="Optional until login is enabled. Default: Staff">
+            <Field label="Received By">
               <input
                 type="text"
                 value={receivedBy}
@@ -368,6 +379,9 @@ export default function GoodsReceiptModal({
                 placeholder="e.g. Staff or your name"
                 style={inputStyle}
               />
+              <div style={{ fontSize: 11, color: C.midGray, marginTop: 4, fontFamily: 'Poppins' }}>
+                Optional until login is enabled. Default: Staff
+              </div>
             </Field>
             <Field label="Receipt Date" required>
               <SingleDatePicker
@@ -410,7 +424,7 @@ export default function GoodsReceiptModal({
                     return (
                       <tr key={line.id} style={{ borderTop: `1px solid ${C.lightGray}` }}>
                         <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, fontFamily: 'Poppins' }}>
-                          {product?.name || `Product #${line.productId}`}
+                          {product?.name || fetchedProductNames[line.productId] || `Product #${line.productId}`}
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: 13, color: C.darkGray, textAlign: 'right', fontFamily: 'Poppins' }}>
                           {line.quantity} {unit}
@@ -613,7 +627,7 @@ export default function GoodsReceiptModal({
                         fontFamily: 'Poppins',
                       }}
                     >
-                      <span>{product?.name || `Product #${line.productId}`}</span>
+                      <span>{product?.name || fetchedProductNames[line.productId] || `Product #${line.productId}`}</span>
                       <span style={{ fontWeight: 600 }}>
                         {qty} {unit} of {remaining} remaining
                       </span>

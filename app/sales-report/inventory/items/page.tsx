@@ -7,13 +7,16 @@ import { Suspense } from 'react';
 import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
+import UnitSearchInput from '../components/UnitSearchInput';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
-import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations } from '../lib/inventoryDataStore';
+import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations, inventoryUnitItems } from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
+import { useToast } from '../hooks/useToast';
 
 function InventoryItemsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { warning } = useToast();
   const warehouseIdFromQuery = searchParams.get('warehouseId');
   const warehouseNameFromQuery = searchParams.get('warehouseName');
   const itemIdFromQuery = searchParams.get('itemId');
@@ -98,14 +101,6 @@ function InventoryItemsPageContent() {
   }, [activeWarehouseId, allWarehouseUnitAllocations, refreshTick]);
 
 
-  const unitFilterOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
-    if (unitAllocations.length === 0) return [];
-    return [
-      { value: 'all', label: 'All units' },
-      ...unitAllocations.map((unit) => ({ value: unit.unitId, label: unit.unitName })),
-    ];
-  }, [unitAllocations]);
-
   const effectiveUnitFilter =
     unitFilter === 'all' || unitAllocations.some((unit) => unit.unitId === unitFilter)
       ? unitFilter
@@ -115,6 +110,42 @@ function InventoryItemsPageContent() {
     if (effectiveUnitFilter === 'all') return unitAllocations;
     return unitAllocations.filter((unit) => unit.unitId === effectiveUnitFilter);
   }, [effectiveUnitFilter, unitAllocations]);
+
+  // Low stock alert toast when viewing unit allocation
+  const lowStockByUnit = useMemo(() => {
+    const map = new Map<string, { name: string; count: number }>();
+    const unitNames = new Map(unitAllocations.map((u) => [u.unitId, u.unitName]));
+    for (const item of inventoryUnitItems) {
+      if (!item.assignedToUnit || item.currentStock >= item.minStock) continue;
+      const cur = map.get(item.assignedToUnit);
+      const count = (cur?.count ?? 0) + 1;
+      const name = unitNames.get(item.assignedToUnit) ?? 'Unit';
+      map.set(item.assignedToUnit, { name, count });
+    }
+    return map;
+  }, [unitAllocations, refreshTick]);
+
+  const hasShownLowStockToast = React.useRef(false);
+  useEffect(() => {
+    if (view !== 'unitAllocations') {
+      hasShownLowStockToast.current = false;
+      return;
+    }
+    if (!activeWarehouseId || unitAllocations.length === 0) return;
+    if (hasShownLowStockToast.current) return;
+    const unitsWithLowStock = filteredUnitAllocations.filter((u) => {
+      const info = lowStockByUnit.get(u.unitId);
+      return info && info.count > 0;
+    });
+    if (unitsWithLowStock.length > 0) {
+      hasShownLowStockToast.current = true;
+      const msg =
+        unitsWithLowStock.length === 1
+          ? `${unitsWithLowStock[0].unitName} has ${lowStockByUnit.get(unitsWithLowStock[0].unitId)!.count} item(s) below threshold`
+          : `${unitsWithLowStock.length} units have items below threshold`;
+      warning(msg);
+    }
+  }, [view, activeWarehouseId, filteredUnitAllocations, lowStockByUnit, unitAllocations.length, warning]);
 
   const handleWarehouseChange = (value: string) => {
     if (value === 'all') {
@@ -175,13 +206,14 @@ function InventoryItemsPageContent() {
             {activeWarehouseId ? `Viewing inventory for ${activeWarehouseName ?? 'selected warehouse'}` : 'View and manage all inventory items'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => {
               const params = new URLSearchParams();
               if (activeWarehouseId) params.set('warehouseId', activeWarehouseId);
-              router.push(`/sales-report/inventory/StockOut${params.toString() ? `?${params.toString()}` : ''}`);
+              params.set('returnTo', '/sales-report/inventory/items');
+              router.push(`/sales-report/inventory/StockOut?${params.toString()}`);
             }}
             className="stock-btn stock-out-primary"
             style={{
@@ -220,6 +252,36 @@ function InventoryItemsPageContent() {
             >
               ACTION
             </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (activeWarehouseId) params.set('warehouseId', activeWarehouseId);
+              params.set('returnTo', '/sales-report/inventory/items');
+              router.push(`/sales-report/inventory/cycle-count?${params.toString()}`);
+            }}
+            style={{
+              padding: '10px 18px',
+              borderRadius: '10px',
+              border: '1.5px solid #0369a1',
+              background: 'linear-gradient(135deg, #0369a1, #0284c7)',
+              color: '#ffffff',
+              fontFamily: 'Poppins',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '7px',
+              boxShadow: '0 10px 26px rgba(3, 105, 161, 0.22)',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 4v16m8-8H4" />
+            </svg>
+            Cycle Count
           </button>
         </div>
       </div>
@@ -300,7 +362,12 @@ function InventoryItemsPageContent() {
       {view === 'items' ? (
         <>
           <div className="inventory-reveal">
-            <InventoryTable items={filteredItems} limitRows={true} onItemClick={setSelectedItem} />
+            <InventoryTable
+            items={filteredItems}
+            limitRows={true}
+            onItemClick={setSelectedItem}
+            warehouseId={activeWarehouseId}
+          />
           </div>
         </>
       ) : (
@@ -313,13 +380,13 @@ function InventoryItemsPageContent() {
                 </h3>
               </div>
 
-              {activeWarehouseId && unitFilterOptions.length > 0 && (
+              {activeWarehouseId && unitAllocations.length > 0 && (
                 <div className="w-full sm:w-auto">
-                  <InventoryDropdown
-                    value={effectiveUnitFilter}
+                  <UnitSearchInput
+                    unitAllocations={unitAllocations}
+                    value={unitFilter}
                     onChange={setUnitFilter}
-                    options={unitFilterOptions}
-                    minWidthClass="min-w-[200px]"
+                    placeholder="Search units..."
                   />
                 </div>
               )}
@@ -338,6 +405,8 @@ function InventoryItemsPageContent() {
                 {filteredUnitAllocations.map((unit) => {
                   const totalQuantity = unit.items.reduce((sum, row) => sum + row.quantity, 0);
                   const itemCount = unit.items.length;
+                  const lowStockInfo = lowStockByUnit.get(unit.unitId);
+                  const hasLowStock = lowStockInfo && lowStockInfo.count > 0;
                   return (
                     <button
                       key={unit.unitId}
@@ -345,7 +414,7 @@ function InventoryItemsPageContent() {
                       className="w-full text-left px-4 py-3 bg-white hover:bg-gray-50 transition-colors group"
                     >
                       <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span
                             className="text-[13px] font-semibold text-[#0b5858] group-hover:text-[#05807e] transition-colors"
                             style={{ fontFamily: 'Poppins' }}
@@ -359,6 +428,14 @@ function InventoryItemsPageContent() {
                             {itemCount} item{itemCount !== 1 ? 's' : ''} · {totalQuantity} unit
                             {totalQuantity !== 1 ? 's' : ''}
                           </span>
+                          {hasLowStock && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200"
+                              style={{ fontFamily: 'Poppins' }}
+                            >
+                              {lowStockInfo!.count} low
+                            </span>
+                          )}
                         </div>
                         <svg
                           className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#0b5858] group-hover:translate-x-0.5 transition-all"

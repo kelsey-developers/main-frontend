@@ -40,7 +40,7 @@ export interface WarehouseInventoryBalanceRow {
 
 export interface WarehouseMovementRow {
   id: string;
-  type: 'in' | 'out' | 'transfer';
+  type: 'in' | 'out' | 'adjustment';
   productName: string;
   quantity: number;
   date: string;

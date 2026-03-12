@@ -192,10 +192,12 @@ export default function AuditAlertsPage() {
                           entry.type === 'in'
                             ? 'bg-green-100 text-green-700'
                             : entry.type === 'out'
-                            ? 'bg-blue-100 text-blue-700'
-                            : entry.type === 'damage'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-amber-100 text-amber-700'
+                              ? 'bg-blue-100 text-blue-700'
+                              : entry.type === 'adjustment'
+                                ? 'bg-sky-100 text-sky-700'
+                                : entry.type === 'damage'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-amber-100 text-amber-700'
                         }`}
                       >
                         {entry.type}
