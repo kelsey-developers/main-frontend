@@ -1,10 +1,67 @@
 'use client';
 
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useRef, useState, use } from 'react';
 import Link from 'next/link';
 import { getCleanerById, getCleanerJobs } from '@/services/cleaningService';
 import { JOB_STATUS_CONFIG, JOB_TYPE_CONFIG, CLEANER_STATUS_CONFIG } from '@/types/cleaning';
 import type { Cleaner, CleaningJob } from '@/types/cleaning';
+
+/** Dropdown — same as admin/cleaning, admin/commissions: rounded-2xl, shadow, click-outside close */
+function CustomDropdown({
+  value,
+  onChange,
+  options,
+  className = '',
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between gap-3 pl-4 pr-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <svg className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 top-full left-0 mt-2 w-full min-w-[140px] bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => { onChange(option.value); setTimeout(() => setIsOpen(false), 150); }}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                value === option.value ? 'bg-[#0B5858]/10 text-[#0B5858]' : 'text-gray-600 hover:bg-gray-50 hover:text-[#0B5858] active:bg-[#0B5858]/5'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -46,96 +103,153 @@ function durationLabel(mins: number) {
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
 }
 
-// Job History Tab
+// Job History Tab — design-system: dropdown filter, rounded-3xl table, pagination
+const JOB_HISTORY_STATUS_OPTIONS = [
+  { value: '', label: 'All Status' },
+  { value: 'scheduled', label: JOB_STATUS_CONFIG.scheduled.label },
+  { value: 'in_progress', label: JOB_STATUS_CONFIG.in_progress.label },
+  { value: 'completed', label: JOB_STATUS_CONFIG.completed.label },
+  { value: 'verified', label: JOB_STATUS_CONFIG.verified.label },
+  { value: 'cancelled', label: JOB_STATUS_CONFIG.cancelled.label },
+];
+
 function JobHistoryTab({ jobs }: { jobs: CleaningJob[] }) {
   const [statusFilter, setStatusFilter] = useState('');
-  const statuses = ['scheduled', 'in_progress', 'completed', 'verified', 'cancelled'] as const;
-  const filtered = statusFilter ? jobs.filter((j) => j.status === statusFilter) : jobs;
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const filtered = statusFilter ? jobs.filter((j) => j.status === statusFilter) : [...jobs];
+  const sorted = filtered.sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage));
+  const paginated = sorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter]);
 
   return (
     <div className="space-y-4">
-      {/* Status filter */}
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setStatusFilter('')}
-          className={`inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer ${!statusFilter ? 'bg-[#0B5858] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-        >
-          All ({jobs.length})
-        </button>
-        {statuses.map((s) => {
-          const count = jobs.filter((j) => j.status === s).length;
-          if (count === 0) return null;
-          const sc = JOB_STATUS_CONFIG[s];
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatusFilter(s === statusFilter ? '' : s)}
-              className="inline-flex px-2 py-1 rounded-full text-xs font-medium transition-all cursor-pointer chip-shadow"
-              style={statusFilter === s ? sc.chipStyle : { backgroundColor: '#f5f5f4', color: '#57534e' }}
-            >
-              {sc.label} ({count})
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-3">
+        <CustomDropdown
+          value={statusFilter}
+          onChange={(val) => setStatusFilter(val)}
+          options={JOB_HISTORY_STATUS_OPTIONS}
+          className="min-w-[140px]"
+        />
       </div>
 
-      {/* Jobs table */}
-      {filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
-          <p className="text-sm text-gray-400">No jobs match this filter.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Property / Unit</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest hidden sm:table-cell">Type</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest hidden md:table-cell">Duration</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</th>
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50/50">
+                <th className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Property / Unit</th>
+                <th className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap hidden sm:table-cell">Type</th>
+                <th className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Date</th>
+                <th className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap hidden md:table-cell">Duration</th>
+                <th className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered
-                .sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate))
-                .map((job) => {
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-7 py-14 text-center text-sm font-medium text-gray-400">
+                    No jobs match this filter.
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((job) => {
                   const sc = JOB_STATUS_CONFIG[job.status];
                   const tc = JOB_TYPE_CONFIG[job.jobType];
                   return (
-                    <tr key={job.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900 text-sm">{job.propertyName}</p>
-                        {job.unitName && <p className="text-xs text-gray-400">{job.unitName}</p>}
+                    <tr key={job.id} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="px-5 py-4">
+                        <p className="font-semibold text-gray-900">{job.propertyName}</p>
+                        {job.unitName && <p className="text-xs text-gray-500 mt-0.5">{job.unitName}</p>}
                       </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={tc.chipStyle}>
+                      <td className="px-5 py-4 hidden sm:table-cell">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium chip-shadow" style={tc.chipStyle}>
                           {tc.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <p className="text-sm text-gray-700">{new Date(job.scheduledDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</p>
-                        <p className="text-[11px] text-gray-400">{fmtTime(job.scheduledTime)}</p>
+                      <td className="px-5 py-4">
+                        <p className="text-gray-700">{new Date(job.scheduledDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{fmtTime(job.scheduledTime)}</p>
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <p className="text-sm text-gray-700">{job.actualDuration ? durationLabel(job.actualDuration) : durationLabel(job.estimatedDuration)}</p>
-                        {job.actualDuration && <p className="text-[10px] text-gray-400">actual</p>}
+                      <td className="px-5 py-4 hidden md:table-cell">
+                        <p className="text-gray-700">{job.actualDuration ? durationLabel(job.actualDuration) : durationLabel(job.estimatedDuration)}</p>
+                        {job.actualDuration && <p className="text-[11px] text-gray-400 mt-0.5">actual</p>}
                       </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
+                      <td className="px-5 py-4">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium chip-shadow" style={sc.chipStyle}>
                           <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
                           {sc.label}
                         </span>
                       </td>
                     </tr>
                   );
-                })}
+                })
+              )}
             </tbody>
           </table>
         </div>
-      )}
+        <div className="flex flex-col sm:flex-row items-center justify-between px-7 py-4 border-t border-gray-100 bg-white gap-4">
+          <p className="text-xs font-medium text-gray-500">
+            Showing <span className="font-medium text-gray-900">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="font-medium text-gray-900">{Math.min(currentPage * itemsPerPage, sorted.length)}</span> of <span className="font-medium text-gray-900">{sorted.length}</span> results
+          </p>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex items-center justify-center p-2 rounded-xl border border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 group active:scale-95"
+                aria-label="Previous page"
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+              <div className="flex items-center gap-1 px-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = i + 1;
+                  if (totalPages > 5) {
+                    if (currentPage > 3 && currentPage < totalPages - 1) {
+                      pageNum = currentPage - 2 + i;
+                    } else if (currentPage >= totalPages - 1) {
+                      pageNum = totalPages - 4 + i;
+                    }
+                  }
+                  const isActive = currentPage === pageNum;
+                  return (
+                    <button
+                      key={pageNum}
+                      type="button"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`min-w-[32px] h-8 flex items-center justify-center rounded-lg text-[13px] font-bold transition-all duration-300 ${
+                        isActive ? 'bg-[#0B5858] text-white shadow-md shadow-[#0B5858]/30 scale-105' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 active:scale-95'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="inline-flex items-center justify-center p-2 rounded-xl border border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 group active:scale-95"
+                aria-label="Next page"
+              >
+                <svg className="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -168,33 +282,33 @@ function PerformanceTab({ cleaner, jobs }: { cleaner: Cleaner; jobs: CleaningJob
 
   return (
     <div className="space-y-4">
-      {/* KPI cards */}
+      {/* KPI cards — design-system rounded-3xl, label text-[11px] */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Total Jobs</p>
-          <p className="text-3xl font-bold text-gray-900">{cleaner.totalJobsCompleted}</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Total Jobs</p>
+          <p className="text-3xl font-bold text-gray-900 tracking-tight">{cleaner.totalJobsCompleted}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Completion Rate</p>
-          <p className="text-3xl font-bold text-emerald-600">{completionRate}%</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Completion Rate</p>
+          <p className="text-3xl font-bold text-emerald-600 tracking-tight">{completionRate}%</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Avg Rating</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Avg Rating</p>
           <div className="flex items-baseline gap-1 mt-1">
-            <p className="text-3xl font-bold text-[#FACC15]">{cleaner.averageRating > 0 ? cleaner.averageRating.toFixed(1) : '—'}</p>
+            <p className="text-3xl font-bold text-[#FACC15] tracking-tight">{cleaner.averageRating > 0 ? cleaner.averageRating.toFixed(1) : '—'}</p>
             {cleaner.averageRating > 0 && <p className="text-sm text-gray-400">/ 5</p>}
           </div>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cancelled</p>
-          <p className="text-3xl font-bold text-red-500">{cancelled.length}</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cancelled</p>
+          <p className="text-3xl font-bold text-red-500 tracking-tight">{cancelled.length}</p>
         </div>
       </div>
 
       {/* Duration efficiency */}
       {avgActualDuration !== null && avgEstDuration !== null && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Duration Efficiency</p>
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Duration Efficiency</p>
           <div className="grid grid-cols-2 gap-6">
             <div>
               <p className="text-xs text-gray-500 mb-1">Avg Estimated</p>
@@ -231,8 +345,8 @@ function PerformanceTab({ cleaner, jobs }: { cleaner: Cleaner; jobs: CleaningJob
       )}
 
       {/* Monthly bar chart */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Jobs Last 6 Months</p>
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Jobs Last 6 Months</p>
         <div className="flex items-end gap-2 h-24">
           {monthCounts.map(({ month, count }) => (
             <div key={month} className="flex-1 flex flex-col items-center gap-1">
@@ -248,8 +362,8 @@ function PerformanceTab({ cleaner, jobs }: { cleaner: Cleaner; jobs: CleaningJob
       </div>
 
       {/* Job type breakdown */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Jobs by Type</p>
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Jobs by Type</p>
         <div className="space-y-2">
           {(['checkout', 'checkin_prep', 'routine', 'adhoc', 'deep_clean', 'inspection', 'emergency'] as const).map((type) => {
             const count = jobs.filter((j) => j.jobType === type).length;
@@ -274,12 +388,12 @@ function PerformanceTab({ cleaner, jobs }: { cleaner: Cleaner; jobs: CleaningJob
   );
 }
 
-// Assigned Properties Tab
+// Assigned Properties Tab — design-system card
 function PropertiesTab({ cleaner }: { cleaner: Cleaner }) {
   return (
     <div className="space-y-3">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Assigned Properties</p>
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Assigned Properties</p>
         {MOCK_PROPERTIES.length === 0 ? (
           <p className="text-sm text-gray-400">No properties available.</p>
         ) : (
@@ -371,11 +485,11 @@ export default function CleanerDetailPage({ params }: Props) {
         </Link>
       </div>
 
-      {/* Profile header */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      {/* Profile header — design-system card */}
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
           {/* Avatar - brand teal */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#0B5858] to-[#073A3A] flex items-center justify-center shrink-0 shadow-md shadow-[#0B5858]/20">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0B5858] to-[#073A3A] flex items-center justify-center shrink-0 shadow-md shadow-[#0B5858]/20">
             <span className="text-xl font-bold text-white" style={{ fontFamily: 'Poppins' }}>{initials}</span>
           </div>
 
@@ -413,26 +527,26 @@ export default function CleanerDetailPage({ params }: Props) {
             </div>
           </div>
 
-          {/* Quick stats */}
+          {/* Quick stats — design-system label style */}
           <div className="flex gap-4 sm:gap-6 shrink-0">
             <div className="text-center">
-              <p className="text-2xl font-bold text-gray-900">{cleaner.totalJobsCompleted}</p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Total</p>
+              <p className="text-2xl font-bold text-gray-900 tracking-tight">{cleaner.totalJobsCompleted}</p>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1">Total</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-emerald-600">{completedJobs.length}</p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Done</p>
+              <p className="text-2xl font-bold text-emerald-600 tracking-tight">{completedJobs.length}</p>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1">Done</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">{pendingJobs.length}</p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Pending</p>
+              <p className="text-2xl font-bold text-blue-600 tracking-tight">{pendingJobs.length}</p>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mt-1">Pending</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tab nav */}
-      <div className="flex gap-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-1">
+      {/* Tab nav — design-system */}
+      <div className="flex gap-1 bg-white rounded-3xl border border-gray-100 shadow-sm p-1">
         {TABS.map(({ key, label, count }) => (
           <button
             key={key}

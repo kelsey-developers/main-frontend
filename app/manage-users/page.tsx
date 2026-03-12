@@ -6,6 +6,66 @@ import { useRouter } from 'next/navigation';
 const ROLES = ['Guest', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Admin'] as const;
 type RoleType = (typeof ROLES)[number];
 
+/** Chip shadow helper — same pattern as admin/cleaning, lending */
+const chipShadow = (r: number, g: number, b: number, a = 0.35) => `0 1px 0 rgba(${r},${g},${b},${a})`;
+
+/** Dropdown — same as admin/commissions, admin/cleaning: rounded-2xl, shadow, click-outside close */
+function CustomDropdown({
+  value,
+  onChange,
+  options,
+  className = '',
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between gap-3 pl-4 pr-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <svg className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 top-full left-0 mt-2 w-full min-w-[140px] bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => { onChange(option.value); setTimeout(() => setIsOpen(false), 150); }}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                value === option.value ? 'bg-[#0B5858]/10 text-[#0B5858]' : 'text-gray-600 hover:bg-gray-50 hover:text-[#0B5858] active:bg-[#0B5858]/5'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface User {
   id: number;
   firstName: string;
@@ -34,13 +94,14 @@ interface EditForm {
   role: RoleType;
 }
 
-const roleColors: Record<string, { bg: string; text: string; label: string }> = {
-  Admin:        { bg: '#B84C4C', text: '#fff',     label: 'Admin' },
-  Agent:        { bg: '#FACC15', text: '#0B5858',  label: 'Agent' },
-  Guest:        { bg: '#558B8B', text: '#fff',     label: 'Guest' },
-  Finance:      { bg: '#6366F1', text: '#fff',     label: 'Finance' },
-  Inventory:    { bg: '#0891B2', text: '#fff',     label: 'Inventory' },
-  Housekeeping: { bg: '#059669', text: '#fff',     label: 'Housekeeping' },
+/** Role chip styles — design-system: chipStyle (backgroundColor, color, boxShadow) for chip-shadow pills */
+const roleColors: Record<string, { bg: string; text: string; label: string; chipStyle: { backgroundColor: string; color: string; boxShadow: string } }> = {
+  Admin:        { bg: '#B84C4C', text: '#fff', label: 'Admin',        chipStyle: { backgroundColor: '#B84C4C', color: '#fff',     boxShadow: chipShadow(184, 76, 76, 0.35) } },
+  Agent:        { bg: '#FACC15', text: '#92400e', label: 'Agent',      chipStyle: { backgroundColor: '#FACC15', color: '#92400e', boxShadow: chipShadow(250, 204, 21, 0.4) } },
+  Guest:        { bg: '#0B5858', text: '#fff', label: 'Guest',        chipStyle: { backgroundColor: '#0B5858', color: '#fff',     boxShadow: chipShadow(11, 88, 88, 0.35) } },
+  Finance:      { bg: '#6366F1', text: '#fff', label: 'Finance',      chipStyle: { backgroundColor: '#6366F1', color: '#fff',     boxShadow: chipShadow(99, 102, 241, 0.35) } },
+  Inventory:    { bg: '#0891B2', text: '#fff', label: 'Inventory',    chipStyle: { backgroundColor: '#0891B2', color: '#fff',     boxShadow: chipShadow(8, 145, 178, 0.35) } },
+  Housekeeping: { bg: '#059669', text: '#fff', label: 'Housekeeping', chipStyle: { backgroundColor: '#059669', color: '#fff',     boxShadow: chipShadow(5, 150, 105, 0.35) } },
 };
 
 /** Convert a Prisma/market-backend role string to the display name used in ROLES. */
@@ -89,13 +150,11 @@ function Avatar({ user }: { user: User }) {
   );
 }
 
+/** Role chip — design-system: chip-shadow, chipStyle (same as admin/cleaning status chips) */
 function RoleBadge({ role }: { role: string }) {
-  const cfg = roleColors[role] ?? { bg: '#888', text: '#fff', label: role };
+  const cfg = roleColors[role] ?? { label: role, chipStyle: { backgroundColor: '#f5f5f4', color: '#57534e', boxShadow: chipShadow(168, 162, 158, 0.22) } };
   return (
-    <span
-      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
-      style={{ backgroundColor: cfg.bg, color: cfg.text, fontFamily: 'Poppins' }}
-    >
+    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium chip-shadow whitespace-nowrap" style={cfg.chipStyle}>
       {cfg.label}
     </span>
   );
@@ -279,14 +338,10 @@ export default function ManageUsers() {
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 flex flex-col sm:flex-row gap-3">
-            {/* Search */}
-            <div className="flex-1 relative">
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              >
+          {/* Search and role filter — same layout and design as admin/commissions, admin/cleaning */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
@@ -294,73 +349,44 @@ export default function ManageUsers() {
                 placeholder="Search by name or email…"
                 value={search}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-all"
-                style={{ fontFamily: 'Poppins' }}
+                className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] bg-white transition-all shadow-sm"
               />
             </div>
-
-            {/* Role filter */}
-            <div className="flex gap-2 flex-wrap">
-              {['', ...ROLES].map((r) => {
-                const active = roleFilter === r;
-                const cfg = r ? roleColors[r] : null;
-                return (
-                  <button
-                    key={r || 'all'}
-                    onClick={() => handleRoleFilterChange(r)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 border ${
-                      active
-                        ? 'border-transparent shadow-sm'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                    }`}
-                    style={
-                      active && cfg
-                        ? { backgroundColor: cfg.bg, color: cfg.text, fontFamily: 'Poppins' }
-                        : active
-                        ? { backgroundColor: '#0B5858', color: '#fff', fontFamily: 'Poppins' }
-                        : { fontFamily: 'Poppins' }
-                    }
-                  >
-                    {r || 'All Roles'}
-                  </button>
-                );
-              })}
+            <div className="flex gap-3 shrink-0 flex-wrap">
+              <CustomDropdown
+                value={roleFilter}
+                onChange={handleRoleFilterChange}
+                options={[{ value: '', label: 'All Roles' }, ...ROLES.map((r) => ({ value: r, label: r }))]}
+                className="min-w-[140px]"
+              />
             </div>
           </div>
 
-          {/* Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          {/* Table — design-system: rounded-3xl, header style, body divide-y, pagination footer (same as admin/cleaning) */}
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px]">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead>
-                  <tr style={{ backgroundColor: '#0B5858' }}>
+                  <tr className="border-b border-gray-100 bg-gray-50/50">
                     {['User', 'Email', 'Contact', 'Gender', 'Joined', 'Role', ''].map((h) => (
-                      <th
-                        key={h}
-                        className="px-5 py-4 text-left text-white text-sm font-semibold"
-                        style={{ fontFamily: 'Poppins' }}
-                      >
+                      <th key={h} className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-50">
                   {loading ? (
                     Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
                   ) : error ? (
                     <tr>
-                      <td colSpan={7} className="px-5 py-12 text-center">
+                      <td colSpan={7} className="px-7 py-14 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <svg className="w-12 h-12 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          <p className="text-red-500 font-medium" style={{ fontFamily: 'Poppins' }}>{error}</p>
-                          <button
-                            onClick={() => fetchUsers(pagination.page)}
-                            className="text-sm text-[#0B5858] underline hover:no-underline"
-                            style={{ fontFamily: 'Poppins' }}
-                          >
+                          <p className="text-sm font-medium text-red-500">{error}</p>
+                          <button type="button" onClick={() => fetchUsers(pagination.page)} className="text-sm font-medium text-[#0B5858] hover:underline">
                             Try again
                           </button>
                         </div>
@@ -368,90 +394,38 @@ export default function ManageUsers() {
                     </tr>
                   ) : users.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-5 py-16 text-center">
-                        <div className="flex flex-col items-center gap-3">
-                          <svg className="w-14 h-14 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                          <p className="text-gray-400 font-medium" style={{ fontFamily: 'Poppins' }}>No users found</p>
-                          {(search || roleFilter) && (
-                            <button
-                              onClick={() => { setSearch(''); setRoleFilter(''); fetchUsers(1, '', ''); }}
-                              className="text-sm text-[#0B5858] underline hover:no-underline"
-                              style={{ fontFamily: 'Poppins' }}
-                            >
-                              Clear filters
-                            </button>
-                          )}
-                        </div>
+                      <td colSpan={7} className="px-7 py-14 text-center text-sm font-medium text-gray-400">
+                        No users match your filters.
                       </td>
                     </tr>
                   ) : (
-                    users.map((user, idx) => {
+                    users.map((user) => {
                       const internalRole = internalRoles[user.email];
                       const role = internalRole ? toDisplayRole(internalRole) : getRoleDisplay(user.roles);
                       return (
-                        <tr
-                          key={user.id}
-                          className={`border-b border-gray-50 transition-colors duration-100 hover:bg-[#f0f9f9] ${
-                            idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                          }`}
-                        >
-                          {/* User */}
-                          <td className="px-5 py-3.5">
+                        <tr key={user.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
                               <Avatar user={user} />
-                              <span className="font-medium text-gray-900 text-sm" style={{ fontFamily: 'Poppins' }}>
-                                {user.fullname}
-                              </span>
+                              <span className="font-medium text-gray-900">{user.fullname}</span>
                             </div>
                           </td>
-
-                          {/* Email */}
-                          <td className="px-5 py-3.5">
-                            <span className="text-sm text-gray-600 max-w-[200px] truncate block" style={{ fontFamily: 'Poppins' }}>
-                              {user.email}
-                            </span>
+                          <td className="px-5 py-4 text-gray-600 max-w-[200px] truncate">{user.email}</td>
+                          <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{user.phone || '—'}</td>
+                          <td className="px-5 py-4 text-gray-600">{user.gender || '—'}</td>
+                          <td className="px-5 py-4 text-gray-600 whitespace-nowrap">
+                            {user.createdAt
+                              ? new Date(user.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : '—'}
                           </td>
-
-                          {/* Contact */}
-                          <td className="px-5 py-3.5">
-                            <span className="text-sm text-gray-600" style={{ fontFamily: 'Poppins' }}>
-                              {user.phone || '—'}
-                            </span>
-                          </td>
-
-                          {/* Gender */}
-                          <td className="px-5 py-3.5">
-                            <span className="text-sm text-gray-600" style={{ fontFamily: 'Poppins' }}>
-                              {user.gender || '—'}
-                            </span>
-                          </td>
-
-                          {/* Joined */}
-                          <td className="px-5 py-3.5">
-                            <span className="text-sm text-gray-600 whitespace-nowrap" style={{ fontFamily: 'Poppins' }}>
-                              {user.createdAt
-                                ? new Date(user.createdAt).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric',
-                                  })
-                                : '—'}
-                            </span>
-                          </td>
-
-                          {/* Role */}
-                          <td className="px-5 py-3.5">
+                          <td className="px-5 py-4">
                             <RoleBadge role={role} />
                           </td>
-
-                          {/* Edit */}
-                          <td className="px-5 py-3.5">
+                          <td className="px-5 py-4">
                             <button
+                              type="button"
                               onClick={() => openEdit(user)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#0B5858] border border-[#0B5858]/30 rounded-lg hover:bg-[#0B5858] hover:text-white transition-all duration-150"
-                              style={{ fontFamily: 'Poppins' }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors cursor-pointer"
                             >
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -466,51 +440,63 @@ export default function ManageUsers() {
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination */}
-            {!loading && !error && pagination.total_pages > 1 && (
-              <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between">
-                <p className="text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                  Showing {(pagination.page - 1) * pagination.limit + 1}–
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total}
-                </p>
-                <div className="flex gap-2">
+            {/* Pagination — same as admin/cleaning: Showing X to Y of Z, prev/next icons, page numbers */}
+            <div className="flex flex-col sm:flex-row items-center justify-between px-7 py-4 border-t border-gray-100 bg-white gap-4">
+              <p className="text-xs font-medium text-gray-500">
+                Showing <span className="font-medium text-gray-900">{(pagination.page - 1) * pagination.limit + 1}</span> to <span className="font-medium text-gray-900">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> of <span className="font-medium text-gray-900">{pagination.total}</span> results
+              </p>
+              {!loading && !error && pagination.total_pages > 1 && (
+                <div className="flex items-center gap-1">
                   <button
+                    type="button"
                     onClick={() => fetchUsers(pagination.page - 1)}
                     disabled={pagination.page <= 1}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    style={{ fontFamily: 'Poppins' }}
+                    className="inline-flex items-center justify-center p-2 rounded-xl border border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 group active:scale-95"
+                    aria-label="Previous page"
                   >
-                    Previous
+                    <svg className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
                   </button>
-                  {Array.from({ length: pagination.total_pages }, (_, i) => i + 1)
-                    .filter((p) => Math.abs(p - pagination.page) <= 2)
-                    .map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => fetchUsers(p)}
-                        className="px-3 py-1.5 text-sm rounded-lg border transition-all"
-                        style={{
-                          fontFamily: 'Poppins',
-                          backgroundColor: p === pagination.page ? '#0B5858' : 'white',
-                          color: p === pagination.page ? '#fff' : '#4b5563',
-                          borderColor: p === pagination.page ? '#0B5858' : '#e5e7eb',
-                        }}
-                      >
-                        {p}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-1 px-1">
+                    {Array.from({ length: Math.min(5, pagination.total_pages) }, (_, i) => {
+                      let pageNum = i + 1;
+                      if (pagination.total_pages > 5) {
+                        if (pagination.page > 3 && pagination.page < pagination.total_pages - 1) {
+                          pageNum = pagination.page - 2 + i;
+                        } else if (pagination.page >= pagination.total_pages - 1) {
+                          pageNum = pagination.total_pages - 4 + i;
+                        }
+                      }
+                      const isActive = pagination.page === pageNum;
+                      return (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => fetchUsers(pageNum)}
+                          className={`min-w-[32px] h-8 flex items-center justify-center rounded-lg text-[13px] font-bold transition-all duration-300 ${
+                            isActive ? 'bg-[#0B5858] text-white shadow-md shadow-[#0B5858]/30 scale-105' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 active:scale-95'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <button
+                    type="button"
                     onClick={() => fetchUsers(pagination.page + 1)}
                     disabled={pagination.page >= pagination.total_pages}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    style={{ fontFamily: 'Poppins' }}
+                    className="inline-flex items-center justify-center p-2 rounded-xl border border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 group active:scale-95"
+                    aria-label="Next page"
                   >
-                    Next
+                    <svg className="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                    </svg>
                   </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Role legend */}

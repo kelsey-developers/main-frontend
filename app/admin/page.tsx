@@ -3,20 +3,44 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CalendarView } from '../calendar/page';
-import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import { getAgentAnalytics } from '@/services/agentDashboardService';
 import type { AgentAnalytics } from '@/services/agentDashboardService';
-import { getCleaningJobs } from '@/services/cleaningService';
-import { getLendingSummary } from '@/services/lendingService';
-import type { LendingSummary } from '@/types/lending';
 
-const TODAY = new Date().toISOString().split('T')[0];
+/** Shared card styles for consistency across admin dashboard */
+const CARD = {
+  base: 'bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden',
+  padding: 'p-6',
+  header: 'px-6 py-5 border-b border-gray-50 bg-gray-50/30',
+  hover: 'hover:shadow-md hover:border-[#0B5858]/20 transition-all',
+  label: 'text-[11px] font-bold text-gray-400 uppercase tracking-widest',
+  value: 'text-3xl font-bold text-gray-900 tracking-tight',
+  subtitle: 'text-xs font-medium text-gray-500',
+  iconBox: 'w-12 h-12 rounded-xl flex items-center justify-center shrink-0',
+  innerRow: 'p-4 rounded-2xl border border-gray-100',
+} as const;
+
+/** Stat card: same hover as agent hub — shadow only, no border change */
+function StatCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+}) {
+  return (
+    <div className={`${CARD.base} ${CARD.padding} hover:shadow-md transition-shadow relative`}>
+      <p className={`${CARD.label} mb-2`}>{label}</p>
+      <p className={CARD.value}>{value}</p>
+      {sub != null && <p className={`${CARD.subtitle} mt-2 text-gray-400`}>{sub}</p>}
+    </div>
+  );
+}
+
 const AdminPage: React.FC = React.memo(() => {
   const [agentAnalytics, setAgentAnalytics] = useState<AgentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cleaningTodayCount, setCleaningTodayCount] = useState(0);
-  const [cleaningPendingVerify, setCleaningPendingVerify] = useState(0);
-  const [lendingSummary, setLendingSummary] = useState<LendingSummary | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -32,243 +56,201 @@ const AdminPage: React.FC = React.memo(() => {
     };
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-    getCleaningJobs().then((jobs) => {
-      if (!mounted) return;
-      const todayJobs = jobs.filter((j) => j.scheduledDate === TODAY);
-      setCleaningTodayCount(
-        todayJobs.filter((j) => j.status === 'scheduled' || j.status === 'in_progress').length,
-      );
-      setCleaningPendingVerify(
-        jobs.filter((j) => j.status === 'completed').length,
-      );
-    });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    getLendingSummary().then(setLendingSummary);
-  }, []);
-
   if (loading) {
     return (
-      <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 ${LAYOUT_NAVBAR_OFFSET}`}>
-        <div className="flex items-center justify-center h-[calc(100vh-120px)]">
-          <div className="text-center">
-            <div className="inline-block h-12 w-12 animate-spin rounded-full border-4 border-solid border-[#0B5858] border-r-transparent" />
-            <p className="mt-4 text-gray-600" style={{ fontFamily: 'Poppins' }}>Loading...</p>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[#0B5858] border-r-transparent" />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 relative ${LAYOUT_NAVBAR_OFFSET}`} style={{ fontFamily: 'Poppins' }}>
-      <div className="max-w-[1450px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
-              Admin Dashboard
-            </h1>
-            <p className="text-gray-600">
-              Manage platform users, bookings, listings, inventory, and finance.
-            </p>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <Link
-              href="/manage-users"
-              className="bg-[#0B5858] text-white px-4 py-2 rounded-lg hover:bg-[#0a4a4a] transition-all flex items-center shadow-md hover:shadow-lg text-sm font-medium"
-            >
-              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-              </svg>
-              Manage Users
-            </Link>
-            <Link
-              href="/manage-units"
-              className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-all flex items-center shadow-md hover:shadow-lg text-sm font-medium"
-            >
-              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-              Manage Listings
-            </Link>
-            <Link
-              href="/admin/agent-registration"
-              className="border border-[#0B5858] text-[#0B5858] bg-white px-4 py-2 rounded-lg hover:bg-[#0B5858] hover:text-white transition-all flex items-center shadow-md text-sm font-medium"
-            >
-              <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              Agent Registration
-            </Link>
-          </div>
-        </div>
+    <div className="space-y-6">
 
-        {/* Agent Analytics Section — from backend when API_URL is set */}
-        {agentAnalytics && (
-          <div className="mb-8 bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200/80">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Agent Analytics</h3>
-                <p className="text-gray-600 mt-1 text-sm">Top performing agents and commission overview</p>
-              </div>
-              <div className="flex gap-2">
-                <Link href="/admin/agents" className="px-4 py-2 text-sm font-semibold text-[#0B5858] border border-[#0B5858]/30 rounded-xl hover:bg-[#0B5858]/5 transition-colors">
-                  All Agents
-                </Link>
-                <Link href="/admin/commissions" className="px-4 py-2 text-sm font-semibold text-white bg-[#0B5858] rounded-xl hover:bg-[#0d7a7a] transition-colors">
-                  Commission Ledger
-                </Link>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                {[
-                  { label: 'Total Agents', value: agentAnalytics.totalAgents, icon: '👥' },
-                  { label: 'Active Agents', value: agentAnalytics.activeAgents, icon: '✅' },
-                  { label: 'Total Paid (₱)', value: `₱${agentAnalytics.totalCommissionsPaid.toLocaleString()}`, icon: '💰' },
-                  { label: 'Pending (₱)', value: `₱${agentAnalytics.totalCommissionsPending.toLocaleString()}`, icon: '⏳' },
-                ].map((s) => (
-                  <div key={s.label} className="bg-gray-50 rounded-xl p-4 text-center border border-gray-100">
-                    <p className="text-lg mb-1">{s.icon}</p>
-                    <p className="text-xs text-gray-500 mb-1">{s.label}</p>
-                    <p className="text-xl font-bold text-gray-900">{s.value}</p>
+      {/* Page header — title left, buttons right-aligned */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Overview</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage platform users, bookings, listings, inventory, and finance.
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap justify-end ml-auto">
+          <Link
+            href="/manage-users"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-[#0B5858] text-white text-sm font-bold rounded-2xl hover:bg-[#094848] hover:shadow-lg transition-all active:scale-[0.98]"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            Manage Users
+          </Link>
+          <Link
+            href="/manage-units"
+            className="inline-flex items-center gap-2 px-5 py-3 bg-gray-600 text-white text-sm font-bold rounded-2xl hover:bg-gray-700 hover:shadow-lg transition-all active:scale-[0.98]"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            Manage Listings
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats strip — same grid and StatCard style as agent hub */}
+      {agentAnalytics && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <StatCard label="Total Agents" value={agentAnalytics.totalAgents} sub="Registered on platform" />
+          <StatCard label="Active Agents" value={agentAnalytics.activeAgents} sub="With recent activity" />
+          <StatCard
+            label="Total Paid"
+            value={`₱${agentAnalytics.totalCommissionsPaid.toLocaleString()}`}
+            sub="Commissions disbursed"
+          />
+          <StatCard
+            label="Pending"
+            value={`₱${agentAnalytics.totalCommissionsPending.toLocaleString()}`}
+            sub="Awaiting clearance"
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {/* Agent Analytics — generous spacing, clear hierarchy */}
+        <div className={`lg:col-span-2 ${CARD.base} flex flex-col`}>
+          <div className={`${CARD.header} px-7 py-6`}>
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight">Agent Analytics</h2>
+            <p className={`${CARD.subtitle} mt-2`}>Top performing agents and commission overview</p>
+          </div>
+
+          <div className="p-7 pt-6">
+            {agentAnalytics && agentAnalytics.topAgents.length > 0 ? (
+              <div className="space-y-4">
+                {agentAnalytics.topAgents.map((agent, idx) => (
+                  <div
+                    key={agent.agentId}
+                    className={`flex items-center gap-5 p-5 rounded-2xl border border-gray-100 hover:border-[#0B5858]/20 hover:bg-gray-50/50 transition-all group`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                        idx === 0 ? 'bg-[#FACC15] text-[#0B5858]' : idx === 1 ? 'bg-gray-300 text-gray-700' : idx === 2 ? 'bg-orange-400/80 text-orange-900' : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-900 truncate group-hover:text-[#0B5858] transition-colors">{agent.agentName}</p>
+                      <p className="text-xs font-medium text-gray-500 mt-1">
+                        {agent.totalBookings} bookings · {agent.activeSubAgents} sub-agents · <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{agent.referralCode}</code>
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-[#0B5858] flex-shrink-0">₱{agent.totalCommissions.toLocaleString()}</p>
+                    <Link
+                      href={`/admin/agents/${agent.agentId}`}
+                      className="px-3 py-1.5 text-xs font-semibold text-[#0B5858] bg-[#0B5858]/10 hover:bg-[#0B5858]/20 rounded-xl transition-colors whitespace-nowrap"
+                    >
+                      View
+                    </Link>
                   </div>
                 ))}
               </div>
-
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">Top Agents by Commission</h4>
-              {agentAnalytics.topAgents.length > 0 ? (
-                <div className="space-y-2">
-                  {agentAnalytics.topAgents.map((agent, idx) => (
-                    <div key={agent.agentId} className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        idx === 0 ? 'bg-yellow-400 text-yellow-900' : idx === 1 ? 'bg-gray-300 text-gray-700' : idx === 2 ? 'bg-orange-400 text-orange-900' : 'bg-gray-200 text-gray-600'
-                      }`}>
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 truncate">{agent.agentName}</p>
-                        <p className="text-xs text-gray-500">
-                          {agent.totalBookings} bookings · {agent.activeSubAgents} sub-agents · <code className="bg-gray-200 px-1 rounded text-xs">{agent.referralCode}</code>
-                        </p>
-                      </div>
-                      <p className="text-sm font-bold text-[#0B5858] flex-shrink-0">₱{agent.totalCommissions.toLocaleString()}</p>
-                      <Link
-                        href={`/admin/agents/${agent.agentId}`}
-                        className="px-3 py-1 text-xs font-semibold text-[#0B5858] bg-[#0B5858]/8 hover:bg-[#0B5858]/15 rounded-lg transition-colors whitespace-nowrap"
-                      >
-                        View
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 py-4">No agent data yet. Connect your backend (API_URL) to see agents and commissions.</p>
-              )}
-
-              <div className="mt-4 flex gap-3 flex-wrap">
-                <Link href="/admin/payouts" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-[#0B5858] rounded-xl hover:bg-[#0d7a7a] transition-colors">
-                  Manage Payouts
-                </Link>
-                <Link href="/admin/agent-registration" className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-[#0B5858] border border-[#0B5858]/30 rounded-xl hover:bg-[#0B5858]/5 transition-colors">
-                  Registration Config
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Cleaning mini-cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6 mt-6">
-          <Link
-            href="/admin/cleaning"
-            className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-[#0B5858]/10 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-[#0B5858]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cleaning Today</p>
-                <p className="text-2xl font-bold text-gray-900">{cleaningTodayCount}</p>
-                <p className="text-xs text-gray-400">jobs active · {cleaningPendingVerify} pending verification</p>
-              </div>
-            </div>
-            <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-
-          <Link
-            href="/admin/cleaning/schedule"
-            className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-[#FACC15]/10 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-[#FACC15]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cleaning Calendar</p>
-                <p className="text-sm font-semibold text-gray-700">View schedule &amp; assign jobs</p>
-                <p className="text-xs text-gray-400">monthly view with job status</p>
-              </div>
-            </div>
-            <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-        </div>
-
-        {/* Money Lending mini-card */}
-        {lendingSummary && (
-          <div className="mb-6">
-            <Link
-              href="/admin/lending"
-              className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4 hover:shadow-md hover:border-[#0B5858]/20 transition-all group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-[#0B5858]/10 flex items-center justify-center shrink-0">
-                  <svg className="w-5 h-5 text-[#0B5858]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            ) : (
+              <div className="py-14 text-center flex-1 flex flex-col items-center justify-center">
+                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
+                  <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                   </svg>
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Money Lending</p>
-                  <p className="text-2xl font-bold text-gray-900">{lendingSummary.totalLoansActive}</p>
-                  <p className="text-xs text-gray-400">
-                    active loans · {lendingSummary.totalLoansOverdue > 0 ? (
-                      <span className="text-red-500">{lendingSummary.totalLoansOverdue} overdue</span>
-                    ) : 'none overdue'}
-                  </p>
-                </div>
+                <p className="text-sm font-bold text-gray-500">No agent data yet</p>
+                <p className={`${CARD.subtitle} mt-2 text-gray-400`}>Connect your backend (API_URL) to see agents and commissions.</p>
               </div>
-              <svg className="w-4 h-4 text-gray-400 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </Link>
+            )}
           </div>
-        )}
+        </div>
 
-        {/* Calendar View Section */}
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200/80">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-xl font-bold text-gray-900">Upcoming Bookings Calendar</h3>
-            <p className="text-gray-600 mt-1 text-sm">View and manage all upcoming bookings</p>
+        {/* Quick Actions — uses CARD tokens and header strip */}
+        <div className={`${CARD.base} flex flex-col`}>
+          <div className={CARD.header}>
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight">Quick Actions</h2>
+            <p className={`${CARD.subtitle} mt-1`}>Shortcuts to main admin areas</p>
           </div>
-          <div className="p-0 overflow-hidden">
-            <CalendarView embedded />
+          <div className={`${CARD.padding} flex flex-col gap-3`}>
+            {[
+              {
+                href: '/admin/agents',
+                title: 'All Agents',
+                desc: 'View and manage agents',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                ),
+                color: 'bg-[#0B5858]/10 text-[#0B5858]',
+              },
+              {
+                href: '/admin/commissions',
+                title: 'Commission Ledger',
+                desc: 'Review and approve commissions',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>
+                ),
+                color: 'bg-[#FACC15]/20 text-[#0B5858]',
+              },
+              {
+                href: '/admin/payouts',
+                title: 'Manage Payouts',
+                desc: 'Process payout requests',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                ),
+                color: 'bg-[#0B5858]/10 text-[#0B5858]',
+              },
+              {
+                href: '/admin/cleaning',
+                title: 'Cleaning',
+                desc: 'Jobs and schedule',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" /></svg>
+                ),
+                color: 'bg-[#FACC15]/20 text-[#0B5858]',
+              },
+              {
+                href: '/admin/lending',
+                title: 'Lending',
+                desc: 'Active loans and overdue',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                ),
+                color: 'bg-[#0B5858]/10 text-[#0B5858]',
+              },
+            ].map((action, i) => (
+              <Link
+                key={i}
+                href={action.href}
+                className={`group flex items-center gap-4 ${CARD.innerRow} hover:border-[#0B5858]/30 hover:bg-[#0B5858]/5 transition-all`}
+              >
+                <div className={`${CARD.iconBox} ${action.color} group-hover:scale-105 transition-transform`}>
+                  {action.icon}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900 group-hover:text-[#0B5858] transition-colors">{action.title}</p>
+                  <p className="text-xs font-medium text-gray-500 mt-0.5">{action.desc}</p>
+                </div>
+                <div className="ml-auto">
+                  <svg className="w-5 h-5 text-gray-300 group-hover:text-[#0B5858] transition-colors group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+                </div>
+              </Link>
+            ))}
           </div>
+        </div>
+      </div>
+
+      {/* Calendar — uses CARD tokens */}
+      <div className={`${CARD.base} flex flex-col`}>
+        <div className={CARD.header}>
+          <h2 className="text-lg font-bold text-gray-900 tracking-tight">Upcoming Bookings Calendar</h2>
+          <p className={`${CARD.subtitle} mt-1`}>View and manage all upcoming bookings</p>
+        </div>
+        <div className="p-0 overflow-hidden">
+          <CalendarView embedded />
         </div>
       </div>
     </div>
