@@ -22,7 +22,7 @@ const PROTECTED_ROUTES = [
   '/settings',
 ];
 
-type NormalizedRole = 'admin' | 'agent' | 'finance' | 'user';
+type NormalizedRole = 'admin' | 'agent' | 'finance' | 'user' | 'cleaner';
 
 export interface AuthUserRole {
   role: NormalizedRole;
@@ -51,6 +51,7 @@ function normalizeRole(role: string): NormalizedRole {
   if (lower === 'admin') return 'admin';
   if (lower === 'agent') return 'agent';
   if (lower === 'finance') return 'finance';
+  if (lower === 'cleaner') return 'cleaner';
   return 'user';
 }
 
