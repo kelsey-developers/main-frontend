@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useLayoutEffect } from 'react';
 import Link from 'next/link';
 import { getBorrowerLoans } from '@/services/lendingService';
 import { LOAN_STATUS_CONFIG } from '@/types/lending';
-import type { Loan } from '@/types/lending';
+import type { Loan, LoanStatus } from '@/types/lending';
 import LoanRequestModal from './components/LoanRequestModal';
 
 // Mock logged-in borrower — swap with real auth
@@ -14,76 +14,141 @@ function fmt(n: number) {
   return `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/* ─── Loan Card ─────────────────────────────────────────────── */
 function LoanCard({ loan }: { loan: Loan }) {
   const cfg = LOAN_STATUS_CONFIG[loan.status];
   const totalPaid = loan.totalPayable - loan.outstandingBalance;
   const paidPct = loan.totalPayable > 0 ? Math.min(100, (totalPaid / loan.totalPayable) * 100) : 0;
 
+  const barColor =
+    loan.status === 'overdue' ? 'bg-red-500' :
+    loan.status === 'settled' ? 'bg-emerald-500' :
+    loan.status === 'pending' ? 'bg-amber-400' :
+    'bg-[#0B5858]';
+
+  const showProgress = ['active', 'overdue', 'settled'].includes(loan.status);
+
   return (
     <Link
       href={`/lending/${loan.id}`}
-      className="block bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md hover:border-[#0B5858]/20 transition-all p-5"
+      className="group flex flex-col h-full w-full min-w-0 max-w-2xl bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden transition-all duration-200 active:scale-[0.99] hover:shadow-md hover:border-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5858]/30 focus-visible:ring-offset-2 cursor-pointer"
+      style={{ fontFamily: 'var(--font-poppins), Poppins, sans-serif' }}
     >
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <p className="text-xs font-medium text-gray-500 mb-0.5">Loan ID · {loan.id}</p>
-          <p className="text-base font-bold text-gray-900">{loan.purpose.length > 45 ? loan.purpose.slice(0, 45) + '…' : loan.purpose}</p>
+      <div className="flex-1 flex flex-col p-5 sm:p-6">
+        {/* 1. Header Group: Status & ID */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider" style={cfg.chipStyle}>
+            {cfg.label}
+          </span>
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none">
+            {loan.id}
+          </span>
         </div>
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ml-3 ${cfg.classes}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-          {cfg.label}
-        </span>
+
+        {/* 2. Primary Group: Purpose */}
+        <div className="min-h-[2.8rem] sm:min-h-[3.2rem] flex flex-col justify-start">
+          <h2 className="text-base sm:text-[1.125rem] font-bold text-gray-900 leading-tight tracking-tight line-clamp-2">
+            {loan.purpose}
+          </h2>
+        </div>
+
+        {/* 3. Data Group: The Numbers */}
+        <div className="mt-4 pt-4 border-t border-gray-50 grid grid-cols-4 gap-2">
+          {[
+            { label: 'Principal', value: fmt(loan.principalAmount) },
+            { label: 'Rate',      value: `${loan.interestRate}%` },
+            { label: 'Term',      value: `${loan.termMonths}m` },
+            { label: 'Monthly',   value: fmt(loan.monthlyPayment) },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex flex-col">
+              <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter mb-0.5">{label}</p>
+              <p className="text-[13px] sm:text-sm font-bold text-gray-900 truncate">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* 4. Progress & Footer */}
+        <div className="mt-auto pt-5">
+          {showProgress && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-medium text-gray-500">{fmt(totalPaid)} paid</span>
+                <span className="text-[11px] font-bold text-gray-900">{paidPct.toFixed(0)}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
+                  style={{ width: `${paidPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {loan.nextPaymentDue && loan.status !== 'settled' && (
+            <div className={`flex items-center gap-2 text-[11px] font-bold rounded-xl px-3 py-2.5 ${
+              loan.status === 'overdue' ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'
+            }`}>
+              <svg className="w-3.5 h-3.5 shrink-0 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="truncate">
+                Next: {new Date(loan.nextPaymentDue).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} · {fmt(loan.monthlyPayment)}
+              </span>
+              {loan.status === 'overdue' && <span className="ml-auto text-[9px] tracking-widest">OVERDUE</span>}
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* 4-col stats */}
-      <div className="grid grid-cols-4 gap-3 mb-4">
-        {[
-          { label: 'Principal', value: fmt(loan.principalAmount) },
-          { label: 'Rate', value: `${loan.interestRate}%/mo` },
-          { label: 'Term', value: `${loan.termMonths} mos` },
-          { label: 'Monthly', value: fmt(loan.monthlyPayment) },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{label}</p>
-            <p className="text-sm font-bold text-gray-900 mt-0.5">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Progress bar */}
-      {(loan.status === 'active' || loan.status === 'overdue' || loan.status === 'settled') && (
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-medium text-gray-500">{fmt(totalPaid)} paid</span>
-            <span className="text-[11px] font-medium text-gray-500">{paidPct.toFixed(0)}%</span>
-          </div>
-          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all ${loan.status === 'settled' ? 'bg-gray-400' : loan.status === 'overdue' ? 'bg-red-400' : 'bg-[#0B5858]'}`}
-              style={{ width: `${paidPct}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Next payment */}
-      {loan.nextPaymentDue && loan.status !== 'settled' && (
-        <div className={`mt-3 flex items-center gap-2 text-xs font-medium rounded-xl px-3 py-2 ${loan.status === 'overdue' ? 'bg-red-50 text-red-700' : 'bg-[#0B5858]/5 text-[#0B5858]'}`}>
-          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          Next due: {new Date(loan.nextPaymentDue).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} · {fmt(loan.monthlyPayment)}
-          {loan.status === 'overdue' && <span className="ml-auto font-bold">OVERDUE</span>}
-        </div>
-      )}
     </Link>
   );
 }
 
+/* ─── Tab Indicator Hook ────────────────────────────────────── */
+type TabKey = 'active' | 'history';
+
+/* ─── Page ──────────────────────────────────────────────────── */
 export default function LendingPage() {
-  const [loans, setLoans] = useState<Loan[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loans, setLoans]           = useState<Loan[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [activeTab, setActiveTab]   = useState<TabKey>('active');
   const [showRequest, setShowRequest] = useState(false);
+
+  /** Sliding tab indicator — refs on buttons so measurement works on first paint; min width fallback keeps line visible */
+  const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number }>({ left: 0, width: 120 });
+
+  const updateIndicator = useCallback(() => {
+    const activeIndex = activeTab === 'active' ? 0 : 1;
+    const btn = tabButtonRefs.current[activeIndex];
+    if (!btn) return;
+    const left = btn.offsetLeft;
+    const width = btn.offsetWidth;
+    setIndicatorStyle({
+      left,
+      width: width > 0 ? width : 120,
+    });
+  }, [activeTab]);
+
+  useLayoutEffect(() => {
+    updateIndicator();
+  }, [updateIndicator]);
+
+  useEffect(() => {
+    const onResize = () => updateIndicator();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [updateIndicator]);
+
+  /** After load, run indicator update on next frame and again after a short delay so teal line is visible */
+  useEffect(() => {
+    if (loading) return;
+    const t1 = requestAnimationFrame(() => updateIndicator());
+    const t2 = setTimeout(updateIndicator, 50);
+    return () => {
+      cancelAnimationFrame(t1);
+      clearTimeout(t2);
+    };
+  }, [loading, updateIndicator]);
 
   useEffect(() => {
     getBorrowerLoans(BORROWER_ID).then((data) => {
@@ -92,15 +157,9 @@ export default function LendingPage() {
     });
   }, []);
 
-  const activeLoans = loans.filter((l) => l.status === 'active' || l.status === 'overdue');
-  const pastLoans = loans.filter((l) => l.status === 'settled' || l.status === 'written_off' || l.status === 'rejected');
-  const pendingLoans = loans.filter((l) => l.status === 'pending');
-
-  const totalOutstanding = activeLoans.reduce((s, l) => s + l.outstandingBalance, 0);
-  const nextDue = activeLoans
-    .filter((l) => l.nextPaymentDue)
-    .sort((a, b) => new Date(a.nextPaymentDue!).getTime() - new Date(b.nextPaymentDue!).getTime())[0];
-  const hasOverdue = activeLoans.some((l) => l.status === 'overdue');
+  const activeLoans  = loans.filter((l) => l.status === 'active' || l.status === 'overdue' || l.status === 'pending');
+  const historyLoans = loans.filter((l) => l.status === 'settled' || l.status === 'written_off' || l.status === 'rejected');
+  const displayed = activeTab === 'active' ? activeLoans : historyLoans;
 
   if (loading) {
     return (
@@ -111,86 +170,93 @@ export default function LendingPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+    <div className="py-8 space-y-6" style={{ fontFamily: 'var(--font-poppins), Poppins, sans-serif' }}>
 
-      {/* Header */}
-      <div>
+      {/* Header — page title same as cleaning hub: text-2xl font-bold text-gray-900 tracking-tight */}
+      <div style={{ fontFamily: 'var(--font-poppins), Poppins, sans-serif' }}>
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">My Loans</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Kelsey's Homestay · Money Lending</p>
       </div>
 
-      {/* Outstanding Balance Card */}
-      {activeLoans.length > 0 && (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B5858] to-[#073A3A] p-6 text-white shadow-lg shadow-[#0B5858]/20">
-          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-40 h-40 bg-white/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 -mb-6 -ml-6 w-24 h-24 bg-[#FACC15]/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="relative">
-            <p className="text-white/60 text-xs font-semibold uppercase tracking-widest mb-2">Outstanding Balance</p>
-            <p className="text-3xl font-bold tracking-tight">{fmt(totalOutstanding)}</p>
-            {nextDue && (
-              <div className={`mt-4 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${hasOverdue ? 'bg-red-500/20 text-red-200' : 'bg-white/10 text-white/80'}`}>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Next due: {new Date(nextDue.nextPaymentDue!).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} · {fmt(nextDue.monthlyPayment)}
-                {hasOverdue && <span className="ml-1 font-bold">⚠ OVERDUE</span>}
-              </div>
-            )}
-          </div>
+      {/* Tab bar — sliding indicator; Request a Loan on same row (same as cleaning hub) */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+        <div className="relative inline-flex gap-8 -mb-px pb-[1px] w-full max-w-md">
+        {([
+          { key: 'active', label: 'Active & Pending' },
+          { key: 'history', label: 'History' },
+        ] as { key: TabKey; label: string }[]).map(({ key, label }, index) => (
+          <button
+            key={key}
+            ref={(el) => { tabButtonRefs.current[index] = el; }}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className="px-0 pt-2.5 pb-2.5 text-left text-base sm:text-lg font-semibold transition-colors duration-200 cursor-pointer text-gray-500 hover:text-gray-900 whitespace-nowrap"
+            style={{ fontFamily: 'var(--font-poppins), Poppins, sans-serif' }}
+          >
+            <span className={activeTab === key ? 'text-[#0B5858]' : ''}>
+              {label}
+            </span>
+          </button>
+        ))}
+        {/* Grey baseline — gradient fade like cleaning hub */}
+        <div
+          className="pointer-events-none absolute -bottom-px left-0 h-px w-[95%] z-0"
+          style={{
+            background: 'linear-gradient(to right, rgba(209,213,219,1) 0%, rgba(209,213,219,0.7) 60%, rgba(209,213,219,0.25) 85%, transparent 100%)',
+          }}
+          aria-hidden
+        />
+        {/* Teal sliding indicator */}
+        <div
+          className="absolute -bottom-px left-0 h-1 bg-[#0B5858] transition-all duration-300 ease-out z-10"
+          style={{
+            left: indicatorStyle.left,
+            width: indicatorStyle.width,
+          }}
+          aria-hidden
+        />
         </div>
-      )}
+        <div className="w-full sm:w-auto flex justify-end shrink-0">
+          <button
+            onClick={() => setShowRequest(true)}
+            type="button"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0a4a4a] transition-colors cursor-pointer shadow-sm shadow-[#0B5858]/20 sm:pb-2.5"
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span className="whitespace-nowrap">Request a Loan</span>
+          </button>
+        </div>
+      </div>
 
-      {/* Active / Overdue Loans */}
-      {activeLoans.length > 0 && (
-        <section>
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Active Loans</p>
-          <div className="space-y-3">
-            {activeLoans.map((loan) => <LoanCard key={loan.id} loan={loan} />)}
-          </div>
-        </section>
-      )}
-
-      {/* Pending Loans */}
-      {pendingLoans.length > 0 && (
-        <section>
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Pending Review</p>
-          <div className="space-y-3">
-            {pendingLoans.map((loan) => <LoanCard key={loan.id} loan={loan} />)}
-          </div>
-        </section>
-      )}
-
-      {/* Past Loans */}
-      {pastLoans.length > 0 && (
-        <section>
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Past Loans</p>
-          <div className="space-y-3">
-            {pastLoans.map((loan) => <LoanCard key={loan.id} loan={loan} />)}
-          </div>
-        </section>
-      )}
-
-      {/* Empty state */}
-      {loans.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      {/* Tab content — no card wrapper */}
+      {displayed.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center" style={{ fontFamily: 'var(--font-poppins), Poppins, sans-serif' }}>
+          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+            <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
           </div>
-          <h3 className="text-base font-bold text-gray-700 mb-1">No loans yet</h3>
-          <p className="text-sm text-gray-400 mb-6">You don't have any active or past loans.</p>
+          <h3 className="text-base font-semibold text-gray-900 mb-1">
+            {activeTab === 'active' ? 'No active loans' : 'No loan history yet'}
+          </h3>
+          <p className="text-xs font-normal text-gray-500 mb-5 leading-snug">
+            {activeTab === 'active' ? "You don't have any active or pending loans." : "Settled, rejected, or written-off loans will appear here."}
+          </p>
+          {activeTab === 'active' && (
+            <button
+              onClick={() => setShowRequest(true)}
+              type="button"
+              className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0a4a4a] transition-colors cursor-pointer shadow-sm shadow-[#0B5858]/20"
+            >
+              Request a Loan
+            </button>
+          )}
         </div>
-      )}
-
-      {/* Request a Loan */}
-      {activeLoans.length === 0 && (
-        <button
-          onClick={() => setShowRequest(true)}
-          className="w-full py-3.5 rounded-2xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d7a7a] transition-colors cursor-pointer shadow-sm shadow-[#0B5858]/20"
-        >
-          Request a Loan
-        </button>
+      ) : (
+        <div className="flex flex-wrap justify-start gap-4 sm:gap-6">
+          {displayed.map((loan) => <LoanCard key={loan.id} loan={loan} />)}
+        </div>
       )}
 
       {showRequest && <LoanRequestModal borrowerId={BORROWER_ID} onClose={() => setShowRequest(false)} />}
