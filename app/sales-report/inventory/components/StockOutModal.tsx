@@ -12,11 +12,12 @@ import { processStockOut } from '../lib/inventoryLedger';
 import { 
   loadInventoryDataset,
   inventoryItems, 
-  getDisplayableInventoryItems,
   inventoryWarehouseDirectory,
   inventoryUnits,
+  isWarehouseActive,
 } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
+import { listDamageIncidents, createDamageIncident } from '@/lib/api/damageIncidents';
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -75,6 +76,7 @@ const BOOKINGS = [
   { id: 'b2', code: 'BK-2025-002', guest: 'Maria Santos', checkIn: 'Mar 09', checkOut: 'Mar 11', unit: 'Unit 201' },
   { id: 'b3', code: 'BK-2025-003', guest: 'Robert Kim', checkIn: 'Mar 10', checkOut: 'Mar 14', unit: 'Unit 301' },
 ];
+const CREATE_DAMAGE_INCIDENT_OPTION = '__create__';
 
 // ─── Shared input style ───────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
@@ -153,7 +155,7 @@ function SectionLabel({ label, color }: { label: string; color?: string }) {
 
 // ─── Stock pill ──────────────────────────────────────────────────
 function StockPill({ available, reorder, unit }: { available: number; reorder: number; unit: string }) {
-  const low = available <= reorder;
+  const low = reorder > 0 && available < reorder;
   return (
     <span
       style={{
@@ -199,23 +201,34 @@ function LineItemRow({
   const wh = sourceWarehouse
     ? inventoryWarehouseDirectory.find((w) => w.id === sourceWarehouse)
     : undefined;
-  const whBalance = wh?.inventoryBalances.find((b) => b.productId === item.productId);
-  const avail = sourceWarehouse && whBalance !== undefined
-    ? whBalance.quantity
-    : (product ? product.currentStock : 0);
-  const over = !!(product && item.quantity && parseInt(item.quantity) > avail);
+  const balances = wh?.inventoryBalances ?? [];
+  const whBalance = balances.find((b) => b.productId === item.productId);
+  // Use warehouse-specific balance when available; avoid product.currentStock when no warehouse balance exists (it may be from another warehouse)
+  const avail = sourceWarehouse
+    ? (whBalance?.quantity ?? (product?.warehouseId === sourceWarehouse ? (product?.currentStock ?? 0) : 0))
+    : (product?.currentStock ?? 0);
+  const over = !!(item.quantity && parseInt(item.quantity) > avail);
 
-  const itemOptions = sourceWarehouse && wh
-    ? wh.inventoryBalances
-        .filter((b) => b.quantity > 0)
-        .map((b) => {
-          const p = inventoryItems.find((i) => i.id === b.productId);
-          return { value: b.productId, label: `${p?.sku ?? b.productId} — ${b.productName}` };
-        })
-    : getDisplayableInventoryItems().map((p) => ({
-        value: p.id,
-        label: `${p.sku} — ${p.name}`,
-      }));
+  // Warehouse stock-out: only show items that have stock in the selected warehouse
+  const itemOptions = (() => {
+    if (!sourceWarehouse) {
+      return []; // Must select warehouse first
+    }
+    if (!wh) {
+      return []; // Warehouse not found in directory
+    }
+    const fromBalances = (balances as Array<{ productId: string; productName: string; quantity: number }>)
+      .filter((b) => b.quantity > 0)
+      .map((b) => {
+        const p = inventoryItems.find((i) => i.id === b.productId);
+        return { value: b.productId, label: `${p?.sku ?? b.productId} — ${b.productName}` };
+      });
+    if (fromBalances.length > 0) return fromBalances;
+    // Fallback: replenishment items whose default warehouse matches and have stock
+    return inventoryItems
+      .filter((p) => p.warehouseId === sourceWarehouse && (p.currentStock ?? 0) > 0)
+      .map((p) => ({ value: p.id, label: `${p.sku} — ${p.name}` }));
+  })();
 
   return (
     <div
@@ -241,7 +254,14 @@ function LineItemRow({
           value={item.productId || ''}
           onChange={(value) => onUpdate(index, 'productId', value)}
           options={[
-            { value: '', label: sourceWarehouse ? 'Select item…' : 'Select warehouse first' },
+            {
+              value: '',
+              label: !sourceWarehouse
+                ? 'Select warehouse first'
+                : itemOptions.length === 0
+                  ? 'No items in this warehouse'
+                  : 'Select item…',
+            },
             ...itemOptions,
           ]}
           placeholder="Select item…"
@@ -254,7 +274,13 @@ function LineItemRow({
           menuZIndexClass="z-[10010]"
           useFixedPosition={true}
         />
-        {product && <StockPill available={avail} reorder={product.minStock} unit={product.unit} />}
+        {item.productId && itemOptions.some((opt) => opt.value === item.productId) && (
+          <StockPill
+            available={avail}
+            reorder={sourceWarehouse ? 1 : (product?.minStock ?? 0)}
+            unit={product?.unit ?? 'pcs'}
+          />
+        )}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {index === 0 && (
@@ -341,6 +367,7 @@ interface WarehouseDraft {
   toWarehouse: string;
   date: string;
   reference: string;
+  damageIncidentId: string;
   notes: string;
   items: LineItem[];
 }
@@ -354,9 +381,12 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
   const [toWarehouse, setToWarehouse] = useState('');
   const [date, setDate] = useState(getTodayInPhilippineTime());
   const [reference, setReference] = useState('');
+  const [damageIncidentId, setDamageIncidentId] = useState('');
   const [notes, setNotes] = useState('');
   const [isDamage, setIsDamage] = useState(false);
   const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
+  const [damageIncidents, setDamageIncidents] = useState<Array<{ id: string; description?: string; reportDate?: string; warehouseId?: string }>>([]);
+
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
@@ -368,6 +398,28 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
   }, [prefill?.warehouseId, warehouse]);
 
   useEffect(() => {
+    void listDamageIncidents().then((list) => {
+      setDamageIncidents(
+        list.map((d) => ({
+          id: d.id,
+          description: d.description,
+          reportDate: d.reportDate ?? d.dateReported ?? d.createdAt,
+          warehouseId: d.warehouseId,
+        }))
+      );
+    });
+  }, []);
+
+  useEffect(() => {
+    setDamageIncidentId('');
+  }, [reason]);
+
+  const warehouseDamageIncidents = warehouse
+    ? damageIncidents.filter((d) => d.warehouseId === warehouse)
+    : [];
+  const warehouseIncidentOptions = warehouseDamageIncidents.length > 0 ? warehouseDamageIncidents : damageIncidents;
+
+  useEffect(() => {
     onDraftChange({
       confirmedBy,
       idNumber,
@@ -376,12 +428,13 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
       toWarehouse,
       date,
       reference,
+      damageIncidentId,
       notes,
       items,
     });
-  }, [confirmedBy, idNumber, warehouse, reason, toWarehouse, date, reference, notes, items, onDraftChange]);
+  }, [confirmedBy, idNumber, warehouse, reason, toWarehouse, date, reference, damageIncidentId, notes, items, onDraftChange]);
 
-  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => isWarehouseActive(wh));
   const isTransfer = reason === 'Inter-warehouse Transfer';
 
   return (
@@ -522,12 +575,29 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
             </svg>
             Damage Write-off
           </div>
-          <Field label="Link Damage Incident Report" hint="Optional">
-            <select style={inputStyle}>
-              <option value="">Select incident…</option>
-              <option>DI-2025-001 · Unit 101 · Mar 05</option>
-              <option>DI-2025-002 · Unit 203 · Mar 07</option>
-            </select>
+          <Field label="Damage Incident Reference" required hint="Select existing or create new">
+            <InventoryDropdown
+              value={damageIncidentId}
+              onChange={setDamageIncidentId}
+              options={[
+                { value: '', label: damageIncidents.length === 0 ? 'Loading…' : 'Select or create…' },
+                { value: CREATE_DAMAGE_INCIDENT_OPTION, label: '+ Create new warehouse damage incident' },
+                ...warehouseIncidentOptions.map((d) => {
+                  const desc = d.description ? ` · ${d.description.slice(0, 40)}${d.description.length > 40 ? '…' : ''}` : '';
+                  const datePart = d.reportDate ? ` · ${String(d.reportDate).split('T')[0]}` : '';
+                  return { value: d.id, label: `${d.id}${desc}${datePart}` };
+                }),
+              ]}
+              placeholder="Select incident…"
+              placeholderWhen=""
+              hideIcon={true}
+              fullWidth={true}
+              minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
+              useFixedPosition={true}
+            />
           </Field>
         </div>
       )}
@@ -586,6 +656,7 @@ interface UnitDraft {
   srcWarehouse: string;
   date: string;
   reference: string;
+  damageIncidentId: string;
   notes: string;
   items: LineItem[];
 }
@@ -603,10 +674,13 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const [srcWarehouse, setSrcWarehouse] = useState(itemFromPrefill?.warehouseId || '');
   const [date, setDate] = useState(getTodayInPhilippineTime());
   const [reference, setReference] = useState('');
+  const [damageIncidentId, setDamageIncidentId] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<LineItem[]>(
     prefill?.itemId ? [{ productId: prefill.itemId, quantity: '1' }] : [{ productId: '', quantity: '' }]
   );
+  const [damageIncidents, setDamageIncidents] = useState<Array<{ id: string; description?: string; reportDate?: string; unitId?: string }>>([]);
+
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
@@ -623,6 +697,23 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   }, [prefill?.itemId, inventoryItems]);
 
   useEffect(() => {
+    setDamageIncidentId('');
+  }, [reason]);
+
+  useEffect(() => {
+    void listDamageIncidents().then((list) => {
+      setDamageIncidents(
+        list.map((d) => ({
+          id: d.id,
+          description: d.description,
+          reportDate: d.reportDate ?? d.dateReported ?? d.createdAt,
+          unitId: d.unitId,
+        }))
+      );
+    });
+  }, []);
+
+  useEffect(() => {
     onDraftChange({
       confirmedBy,
       idNumber,
@@ -632,12 +723,19 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
       srcWarehouse,
       date,
       reference,
+      damageIncidentId,
       notes,
       items,
     });
-  }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, notes, items, onDraftChange]);
+  }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, damageIncidentId, notes, items, onDraftChange]);
 
-  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
+  const isDamageReplacement = reason === 'Damage Replacement';
+  const unitDamageIncidents = unit
+    ? damageIncidents.filter((d) => d.unitId === unit)
+    : [];
+  const damageIncidentOptions = unitDamageIncidents.length > 0 ? unitDamageIncidents : damageIncidents;
+
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => isWarehouseActive(wh));
 
   return (
     <>
@@ -718,7 +816,48 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
         </Field>
       </div>
 
-      {/* Booking context card — teal-blue tinted */}
+      {isDamageReplacement && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '14px 16px',
+            background: C.redSoft,
+            borderRadius: 12,
+            borderLeft: `3px solid ${C.red}`,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.red, marginBottom: 8, fontFamily: 'Poppins', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Damage Replacement
+          </div>
+          <Field label="Unit Damage Incident" required hint="Select the incident this replacement links to">
+            <InventoryDropdown
+              value={damageIncidentId}
+              onChange={setDamageIncidentId}
+              options={[
+                { value: '', label: !unit ? 'Select unit first' : damageIncidentOptions.length === 0 ? 'No incidents found' : 'Select damage incident…' },
+                ...damageIncidentOptions.map((d) => {
+                  const desc = d.description ? ` · ${d.description.slice(0, 40)}${d.description.length > 40 ? '…' : ''}` : '';
+                  const datePart = d.reportDate ? ` · ${String(d.reportDate).split('T')[0]}` : '';
+                  return { value: d.id, label: `${d.id}${desc}${datePart}` };
+                }),
+              ]}
+              placeholder="Select incident…"
+              placeholderWhen=""
+              hideIcon={true}
+              fullWidth={true}
+              minWidthClass="min-w-0"
+              align="left"
+              backdropZIndexClass="z-[10005]"
+              menuZIndexClass="z-[10010]"
+              useFixedPosition={true}
+            />
+          </Field>
+        </div>
+      )}
+
       {bk && (
         <div
           style={{
@@ -874,6 +1013,7 @@ interface StockOutModalProps {
 
 export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, warehousePrefill }: StockOutModalProps) {
   const router = useRouter();
+  const authState = useMockAuth();
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [, setRefreshTick] = useState(0);
@@ -882,6 +1022,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
   const [unitDraft, setUnitDraft] = useState<UnitDraft | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [recordedItemsCount, setRecordedItemsCount] = useState(0);
+  const [wasAdjustment, setWasAdjustment] = useState(false);
 
   // Animate in
   useEffect(() => {
@@ -940,7 +1081,10 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
           error('Please select destination warehouse for transfer.');
           return;
         }
-
+        if (warehouseDraft.reason === 'Damaged / Write-off' && !warehouseDraft.damageIncidentId) {
+          error('Please select or create a damage incident for damage write-off.');
+          return;
+        }
         const validItems = warehouseDraft.items.filter(
           (entry) => entry.productId && Number(entry.quantity) > 0
         );
@@ -949,21 +1093,53 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
           return;
         }
 
-        for (const entry of validItems) {
-          await processStockOut({
-            productId: entry.productId,
+        // Validate quantities do not exceed warehouse stock
+        {
+          const wh = inventoryWarehouseDirectory.find((w) => w.id === warehouseDraft.warehouse);
+          const balances = wh?.inventoryBalances ?? [];
+          for (const entry of validItems) {
+            const bal = balances.find((b) => b.productId === entry.productId);
+            const avail = bal?.quantity ?? inventoryItems.find((p) => p.id === entry.productId)?.currentStock ?? 0;
+            if (avail < Number(entry.quantity)) {
+              const name = inventoryItems.find((p) => p.id === entry.productId)?.name ?? entry.productId;
+              error(`Quantity for ${name} exceeds available stock (${avail}) in this warehouse.`);
+              return;
+            }
+          }
+        }
+        let effectiveDamageIncidentId = warehouseDraft.damageIncidentId;
+        if (warehouseDraft.reason === 'Damaged / Write-off' && warehouseDraft.damageIncidentId === CREATE_DAMAGE_INCIDENT_OPTION) {
+          const created = await createDamageIncident({
             warehouseId: warehouseDraft.warehouse,
-            quantity: Number(entry.quantity),
-            reason: warehouseDraft.reason,
-            date: warehouseDraft.date,
-            reference: warehouseDraft.reference || undefined,
-            notes: warehouseDraft.notes || undefined,
-            createdBy: warehouseDraft.confirmedBy || undefined,
-            transferToWarehouseId:
-              warehouseDraft.reason === 'Inter-warehouse Transfer'
-                ? warehouseDraft.toWarehouse
-                : undefined,
+            description: `Warehouse write-off - Stock Out ${warehouseDraft.date}`,
+            reportedAt: new Date(`${warehouseDraft.date}T12:00:00.000Z`).toISOString(),
+            reportedByUserId: authState.user?.id,
+            status: 'open',
+            cost: 0,
+            chargedToGuest: 0,
+            absorbedAmount: 0,
           });
+          effectiveDamageIncidentId = created.id;
+        }
+
+        for (const entry of validItems) {
+          const qty = Number(entry.quantity);
+          const isDamageWriteOff = warehouseDraft.reason === 'Damaged / Write-off';
+          await processStockOut({
+              productId: entry.productId,
+              warehouseId: warehouseDraft.warehouse,
+              quantity: qty,
+              reason: warehouseDraft.reason,
+              date: warehouseDraft.date,
+              reference: isDamageWriteOff ? effectiveDamageIncidentId : (warehouseDraft.reference || undefined),
+              referenceType: isDamageWriteOff ? 'DAMAGE' : undefined,
+              notes: warehouseDraft.notes || undefined,
+              createdBy: warehouseDraft.confirmedBy || undefined,
+              transferToWarehouseId:
+                warehouseDraft.reason === 'Inter-warehouse Transfer'
+                  ? warehouseDraft.toWarehouse
+                  : undefined,
+            });
         }
       } else {
         if (!unitDraft) {
@@ -972,6 +1148,10 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
         }
         if (!unitDraft.unit || !unitDraft.srcWarehouse || !unitDraft.reason || !unitDraft.date) {
           error('Please fill unit, source warehouse, reason, and date.');
+          return;
+        }
+        if (unitDraft.reason === 'Damage Replacement' && !unitDraft.damageIncidentId) {
+          error('Please select a unit damage incident for damage replacement.');
           return;
         }
 
@@ -983,6 +1163,20 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
           return;
         }
 
+        // Validate quantities do not exceed warehouse stock (prevent negative stock)
+        const wh = inventoryWarehouseDirectory.find((w) => w.id === unitDraft.srcWarehouse);
+        const balances = wh?.inventoryBalances ?? [];
+        for (const entry of validItems) {
+          const bal = balances.find((b) => b.productId === entry.productId);
+          const avail = bal?.quantity ?? inventoryItems.find((p) => p.id === entry.productId)?.currentStock ?? 0;
+          if (avail < Number(entry.quantity)) {
+            const name = inventoryItems.find((p) => p.id === entry.productId)?.name ?? entry.productId;
+            error(`Quantity for ${name} exceeds available stock (${avail}) in this warehouse.`);
+            return;
+          }
+        }
+
+        const isDamageReplacement = unitDraft.reason === 'Damage Replacement';
         for (const entry of validItems) {
           await processStockOut({
             productId: entry.productId,
@@ -990,7 +1184,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
             quantity: Number(entry.quantity),
             reason: unitDraft.reason,
             date: unitDraft.date,
-            reference: unitDraft.reference || unitDraft.booking || undefined,
+            reference: isDamageReplacement ? unitDraft.damageIncidentId : (unitDraft.reference || unitDraft.booking || undefined),
+            referenceType: isDamageReplacement ? 'DAMAGE' : undefined,
             notes: unitDraft.notes || undefined,
             createdBy: unitDraft.confirmedBy || undefined,
             unitId: unitDraft.unit,
@@ -1001,12 +1196,14 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
       setRecordedItemsCount(
         isWH ? warehouseDraft!.items.filter((e) => e.productId && Number(e.quantity) > 0).length : unitDraft!.items.filter((e) => e.productId && Number(e.quantity) > 0).length
       );
+      setWasAdjustment(false);
       setShowSuccessModal(true);
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') {
         console.error('Stock-out error:', err);
       }
       error('We couldn’t complete the stock-out. Please try again.');
+      handleClose();
     }
   };
 
@@ -1163,10 +1360,11 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
               </div>
               <div>
                 <h2 className="text-[16px] font-semibold text-gray-900">
-                  Stock out logged successfully
+                  {wasAdjustment ? 'Adjustment recorded successfully' : 'Stock out logged successfully'}
                 </h2>
                 <p className="text-[12px] text-gray-600 mt-0.5">
-                  {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''} deducted from inventory
+                  {recordedItemsCount} item{recordedItemsCount !== 1 ? 's' : ''}{' '}
+                  {wasAdjustment ? 'adjusted (POSTed to backend)' : 'deducted from inventory'}
                 </p>
               </div>
             </div>
@@ -1220,7 +1418,8 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
               }}
             >
               <span style={{ fontSize: 12, color: C.midGray, fontFamily: 'Poppins' }}>
-                <span style={{ color: C.red }}>*</span> Required · Logged as <strong>Stock Out</strong>
+                <span style={{ color: C.red }}>*</span> Required · Logged as{' '}
+                <strong>{warehouseDraft?.reason === 'Cycle Count / Manual Adjustment (corrections only)' ? 'Adjustment (POST)' : 'Stock Out'}</strong>
               </span>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button

@@ -50,6 +50,20 @@ const MOCK_AGENTS: AgentWithStatus[] = [
 ];
 
 /**
+ * Check if the current user has already submitted an agent registration.
+ * Requires auth. Returns { hasRegistration, status?, email?, fullname? }.
+ */
+export type MyAgentRegistration =
+  | { hasRegistration: false }
+  | { hasRegistration: true; status: 'pending' | 'approved' | 'rejected'; email: string; fullname?: string };
+
+export async function getMyAgentRegistration(): Promise<MyAgentRegistration> {
+  const res = await fetch('/api/agent-registration/me', { credentials: 'same-origin' });
+  if (!res.ok) return { hasRegistration: false };
+  return res.json();
+}
+
+/**
  * Fetch agent registration & referral configuration.
  */
 export async function getAgentRegistrationConfig(): Promise<AgentRegistrationConfig> {

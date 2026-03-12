@@ -14,18 +14,42 @@ import {
   inventoryItems,
   inventoryUnits,
   inventoryUnitItems,
+  inventoryWarehouseDirectory,
+  isWarehouseActive,
 } from './lib/inventoryDataStore';
+import { filterItemsByWarehouse, getItemQuantityForWarehouse } from './helpers/itemsHelpers';
+import InventoryDropdown, { type InventoryDropdownOption } from './components/InventoryDropdown';
 import InventoryDashboardLinks from './components/InventoryDashboardLinks';
 import { useToast } from './hooks/useToast';
 
 export default function InventoryDashboardPage() {
   const { error: showError } = useToast();
   const [refreshTick, setRefreshTick] = useState(0);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(() => !isInventoryDatasetLoaded());
   const [initialLoadDone, setInitialLoadDone] = useState(() => isInventoryDatasetLoaded());
-  const itemsSnapshot = useMemo(() => [...getDisplayableInventoryItems()], [refreshTick]);
+  const allItems = useMemo(() => [...getDisplayableInventoryItems()], [refreshTick]);
+  const itemsSnapshot = useMemo(
+    () => filterItemsByWarehouse(allItems, selectedWarehouseId),
+    [allItems, selectedWarehouseId]
+  );
+  const warehouseOptions: InventoryDropdownOption<string>[] = useMemo(
+    () => [
+      { value: 'all', label: 'All Warehouses' },
+      ...inventoryWarehouseDirectory
+        .filter((w) => isWarehouseActive(w))
+        .map((w) => ({ value: w.id, label: w.name })),
+    ],
+    []
+  );
   const unitsSnapshot = useMemo(() => [...inventoryUnits], [refreshTick]);
   const unitItemsSnapshot = useMemo(() => [...inventoryUnitItems], [refreshTick]);
+  const unitsWithAllocations = useMemo(() => {
+    const unitIdsWithItems = new Set(
+      inventoryUnitItems.filter((i) => i.assignedToUnit).map((i) => i.assignedToUnit!)
+    );
+    return inventoryUnits.filter((u) => unitIdsWithItems.has(u.id));
+  }, [refreshTick]);
 
   useEffect(() => {
     let isMounted = true;
@@ -72,15 +96,18 @@ export default function InventoryDashboardPage() {
 
   const summary = useMemo((): InventoryDashboardSummary => {
     const items = itemsSnapshot;
-    const totalStocks = items.reduce((sum, item) => sum + item.currentStock, 0);
-    const lowStockCount = items.filter((item) => item.currentStock < item.minStock).length;
+    const totalStocks = items.reduce((sum, item) => sum + getItemQuantityForWarehouse(item.id, selectedWarehouseId), 0);
+    // Low stock is unit-level only (units have minStock; warehouses do not)
+    const lowStockCount = unitItemsSnapshot.filter(
+      (item) => item.currentStock < item.minStock && item.assignedToUnit
+    ).length;
     return {
       totalItems: items.length,
       totalStocks,
       lowStockCount,
       replenishmentNeeded: lowStockCount,
     };
-  }, [itemsSnapshot]);
+  }, [itemsSnapshot, selectedWarehouseId, unitItemsSnapshot]);
 
   return (
     <>
@@ -151,6 +178,19 @@ export default function InventoryDashboardPage() {
             <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
               View all inventory items, stock out, and add new items
             </p>
+            <div className="mt-3 max-w-[280px]">
+              <InventoryDropdown
+                value={selectedWarehouseId ?? 'all'}
+                onChange={(v) => setSelectedWarehouseId(v === 'all' ? null : v)}
+                options={warehouseOptions}
+                fullWidth={true}
+                leadingIcon={
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                    <path d="M2 11h9M2.5 5.5h8M6.5 2L2.5 5.5v5.5h8V5.5L6.5 2z" stroke="#94a3b8" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+            </div>
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '340ms' }}>
             <InventoryTable
@@ -158,6 +198,7 @@ export default function InventoryDashboardPage() {
               redirectOnClick={true}
               hideEditButton={true}
               isLoading={isLoading && !initialLoadDone}
+              warehouseId={selectedWarehouseId}
             />
           </div>
         </div>
@@ -174,7 +215,7 @@ export default function InventoryDashboardPage() {
           {isLoading && !initialLoadDone ? (
             <div className="inventory-panel-skeleton animate-pulse h-24" />
           ) : (
-            <SearchUnits units={unitsSnapshot} />
+            <SearchUnits units={unitsWithAllocations} />
           )}
           <div className="mt-6">
             <InventoryDashboardLinks />
@@ -198,6 +239,19 @@ export default function InventoryDashboardPage() {
             <p className="text-gray-600 text-sm mt-1" style={{ fontFamily: 'Poppins' }}>
               View all inventory items, stock out, and add new items
             </p>
+            <div className="mt-3 max-w-[280px]">
+              <InventoryDropdown
+                value={selectedWarehouseId ?? 'all'}
+                onChange={(v) => setSelectedWarehouseId(v === 'all' ? null : v)}
+                options={warehouseOptions}
+                fullWidth={true}
+                leadingIcon={
+                  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+                    <path d="M2 11h9M2.5 5.5h8M6.5 2L2.5 5.5v5.5h8V5.5L6.5 2z" stroke="#94a3b8" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                }
+              />
+            </div>
           </div>
           <div className="inventory-reveal" style={{ animationDelay: '360ms' }}>
             <InventoryTable
@@ -205,6 +259,7 @@ export default function InventoryDashboardPage() {
               redirectOnClick={true}
               hideEditButton={true}
               isLoading={isLoading && !initialLoadDone}
+              warehouseId={selectedWarehouseId}
             />
           </div>
         </div>

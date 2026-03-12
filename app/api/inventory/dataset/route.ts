@@ -17,6 +17,7 @@ type InventoryDataset = {
   purchaseOrderLines: unknown[];
   goodsReceipts: unknown[];
   stockMovements: unknown[];
+  damageAdjustments: unknown[];
   replenishmentItems: unknown[];
   dashboardSummary: {
     totalItems: number;
@@ -36,6 +37,7 @@ const emptyDataset: InventoryDataset = {
   purchaseOrderLines: [],
   goodsReceipts: [],
   stockMovements: [],
+  damageAdjustments: [],
   replenishmentItems: [],
   dashboardSummary: {
     totalItems: 0,
@@ -56,6 +58,7 @@ function ensureDatasetShape(raw: unknown): typeof emptyDataset {
       purchaseOrderLines: Array.isArray(o.purchaseOrderLines) ? o.purchaseOrderLines : emptyDataset.purchaseOrderLines,
       goodsReceipts: Array.isArray(o.goodsReceipts) ? o.goodsReceipts : emptyDataset.goodsReceipts,
       stockMovements: Array.isArray(o.stockMovements) ? o.stockMovements : emptyDataset.stockMovements,
+      damageAdjustments: Array.isArray(o.damageAdjustments) ? o.damageAdjustments : emptyDataset.damageAdjustments,
       replenishmentItems: Array.isArray(o.replenishmentItems) ? o.replenishmentItems : emptyDataset.replenishmentItems,
       dashboardSummary:
         o.dashboardSummary != null && typeof o.dashboardSummary === 'object' && !Array.isArray(o.dashboardSummary)

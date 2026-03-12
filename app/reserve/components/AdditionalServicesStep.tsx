@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookingFormData, AdditionalService } from '@/types/booking';
 import { BookingSummarySidebar } from './BookingSummarySidebar';
 import { NeedHelpCard } from './NeedHelpCard';
+import {
+  loadInventoryDataset,
+  inventoryItems,
+} from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 interface AdditionalServicesStepProps {
   formData: BookingFormData;
@@ -20,27 +24,14 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
   onBack,
   onCancel
 }) => {
-  // Default services: quantity now defaults to 0
-  const defaultServices: AdditionalService[] = [
-    { id: '1', name: 'Towel', quantity: 0, charge: 100.0 },
-    { id: '2', name: 'Pillow', quantity: 0, charge: 0.0 },
-    { id: '3', name: 'Blanket', quantity: 0, charge: 0.0 }
-  ];
-
-  const availableCatalog: Array<Pick<AdditionalService, 'name' | 'charge'>> = [
-    { name: 'Extra Towel', charge: 50.0 },
-    { name: 'Airport Transfer', charge: 500.0 },
-    { name: 'Breakfast (per pax)', charge: 150.0 },
-    { name: 'Cleaning Service', charge: 300.0 },
-    { name: 'Baby Crib', charge: 250.0 }
-  ];
-
   // refs / state
   const searchRef = useRef<HTMLInputElement | null>(null);
   const modalInnerRef = useRef<HTMLDivElement | null>(null); // scrollable catalog area
   const modalPanelRef = useRef<HTMLDivElement | null>(null); // for focus trap
   const [showServicesModal, setShowServicesModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [inventoryLoaded, setInventoryLoaded] = useState(false);
+  const [inventoryError, setInventoryError] = useState<string | null>(null);
 
   const services = Array.isArray(formData.additionalServices) ? formData.additionalServices : [];
 
@@ -51,12 +42,26 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
     return services.reduce((totalAcc, service) => totalAcc + (service.quantity || 0) * (service.charge || 0), 0);
   }, [services]);
 
-  // initialize defaults once
+  // Load inventory dataset once so we can derive add-on catalog from inventoryItems
   useEffect(() => {
-    if (!Array.isArray(formData.additionalServices) || formData.additionalServices.length === 0) {
-      onUpdate({ additionalServices: defaultServices });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadInventoryDataset(true);
+        if (!cancelled) {
+          setInventoryLoaded(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setInventoryError(
+            err instanceof Error ? err.message : 'Failed to load inventory items for add-ons.',
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // focus search when opened + escape to close
@@ -153,7 +158,13 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
   const updateServices = (updatedServices: AdditionalService[]) => onUpdate({ additionalServices: updatedServices });
 
   const handleServiceQuantityChange = (serviceId: string, quantity: number) => {
-    const updatedServices = services.map(s => (s.id === serviceId ? { ...s, quantity } : s));
+    const updatedServices = services.map((s) => {
+      if (s.id !== serviceId) return s;
+      const item = inventoryItems.find((it) => it.id === serviceId);
+      const maxQty = item ? Math.max(0, item.currentStock) : Number.POSITIVE_INFINITY;
+      const clamped = Math.min(Math.max(0, quantity), maxQty);
+      return { ...s, quantity: clamped };
+    });
     updateServices(updatedServices);
   };
 
@@ -180,25 +191,43 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
     onUpdate({ requestDescription: limited });
   };
 
-  const addServiceFromCatalog = (item: { name: string; charge: number }, quantity = 1) => {
-    const existingIndex = services.findIndex(s => s.name === item.name);
+  const addServiceFromCatalog = (item: { id: string; name: string; charge: number; maxQty: number }, quantity = 1) => {
+    const existingIndex = services.findIndex((s) => s.id === item.id);
     let updated: AdditionalService[];
     if (existingIndex >= 0) {
-      updated = services.map((s, idx) => (idx === existingIndex ? { ...s, quantity: (s.quantity || 0) + quantity } : s));
+      updated = services.map((s, idx) => {
+        if (idx !== existingIndex) return s;
+        const nextQty = (s.quantity || 0) + quantity;
+        const clamped = Math.min(Math.max(0, nextQty), item.maxQty);
+        return { ...s, quantity: clamped };
+      });
     } else {
       const newService: AdditionalService = {
-        id: Date.now().toString() + Math.random().toString(36).slice(2, 7),
+        id: item.id,
         name: item.name,
-        quantity,
-        charge: item.charge
+        quantity: Math.min(quantity, item.maxQty),
+        charge: item.charge,
       };
       updated = [...services, newService];
     }
     updateServices(updated);
   };
 
-  const filteredCatalog = availableCatalog.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+  const catalogFromInventory = useMemo(
+    () =>
+      inventoryItems
+        .filter((item) => item.currentStock > 0)
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          charge: item.unitCost,
+          maxQty: item.currentStock,
+        })),
+    [inventoryLoaded, inventoryItems],
+  );
+
+  const filteredCatalog = catalogFromInventory.filter((c) =>
+    c.name.toLowerCase().includes(searchQuery.trim().toLowerCase()),
   );
 
   const requestCharCount = countChars(formData.requestDescription);
@@ -270,7 +299,7 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
 
                   <div className="flex items-center justify-end gap-3 pr-3">
                     <div className="text-sm text-gray-800 font-medium">{formatCurrency(subtotal)}</div>
-                    {service.id !== '1' && service.id !== '2' && service.id !== '3' && (
+                    {(
                       <button
                         onClick={() => handleRemoveService(service.id)}
                         className="text-red-500 hover:text-red-700 ml-2 p-1"
@@ -415,8 +444,10 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
           >
             <div className="flex items-start justify-between mb-3 gap-3">
               <div>
-                <h4 className="text-lg font-semibold" style={{ fontFamily: 'Poppins' }}>Available Services</h4>
-                <p className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>Choose items to add to the booking.</p>
+                <h4 className="text-lg font-semibold" style={{ fontFamily: 'Poppins' }}>Available Add-ons</h4>
+                <p className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                  Choose items from inventory that still have stock.
+                </p>
               </div>
 
               <div className="flex items-center gap-2 ml-2">
@@ -441,7 +472,7 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
             </div>
 
             <div className="mb-3 flex items-center gap-3">
-              <input
+                  <input
                 ref={searchRef}
                 type="search"
                 placeholder="Search services..."
@@ -449,7 +480,7 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
                 style={{ fontFamily: 'Poppins' }}
-                aria-label="Search services"
+                aria-label="Search add-ons"
               />
               <button
                 onClick={() => setSearchQuery('')}
@@ -468,11 +499,23 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
                 maxHeight: 'calc(100vh - 220px)'
               }}
             >
-              {filteredCatalog.map((item) => (
-                <div key={item.name} className="flex items-center justify-between p-3 border rounded">
+              {inventoryError && (
+                <div className="text-center text-red-600 py-4" style={{ fontFamily: 'Poppins' }}>
+                  {inventoryError}
+                </div>
+              )}
+              {!inventoryError && !inventoryLoaded && (
+                <div className="text-center text-gray-500 py-4" style={{ fontFamily: 'Poppins' }}>
+                  Loading inventory items…
+                </div>
+              )}
+              {inventoryLoaded && filteredCatalog.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-3 border rounded">
                   <div className="min-w-0">
                     <div className="font-medium truncate" style={{ fontFamily: 'Poppins' }}>{item.name}</div>
-                    <div className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>{formatCurrency(item.charge)}</div>
+                    <div className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                      {formatCurrency(item.charge)} · In stock: {item.maxQty}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">

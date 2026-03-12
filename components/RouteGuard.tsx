@@ -34,8 +34,10 @@ function UnauthorizedScreen({
   const roleLabels: Record<NormalizedRole, string> = {
     admin: 'Admin',
     agent: 'Agent',
+    guest: 'Guest',
     finance: 'Finance',
     inventory: 'Inventory',
+    housekeeping: 'Housekeeping',
     operations: 'Operations',
     frontdesk: 'Front Desk',
     cleaner: 'Housekeeping',

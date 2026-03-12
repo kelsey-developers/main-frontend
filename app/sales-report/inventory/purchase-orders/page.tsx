@@ -1,17 +1,20 @@
 'use client';
 
 import React, { Fragment, useState, useMemo, useEffect } from 'react';
+import { useProductNames } from '../hooks/useProductNames';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
+import SingleDatePicker from '@/components/SingleDatePicker';
+import SummaryCard from '../components/SummaryCard';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
 import GoodsReceiptModal from '../components/GoodsReceiptModal';
 import GoodsReceiptEvidenceImages from '../components/GoodsReceiptEvidenceImages';
 import { useToast } from '../hooks/useToast';
-import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
+import { formatPhp, isPOOverdue, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
   loadInventoryDataset,
   inventoryPurchaseOrders, 
@@ -41,8 +44,8 @@ function EditPOModal({
   onClose: () => void;
   onSave: (data: { supplierId: string; expectedDelivery: string }) => void;
 }) {
+  const { error } = useToast();
   const [form, setForm] = useState({
-    supplierId: po.supplierId,
     expectedDelivery: po.expectedDelivery.split('T')[0], // Format as YYYY-MM-DD
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -74,7 +77,6 @@ function EditPOModal({
 
   const validate = () => {
     const nextErrors: Record<string, string> = {};
-    if (!form.supplierId) nextErrors.supplierId = 'Required';
     if (!form.expectedDelivery) nextErrors.expectedDelivery = 'Required';
     return nextErrors;
   };
@@ -86,8 +88,14 @@ function EditPOModal({
       return;
     }
 
+    const noChanges = form.expectedDelivery === po.expectedDelivery.split('T')[0];
+    if (noChanges) {
+      error('No changes were made. Cancel or close to exit.');
+      return;
+    }
+
     onSave({
-      supplierId: form.supplierId,
+      supplierId: po.supplierId,
       expectedDelivery: form.expectedDelivery,
     });
     onClose();
@@ -125,35 +133,25 @@ function EditPOModal({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
-              {renderFieldLabel('Supplier', 'supplierId')}
-              <InventoryDropdown
-                value={form.supplierId}
-                onChange={(value) => {
-                  setForm((prev) => ({ ...prev, supplierId: value }));
-                  setErrors((prev) => ({ ...prev, supplierId: '' }));
-                }}
-                options={inventorySuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
-                hideIcon={true}
-                fullWidth={true}
-                minWidthClass="min-w-0"
-              />
+              <label className="text-[10.5px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                Supplier
+              </label>
+              <div className="px-3 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-[13px] bg-gray-50 text-gray-700" style={{ fontFamily: 'Poppins' }}>
+                {inventorySuppliers.find((s) => s.id === po.supplierId)?.name ?? 'Unknown Supplier'}
+              </div>
+              <p className="text-[11px] text-gray-400" style={{ fontFamily: 'Poppins' }}>Supplier cannot be changed after PO creation.</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
               {renderFieldLabel('Expected Delivery Date', 'expectedDelivery')}
-              <input
-                type="date"
+              <SingleDatePicker
                 value={form.expectedDelivery}
-                onChange={(event) => {
-                  setForm((prev) => ({ ...prev, expectedDelivery: event.target.value }));
+                onChange={(date) => {
+                  setForm((prev) => ({ ...prev, expectedDelivery: date }));
                   setErrors((prev) => ({ ...prev, expectedDelivery: '' }));
                 }}
-                className={`px-3 py-2.5 border-[1.5px] rounded-lg text-[13px] outline-none w-full ${
-                  errors.expectedDelivery
-                    ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
-                    : 'border-gray-200 bg-white focus:border-[#05807e] focus:ring-4 focus:ring-[#cce8e8]'
-                }`}
-                style={{ fontFamily: 'Poppins' }}
+                placeholder="Select expected delivery date"
+                className="w-full"
               />
             </div>
 
@@ -206,6 +204,16 @@ function DetailDrawer({
   const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
   const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
   const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
+
+  const productIdsToFetch = useMemo(() => {
+    const inventoryIds = new Set(inventoryItems.map((i) => i.id));
+    return [...new Set(
+      poLines
+        .filter((l) => l.productId && !inventoryIds.has(l.productId) && !l.productName)
+        .map((l) => l.productId!)
+    )];
+  }, [po.id, poLines, inventoryItems]);
+  const fetchedProductNames = useProductNames(productIdsToFetch);
 
   useEffect(() => { requestAnimationFrame(() => setVisible(true)); }, []);
   useEffect(() => {
@@ -260,7 +268,7 @@ function DetailDrawer({
                 {po.id.toUpperCase()}
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
               <button onClick={handleClose} className="rounded-full border-0 text-2xl flex items-center justify-center flex-shrink-0 transition-colors"
                 style={{
@@ -275,13 +283,25 @@ function DetailDrawer({
           <div className="flex gap-6 mt-5 flex-wrap" style={{ fontFamily: 'Poppins' }}>
             {[
               { label: "Ordered", val: new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) },
-              { label: "Expected Delivery", val: new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) },
+              {
+                label: "Expected Delivery",
+                val: (
+                  <span className="flex items-center gap-2">
+                    {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                    {isPOOverdue(po) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/90 text-white" title="Exceeded expected delivery time">
+                        Overdue
+                      </span>
+                    )}
+                  </span>
+                ),
+              },
               { label: "Total Amount", val: formatPhp(po.totalAmount) },
               { label: "Receipts", val: `${goodsReceipts.length} GR${goodsReceipts.length !== 1 ? "s" : ""}` },
             ].map(m => (
               <div key={m.label}>
                 <div className="text-[10px] font-semibold tracking-wider mb-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>{m.label}</div>
-                <div className="text-sm font-semibold">{m.val}</div>
+                <div className="text-sm font-semibold">{typeof m.val === 'string' ? m.val : m.val}</div>
               </div>
             ))}
           </div>
@@ -361,7 +381,7 @@ function DetailDrawer({
                     const item = inventoryItems.find(x => x.id === line.productId);
                     return (
                       <tr key={line.id} className={`border-b border-[#e5e7eb] ${i % 2 === 0 ? 'bg-white' : 'bg-[#f4f7f7]'}`}>
-                        <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{item?.name || `Product #${line.productId}`}</td>
+                        <td className="px-3 py-3 text-[12.5px] text-[#374151] font-medium whitespace-normal break-words">{line.productName || item?.name || fetchedProductNames[line.productId] || `Product #${line.productId}`}</td>
                         <td className="px-3 py-3 text-[12.5px] text-[#374151]">{line.quantity}</td>
                         <td className="px-3 py-3 text-[12px] text-[#9ca3af]">{item?.unit || 'pcs'}</td>
                         <td className="px-3 py-3 text-[12.5px] text-[#374151]">{formatPhp(line.unitPrice)}</td>
@@ -485,11 +505,11 @@ function DetailDrawer({
             <button 
               onClick={() => onEditPO(po)}
               disabled={po.status === "cancelled"}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold text-sm rounded-lg transition-all hover:shadow-lg hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed" 
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold text-sm rounded-lg transition-all duration-150 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100" 
               style={{ boxShadow: '0 2px 8px rgba(11,88,88,0.2)' }}
             >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+              <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
             Edit PO
           </button>
@@ -603,10 +623,26 @@ function PurchaseOrdersPageContent() {
   const [search, setSearch] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<'all' | string>(supplierIdFromQuery ?? 'all');
   const [statusFilter, setStatusFilter] = useState<'all' | POStatus>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [goodsReceiptModalPO, setGoodsReceiptModalPO] = useState<PurchaseOrder | null>(null);
   const [editPOTarget, setEditPOTarget] = useState<PurchaseOrder | null>(null);
+  const [cancelPOConfirmTarget, setCancelPOConfirmTarget] = useState<PurchaseOrder | null>(null);
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    if (!cancelPOConfirmTarget) return;
+    const fn = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCancelPOConfirmTarget(null);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', fn);
+    return () => {
+      window.removeEventListener('keydown', fn);
+      document.body.style.overflow = '';
+    };
+  }, [cancelPOConfirmTarget]);
   const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
@@ -655,6 +691,10 @@ function PurchaseOrdersPageContent() {
       document.head.removeChild(style);
     };
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dateFrom, dateTo]);
 
   const statusOptions: InventoryDropdownOption<'all' | POStatus>[] = [
     { value: 'all', label: 'All Statuses' },
@@ -805,9 +845,14 @@ function PurchaseOrdersPageContent() {
   };
 
   const handleCancelPO = (po: PurchaseOrder) => {
-    if (!confirm(`Are you sure you want to cancel Purchase Order ${po.id.toUpperCase()}? This action cannot be undone.`)) {
-      return;
-    }
+    setCancelPOConfirmTarget(po);
+  };
+
+  const handleConfirmCancelPO = () => {
+    const po = cancelPOConfirmTarget;
+    if (!po) return;
+
+    setCancelPOConfirmTarget(null);
 
     const run = async () => {
       await apiClient.patch(`/api/purchase-orders/${po.id}`, {
@@ -839,15 +884,27 @@ function PurchaseOrdersPageContent() {
       if (selectedSupplierId !== 'all' && po.supplierId !== selectedSupplierId) {
         return false;
       }
-      
+
       const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
-      const matchesSearch = 
+      const matchesSearch =
         po.id.toLowerCase().includes(search.toLowerCase()) ||
         (supplier?.name.toLowerCase() || '').includes(search.toLowerCase());
       const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
-      return matchesSearch && matchesStatus;
+
+      let matchesDate = true;
+      if (dateFrom || dateTo) {
+        const orderDate = new Date(po.orderDate);
+        if (dateFrom) matchesDate = matchesDate && orderDate >= new Date(dateFrom);
+        if (dateTo) {
+          const to = new Date(dateTo);
+          to.setHours(23, 59, 59, 999);
+          matchesDate = matchesDate && orderDate <= to;
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [purchaseOrders, search, selectedSupplierId, statusFilter]);
+  }, [purchaseOrders, search, selectedSupplierId, statusFilter, dateFrom, dateTo]);
 
   const scopedOrders = useMemo(
     () =>
@@ -923,17 +980,13 @@ function PurchaseOrdersPageContent() {
           { label: 'RECEIVED', value: stats.received, gradient: 'from-green-600 to-green-700' },
           { label: 'CANCELLED', value: stats.cancelled, gradient: 'from-red-500 to-red-600' },
         ].map((stat) => (
-          <div key={stat.label} className={`relative bg-gradient-to-br ${stat.gradient} rounded-xl shadow-md p-4 overflow-hidden`}>
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-            <div className="relative z-10">
-              <div className="text-[10px] font-bold tracking-wider text-white/70 uppercase mb-2" style={{ fontFamily: 'Poppins' }}>
-                {stat.label}
-              </div>
-              <div className="text-3xl font-bold text-white leading-none" style={{ fontFamily: 'Poppins' }}>
-                {stat.value}
-              </div>
-            </div>
-          </div>
+          <SummaryCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            gradient={stat.gradient}
+            isLoading={isLoading}
+          />
         ))}
       </div>
 
@@ -1007,6 +1060,34 @@ function PurchaseOrdersPageContent() {
             menuZIndexClass="z-[999]"
           />
         </div>
+
+        <SingleDatePicker
+          value={dateFrom}
+          onChange={setDateFrom}
+          placeholder="From date"
+          className="min-w-[140px]"
+        />
+        <SingleDatePicker
+          value={dateTo}
+          onChange={setDateTo}
+          placeholder="To date"
+          className="min-w-[140px]"
+        />
+
+        {(dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+              setPage(1);
+            }}
+            className="px-3.5 py-2 rounded-lg border-[1.5px] border-gray-200 bg-white text-gray-600 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            Clear date
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -1063,8 +1144,13 @@ function PurchaseOrdersPageContent() {
                   <div className="text-[12.5px] text-gray-700">
                     {new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
                   </div>
-                  <div className="text-[12.5px] text-gray-700">
+                  <div className="text-[12.5px] text-gray-700 flex items-center gap-2">
                     {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                    {isPOOverdue(po) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/90 text-white" title="Exceeded expected delivery time">
+                        Overdue
+                      </span>
+                    )}
                   </div>
                   <div className="text-[12.5px] font-semibold text-gray-900">{formatPhp(po.totalAmount)}</div>
                   <div className="flex items-center">
@@ -1105,8 +1191,11 @@ function PurchaseOrdersPageContent() {
                     </div>
                     <div className="bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Expected</div>
-                      <div className="text-[13px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>
+                      <div className="text-[13px] font-bold text-gray-700 flex items-center gap-1.5 flex-wrap" style={{ fontFamily: 'Poppins' }}>
                         {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {isPOOverdue(po) && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/90 text-white">Overdue</span>
+                        )}
                       </div>
                     </div>
                     <div className="bg-[#e8f4f4] rounded-lg p-2">
@@ -1215,6 +1304,66 @@ function PurchaseOrdersPageContent() {
           onClose={() => setEditPOTarget(null)}
           onSave={handleEditPO}
         />
+      )}
+
+      {/* Cancel PO Confirmation Modal (stock out success styling) */}
+      {cancelPOConfirmTarget && createPortal(
+        <div
+          onClick={() => setCancelPOConfirmTarget(null)}
+          className="fixed inset-0 flex items-center justify-center z-[10001] p-4"
+          style={{
+            background: 'rgba(17, 24, 39, 0.38)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-[22px] w-full max-w-[448px] overflow-hidden shadow-2xl"
+            style={{
+              boxShadow: '0 24px 80px rgba(0,0,0,0.22)',
+            }}
+          >
+            <div className="p-6" style={{ fontFamily: 'Poppins' }}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-[16px] font-semibold text-gray-900">
+                    Cancel Purchase Order?
+                  </h2>
+                  <p className="text-[12px] text-gray-600 mt-0.5">
+                    {cancelPOConfirmTarget.id.toUpperCase()}
+                  </p>
+                </div>
+              </div>
+              <p className="text-[13px] text-gray-700 mb-5">
+                Are you sure you want to cancel this purchase order? This action cannot be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-4 py-2 text-[13px] rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors"
+                  style={{ fontFamily: 'Poppins' }}
+                  onClick={() => setCancelPOConfirmTarget(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="px-4 py-2 text-[13px] rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold hover:opacity-95 transition-opacity"
+                  style={{ fontFamily: 'Poppins' }}
+                  onClick={handleConfirmCancelPO}
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

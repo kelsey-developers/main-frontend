@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 export interface InventoryDropdownOption<T extends string> {
   value: T;
   label: string;
+  sublabel?: string;
   disabled?: boolean;
 }
 
@@ -120,7 +121,12 @@ export default function InventoryDropdown<T extends string>({
       ) : (
         <span className="w-3 inline-block" />
       )}
-      {option.label}
+      <span className="flex flex-col items-start min-w-0">
+        <span>{option.label}</span>
+        {option.sublabel && (
+          <span className="text-[11px] text-gray-500 mt-0.5">{option.sublabel}</span>
+        )}
+      </span>
     </button>
   ));
 

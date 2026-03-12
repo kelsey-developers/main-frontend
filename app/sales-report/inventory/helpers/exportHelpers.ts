@@ -78,12 +78,20 @@ export const exportStockMovementsToPdf = async (rows: EnhancedMovement[]) => {
   if (!printable) return;
 
   const totalRecords = rows.length;
-  const totalStockIn = rows
-    .filter((movement) => movement.type === 'in')
-    .reduce((sum, movement) => sum + movement.quantity, 0);
-  const totalStockOut = rows
-    .filter((movement) => movement.type === 'out')
-    .reduce((sum, movement) => sum + movement.quantity, 0);
+  const totalStockIn =
+    rows
+      .filter((movement) => movement.type === 'in')
+      .reduce((sum, movement) => sum + movement.quantity, 0) +
+    rows
+      .filter((movement) => movement.type === 'adjustment' && movement.quantity > 0)
+      .reduce((sum, movement) => sum + movement.quantity, 0);
+  const totalStockOut =
+    rows
+      .filter((movement) => movement.type === 'out')
+      .reduce((sum, movement) => sum + movement.quantity, 0) +
+    rows
+      .filter((movement) => movement.type === 'adjustment' && movement.quantity < 0)
+      .reduce((sum, movement) => sum + Math.abs(movement.quantity), 0);
 
   const logoDataUrl = await getImageDataUrl('/logo.png');
   const logoHtml = logoDataUrl ? `<img src="${logoDataUrl}" alt="System Logo" />` : `<div class="logo-fallback">K</div>`;

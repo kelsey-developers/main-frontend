@@ -8,6 +8,7 @@ import {
   inventoryWarehouseDirectory,
   inventoryUnits,
   inventoryUnitItems,
+  isWarehouseActive,
 } from '../../inventory/lib/inventoryDataStore';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 import { apiClient } from '@/lib/api/client';
@@ -22,7 +23,7 @@ const STOCK_OUT_REASONS = [
 ];
 
 export default function AdminInventorySetupPage() {
-  const activeWarehouses = inventoryWarehouseDirectory.filter((w) => w.isActive);
+  const activeWarehouses = inventoryWarehouseDirectory.filter((w) => isWarehouseActive(w));
   const lowStockItems = inventoryItems.filter((item) => item.currentStock < item.minStock);
 
   const [allowedReasons, setAllowedReasons] = useState<Record<string, boolean>>(() =>
@@ -138,7 +139,7 @@ export default function AdminInventorySetupPage() {
                   {inventoryWarehouseDirectory.slice(0, 3).map((w) => (
                     <li key={w.id} className="text-xs text-gray-600 truncate">
                       · {w.name}
-                      {!w.isActive && <span className="ml-1 text-gray-400">(inactive)</span>}
+                      {!isWarehouseActive(w) && <span className="ml-1 text-gray-400">(inactive)</span>}
                     </li>
                   ))}
                   {inventoryWarehouseDirectory.length > 3 && (
@@ -271,7 +272,7 @@ export default function AdminInventorySetupPage() {
                                 <tr key={item.id} className="align-middle">
                                   <td className="py-2.5 pr-4">
                                     <p className="font-medium text-gray-800 truncate">{item.name}</p>
-                                    <p className="text-xs text-gray-400">{item.category} · {item.unit}</p>
+                                    <p className="text-xs text-gray-400">{item.unit}</p>
                                   </td>
                                   <td className="py-2.5 text-right tabular-nums">
                                     <span className={isLow ? 'text-red-600 font-semibold' : 'text-gray-700'}>

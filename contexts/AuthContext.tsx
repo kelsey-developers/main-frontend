@@ -27,6 +27,7 @@ const PROTECTED_ROUTES = [
 export type NormalizedRole =
   | 'admin'
   | 'agent'
+  | 'guest'
   | 'finance'
   | 'inventory'
   | 'housekeeping'
@@ -52,6 +53,7 @@ interface AuthContextValue {
   roleLoading: boolean;
   isAdmin: boolean;
   isAgent: boolean;
+  isGuest: boolean;
   isFinance: boolean;
   isInventory: boolean;
   isHousekeeping: boolean;
@@ -68,6 +70,7 @@ function normalizeRole(role: string): NormalizedRole {
   const lower = role.toLowerCase();
   if (lower === 'admin') return 'admin';
   if (lower === 'agent') return 'agent';
+  if (lower === 'guest') return 'guest';
   if (lower === 'finance') return 'finance';
   if (lower === 'inventory') return 'inventory';
   if (lower === 'operations' || lower === 'operation') return 'operations';
@@ -128,6 +131,7 @@ export function AuthProvider({
     roleLoading: false,
     isAdmin: primaryRole === 'admin',
     isAgent: primaryRole === 'agent',
+    isGuest: primaryRole === 'guest',
     isFinance: primaryRole === 'finance',
     isInventory: primaryRole === 'inventory',
     isHousekeeping: primaryRole === 'housekeeping',
@@ -150,6 +154,7 @@ export function useAuth(): AuthContextValue {
       roleLoading: false,
       isAdmin: false,
       isAgent: false,
+      isGuest: false,
       isFinance: false,
       isInventory: false,
       isHousekeeping: false,

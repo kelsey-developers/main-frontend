@@ -1,8 +1,38 @@
 import type { InventoryDropdownOption } from '../components/InventoryDropdown';
-import { inventoryWarehouseDirectory } from '../lib/inventoryDataStore';
+import { inventoryWarehouseDirectory, isWarehouseActive } from '../lib/inventoryDataStore';
+import type { ReplenishmentItem } from '../types';
 
-type WarehouseLike = { id: string; name: string; isActive: boolean };
+type WarehouseLike = { id: string; name: string; deletedAt?: string | null };
 type ItemLike = { id: string; warehouseId: string };
+
+/** Quantity for a product in a warehouse context. When warehouseId is null, returns sum across all warehouses. */
+export const getItemQuantityForWarehouse = (
+  productId: string,
+  warehouseId: string | null
+): number => {
+  if (warehouseId) {
+    const wh = inventoryWarehouseDirectory.find((w) => w.id === warehouseId);
+    const bal = wh?.inventoryBalances?.find((b) => b.productId === productId);
+    return bal?.quantity ?? 0;
+  }
+  return inventoryWarehouseDirectory
+    .filter((w) => isWarehouseActive(w))
+    .reduce((sum, w) => {
+      const bal = w.inventoryBalances?.find((b) => b.productId === productId);
+      return sum + (bal?.quantity ?? 0);
+    }, 0);
+};
+
+/**
+ * Reorder level for status calculation.
+ * Min stock is inventory threshold (product-level), not per unit/warehouse.
+ */
+export const getItemReorderForWarehouse = (
+  item: ReplenishmentItem,
+  _warehouseId: string | null
+): number => {
+  return item.minStock ?? 0;
+};
 
 export const filterItemsByWarehouse = <T extends ItemLike>(
   items: T[],
@@ -27,7 +57,7 @@ export const buildWarehouseOptions = (
 ): InventoryDropdownOption<string>[] => {
   const options: InventoryDropdownOption<string>[] = [{ value: 'all', label: 'All Warehouses' }];
   warehouses
-    .filter((warehouse) => warehouse.isActive)
+    .filter((warehouse) => isWarehouseActive(warehouse))
     .forEach((warehouse) => {
       options.push({ value: warehouse.id, label: warehouse.name });
     });

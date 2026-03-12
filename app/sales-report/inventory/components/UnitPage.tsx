@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { InventoryUnit, ReplenishmentItem } from '../types';
 import SearchUnits from './SearchUnits';
 import InventoryTable from './InventoryTable';
-import { loadInventoryDataset, inventoryUnits, inventoryUnitItems } from '../lib/inventoryDataStore';
+import AuditTrailModal from './AuditTrailModal';
+import { loadInventoryDataset, inventoryUnits, inventoryUnitItems, inventoryItems } from '../lib/inventoryDataStore';
 import { useMockAuth } from '@/contexts/MockAuthContext';
+import { useToast } from '../hooks/useToast';
 
 interface UnitPageProps {
   unit: InventoryUnit;
@@ -16,6 +18,7 @@ interface UnitPageProps {
 const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
   const router = useRouter();
   const { user, userProfile, userRole } = useMockAuth();
+  const { warning } = useToast();
   const [refreshTick, setRefreshTick] = useState(0);
 
   // Listen for inventory movement updates to refresh unit items
@@ -32,45 +35,87 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
     };
   }, []);
 
+  const [auditItem, setAuditItem] = useState<ReplenishmentItem | null>(null);
+
   // Filter items for this unit and transform to ReplenishmentItem format
   const unitInventoryItems = useMemo<ReplenishmentItem[]>(() => {
     return inventoryUnitItems
       .filter((item) => item.assignedToUnit === unit.id)
-      .map((item) => ({
-        id: item.id,
-        sku: `UNIT-${item.id.toUpperCase()}`,
-        name: item.name,
-        type: item.type,
-        category: item.category,
-        unit: item.unit,
-        currentStock: item.currentStock,
-        minStock: 0,
-        shortfall: 0,
-        unitCost: 150, // Default cost for unit items
-        totalValue: item.currentStock * 150,
-        warehouseId: 'unit-storage',
-        warehouseName: unit.name,
-        isActive: true,
-        createdAt: '2025-01-01',
-        updatedAt: '2025-03-08',
-        lastModifiedBy: 'System',
-        currentsupplierId: 's1',
-        supplierName: 'Clean & Co',
-      }));
-  }, [unit.id, unit.name, refreshTick]);
+      .map((item) => {
+        const minStock = item.minStock ?? 0;
+        const shortfall = minStock > 0 ? Math.max(0, minStock - item.currentStock) : 0;
+        const productId = (item as { productId?: string }).productId ?? item.id;
+        const product =
+          inventoryItems.find((p) => p.id === productId) ??
+          inventoryItems.find((p) => p.name?.toLowerCase() === item.name?.toLowerCase());
+        const sku = product?.sku ?? item.id;
+        return {
+          id: item.id,
+          productId,
+          sku,
+          name: item.name,
+          type: product?.type ?? 'consumable',
+          category: product?.category ?? 'Other',
+          unit: item.unit,
+          currentStock: item.currentStock,
+          minStock,
+          shortfall,
+          unitCost: 150, // Default cost for unit items
+          totalValue: item.currentStock * 150,
+          warehouseId: 'unit-storage',
+          warehouseName: unit.name,
+          isActive: true,
+          createdAt: '2025-01-01',
+          updatedAt: '2025-03-08',
+          lastModifiedBy: 'System',
+          currentsupplierId: 's1',
+          supplierName: 'Clean & Co',
+        };
+      });
+  }, [unit.id, unit.name, refreshTick, inventoryItems]);
 
-  const handleUnitItemRestockClick = (item: ReplenishmentItem) => {
+  // Units that have items in unit allocation (for SearchUnits suggestions)
+  const unitsWithAllocations = useMemo(() => {
+    const unitIdsWithItems = new Set(
+      inventoryUnitItems.filter((i) => i.assignedToUnit).map((i) => i.assignedToUnit!)
+    );
+    return inventoryUnits.filter((u) => unitIdsWithItems.has(u.id));
+  }, [refreshTick]);
+
+  // Low stock alert toast for this unit
+  const lowStockCount = useMemo(() => {
+    return unitInventoryItems.filter((i) => i.minStock > 0 && i.currentStock < i.minStock).length;
+  }, [unitInventoryItems]);
+
+  const hasShownLowStockToast = useRef(false);
+  useEffect(() => {
+    if (lowStockCount > 0 && !hasShownLowStockToast.current) {
+      hasShownLowStockToast.current = true;
+      warning(
+        `${unit.name} has ${lowStockCount} item${lowStockCount !== 1 ? 's' : ''} below threshold`
+      );
+    }
+  }, [lowStockCount, unit.name, warning]);
+
+  const handleRestockClick = (item: ReplenishmentItem) => {
     const confirmedBy = userProfile?.fullname || userRole?.fullname || 'Admin User';
     const idNumber = user?.id || 'mock-1';
+    const productId = (item as ReplenishmentItem & { productId?: string }).productId ?? item.id;
     const params = new URLSearchParams({
       mode: 'unit',
       unitId: unit.id,
       confirmedBy,
       idNumber,
-      itemId: item.id,
+      itemId: productId,
       returnTo: `/sales-report/inventory/units/${unit.id}`,
     });
     router.push(`/sales-report/inventory/StockOut?${params.toString()}`);
+  };
+
+  const handleRowClick = (item: ReplenishmentItem) => {
+    const productId = (item as ReplenishmentItem & { productId?: string }).productId ?? item.id;
+    const product = inventoryItems.find((p) => p.id === productId);
+    setAuditItem(product ?? item);
   };
 
   return (
@@ -104,7 +149,7 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
 
       <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
         <aside className="w-full lg:w-80 flex-shrink-0 inventory-reveal" style={{ animationDelay: '90ms' }}>
-          <SearchUnits units={inventoryUnits} />
+          <SearchUnits units={unitsWithAllocations} />
         </aside>
         <div className="flex-1 flex-col min-w-0 gap-6">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden p-6 flex flex-row gap-6 inventory-reveal" style={{ animationDelay: '140ms' }}>
@@ -179,7 +224,7 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
                   Unit-Specific Stock Tracking
                 </p>
                 <p className="text-xs text-blue-700 mt-1" style={{ fontFamily: 'Poppins' }}>
-                  These stock numbers show only items currently in <strong>{unit.name}</strong>. Unit inventory does not enforce minimum thresholds; threshold alerts are managed at the warehouse level.
+                  These stock numbers show only items currently in <strong>{unit.name}</strong>. Stock below the inventory threshold triggers low-stock alerts. Edit threshold from the Allocations view on the Items page.
                 </p>
               </div>
             </div>
@@ -190,12 +235,17 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
               items={unitInventoryItems}
               hideEditButton={true}
               isUnitView={true}
-              onItemClick={handleUnitItemRestockClick}
+              onItemClick={handleRowClick}
+              onRestockClick={handleRestockClick}
             />
           </div>
         </div>
         
       </div>
+
+      {auditItem && (
+        <AuditTrailModal item={auditItem} onClose={() => setAuditItem(null)} />
+      )}
     </div>
   );
 };

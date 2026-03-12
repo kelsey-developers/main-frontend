@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
+import { useAuth } from '@/contexts/AuthContext';
 
 const NAV_ITEMS = [
   {
@@ -58,12 +59,45 @@ const NAV_ITEMS = [
   },
 ];
 
+function getInitials(fullname?: string | null, email?: string | null): string {
+  if (fullname && fullname.trim()) {
+    const names = fullname.trim().split(/\s+/);
+    if (names.length >= 2) return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+    return names[0][0].toUpperCase();
+  }
+  return email?.charAt(0).toUpperCase() || 'A';
+}
+
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [profileImageError, setProfileImageError] = useState(false);
+  const { userProfile, user, userRole, roleLoading, isAgent } = useAuth();
+
+  useEffect(() => {
+    if (roleLoading) return;
+    if (!user) return;
+    if (!isAgent) {
+      router.replace('/home');
+    }
+  }, [user, isAgent, roleLoading, router]);
+
+  const displayName = userProfile?.fullname || user?.email?.split('@')[0] || 'Agent';
+  const initials = getInitials(userProfile?.fullname, user?.email);
+  const showProfilePhoto = userProfile?.profile_photo && !profileImageError;
 
   const isActive = (href: string) =>
     href === '/agent' ? pathname === '/agent' : pathname.startsWith(href);
+
+  const canAccess = user && (roleLoading || isAgent);
+  if (!canAccess) {
+    return (
+      <div className={`${LAYOUT_NAVBAR_OFFSET} min-h-screen flex items-center justify-center bg-gray-50`}>
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#0B5858]" />
+      </div>
+    );
+  }
 
   return (
     <div className={`${LAYOUT_NAVBAR_OFFSET} min-h-screen bg-gray-50 font-poppins`}>
@@ -72,10 +106,21 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
         {/* Mobile top bar */}
         <div className="lg:hidden flex items-center justify-between py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#0B5858] shadow-sm flex items-center justify-center">
-              <span className="text-sm font-bold text-white tracking-wider">JD</span>
+            <div className="w-9 h-9 rounded-xl bg-[#0B5858] shadow-sm flex items-center justify-center overflow-hidden">
+              {showProfilePhoto ? (
+                <img
+                  src={userProfile!.profile_photo!}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={() => setProfileImageError(true)}
+                />
+              ) : (
+                <span className="text-sm font-bold text-white tracking-wider">{initials}</span>
+              )}
             </div>
-            <span className="text-base font-semibold text-gray-900 tracking-tight">Agent Hub</span>
+            <span className="text-base font-semibold text-gray-900 tracking-tight">
+              {roleLoading ? 'Agent Hub' : displayName}
+            </span>
           </div>
           <button
             type="button"
@@ -136,11 +181,22 @@ export default function AgentLayout({ children }: { children: React.ReactNode })
               {/* Agent Profile */}
               <div className="p-6 border-b border-gray-50 bg-gradient-to-b from-gray-50/50 to-white">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-[#0B5858] shadow-md shadow-[#0B5858]/20 flex items-center justify-center shrink-0">
-                    <span className="text-base font-bold text-white tracking-wider">JD</span>
+                  <div className="w-12 h-12 rounded-2xl bg-[#0B5858] shadow-md shadow-[#0B5858]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                    {showProfilePhoto ? (
+                      <img
+                        src={userProfile!.profile_photo!}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={() => setProfileImageError(true)}
+                      />
+                    ) : (
+                      <span className="text-base font-bold text-white tracking-wider">{initials}</span>
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-base font-bold text-gray-900 truncate tracking-tight">Juan Dela Cruz</p>
+                    <p className="text-base font-bold text-gray-900 truncate tracking-tight">
+                      {roleLoading ? 'Loading...' : displayName}
+                    </p>
                     <span className="inline-flex items-center px-2.5 py-0.5 mt-1 rounded-full text-xs font-medium bg-[#FACC15] text-[#0B5858]">
                       AGENT
                     </span>

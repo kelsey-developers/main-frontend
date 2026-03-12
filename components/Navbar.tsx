@@ -17,7 +17,7 @@ const HIDE_NAVBAR_ROUTES = ['/login', '/signup'];
 export default function Navbar() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  const { user, signOut, userRole, userProfile, isAdmin, isAgent, isFinance, isInventory, isHousekeeping, roleLoading } =
+  const { user, signOut, userRole, userProfile, isAdmin, isAgent, isGuest, isFinance, isInventory, isHousekeeping, roleLoading } =
     useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -492,6 +492,16 @@ export default function Navbar() {
                           My Loans
                         </Link>
                       )}
+                      {isGuest && (
+                        <Link
+                          href="/become-an-agent"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          Become an Agent
+                        </Link>
+                      )}
                       <Link
                         href="/settings"
                         onClick={() => setIsDropdownOpen(false)}
@@ -795,6 +805,16 @@ export default function Navbar() {
                     style={{ fontFamily: 'var(--font-poppins)' }}
                   >
                     My Loans
+                  </Link>
+                )}
+                {isGuest && (
+                  <Link
+                    href="/become-an-agent"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm font-semibold text-[#0B5858] hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    Become an Agent
                   </Link>
                 )}
                 <Link

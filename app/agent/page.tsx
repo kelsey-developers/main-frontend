@@ -1,27 +1,47 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getAgentOverviewStats } from '@/services/agentDashboardService';
-import { getBookingCommissions } from '@/services/commissionService';
-import type { AgentOverviewStats } from '@/services/agentDashboardService';
-import type { BookingCommission } from '@/types/commission';
+import { useAuth } from '@/contexts/AuthContext';
+import { getMyBookings } from '@/lib/api/bookings';
+import { getAgentBalance } from '@/lib/api/agents';
+import type { MyBookingItem } from '@/lib/api/bookings';
 
-const AGENT_ID = 'agent-001';
+const COMMISSION_RATE = 0.1;
 
 function fmt(n: number) {
   return `₱${n.toLocaleString()}`;
 }
 
-const STATUS_CONFIG: Record<BookingCommission['status'], { label: string; classes: string }> = {
+function mapStatus(raw: string): 'pending' | 'available' | 'paid' {
+  if (raw === 'penciled') return 'pending';
+  if (raw === 'confirmed') return 'available';
+  if (raw === 'completed') return 'paid';
+  return 'pending';
+}
+
+function bookingToCommission(b: MyBookingItem) {
+  const total = b.total_amount ?? 0;
+  const commission = Math.round(total * COMMISSION_RATE);
+  return {
+    id: b.id,
+    propertyName: b.listing?.title || 'Unit',
+    guestName: [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ') || 'Guest',
+    bookingRef: b.reference_code || `BKG-${b.id}`,
+    commissionAmount: commission,
+    status: mapStatus(b.raw_status || b.status || 'penciled'),
+  };
+}
+
+const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
   pending:   { label: 'Pending',   classes: 'bg-[#FACC15]/10 text-[#0B5858] border border-[#FACC15]/30' },
   approved:  { label: 'Approved',  classes: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20' },
   available: { label: 'Available', classes: 'bg-[#0B5858] text-white border border-[#0B5858]' },
   paid:      { label: 'Paid',      classes: 'bg-gray-50 text-gray-600 border border-gray-200' },
 };
 
-function StatusBadge({ status }: { status: BookingCommission['status'] }) {
+function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, classes: 'bg-gray-100 text-gray-600' };
   return (
     <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold tracking-widest uppercase ${cfg.classes}`}>
@@ -44,21 +64,54 @@ function StatCard({ label, value, sub, trend }: { label: string; value: string |
 }
 
 export default function AgentOverviewPage() {
-  const [stats, setStats] = useState<AgentOverviewStats | null>(null);
-  const [recent, setRecent] = useState<BookingCommission[]>([]);
+  const { userProfile, user } = useAuth();
+  const [bookings, setBookings] = useState<MyBookingItem[]>([]);
+  const [balance, setBalance] = useState<{ current_amount: number } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const displayName = userProfile?.fullname || user?.email?.split('@')[0] || 'Agent';
 
   useEffect(() => {
     (async () => {
-      const [s, commissions] = await Promise.all([
-        getAgentOverviewStats(AGENT_ID),
-        getBookingCommissions(AGENT_ID),
-      ]);
-      setStats(s);
-      setRecent(commissions.slice(0, 5));
-      setLoading(false);
+      try {
+        const [b, bal] = await Promise.all([
+          getMyBookings(),
+          getAgentBalance().catch(() => ({ current_amount: 0 })),
+        ]);
+        setBookings(b);
+        setBalance(bal);
+      } catch {
+        setBookings([]);
+        setBalance(null);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
+
+  const commissions = useMemo(() => bookings.map(bookingToCommission), [bookings]);
+  const pendingApprovalAmount = useMemo(
+    () => commissions.filter((c) => c.status === 'pending').reduce((s, c) => s + c.commissionAmount, 0),
+    [commissions]
+  );
+  const clearedFundsAmount = useMemo(
+    () => bookings
+      .filter((b) => (b.raw_status || b.status) === 'confirmed')
+      .reduce((s, b) => s + Math.round((b.total_amount ?? 0) * COMMISSION_RATE), 0),
+    [bookings]
+  );
+  const recent = useMemo(() => commissions.slice(0, 5), [commissions]);
+  const chartData = useMemo(() => {
+    const byMonth: Record<string, number> = {};
+    bookings.forEach((b) => {
+      const d = new Date(b.check_in_date || Date.now());
+      const m = d.toLocaleString('default', { month: 'short' });
+      const total = b.total_amount ?? 0;
+      byMonth[m] = (byMonth[m] || 0) + Math.round(total * COMMISSION_RATE);
+    });
+    const data = Object.entries(byMonth).map(([month, amount]) => ({ month, amount }));
+    return data.length > 0 ? data : [{ month: '—', amount: 0 }];
+  }, [bookings]);
 
   if (loading) {
     return (
@@ -68,8 +121,7 @@ export default function AgentOverviewPage() {
     );
   }
 
-  const wallet = stats!.wallet;
-  const chartData = stats!.monthlyEarnings || [];
+  const currentAmount = balance?.current_amount ?? 0;
 
   return (
     <div className="space-y-6 animate-fade-in-up">
@@ -79,7 +131,7 @@ export default function AgentOverviewPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Overview</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Welcome back, Juan. Here is your dashboard summary.
+            Welcome back, {displayName}. Here is your dashboard summary.
           </p>
         </div>
       </div>
@@ -99,7 +151,7 @@ export default function AgentOverviewPage() {
                   <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
                 </div>
               </div>
-              <p className="text-5xl font-bold text-white tracking-tight">{fmt(wallet.available)}</p>
+              <p className="text-5xl font-bold text-white tracking-tight">{fmt(currentAmount)}</p>
               <p className="text-sm font-medium text-white/60 mt-3">Ready to withdraw</p>
             </div>
             <Link
@@ -120,8 +172,8 @@ export default function AgentOverviewPage() {
               <h3 className="text-xl font-bold text-gray-900 tracking-tight">Commission Trend</h3>
             </div>
             <div className="text-right hidden sm:block">
-              <p className="text-lg font-bold text-[#0B5858]">+12.5%</p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">vs Last Month</p>
+              <p className="text-lg font-bold text-[#0B5858]">{bookings.length}</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Total bookings</p>
             </div>
           </div>
           
@@ -174,10 +226,10 @@ export default function AgentOverviewPage() {
 
       {/* Stats Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatCard label="Pending Approval" value={fmt(wallet.pending)} sub="Awaiting admin clearance" />
-        <StatCard label="Cleared Funds" value={fmt(wallet.approved)} sub="Ready to become available" />
-        <StatCard label="Total Bookings" value={stats!.recentBookingsCount} sub="Via your referral link" trend="+3 New" />
-        <StatCard label="Network Size" value={stats!.networkSize} sub="Active sub-agents" trend="+1 New" />
+        <StatCard label="Pending Approval" value={fmt(pendingApprovalAmount)} sub="Awaiting admin clearance" />
+        <StatCard label="Cleared Funds" value={fmt(clearedFundsAmount)} sub="Ready to become available" />
+        <StatCard label="Total Bookings" value={bookings.length} sub="Via your referral link" />
+        <StatCard label="Network Size" value={0} sub="Active sub-agents" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

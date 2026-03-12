@@ -161,7 +161,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
     type: 'consumable' as ItemType,
     unit: '',
     currentStock: 0,
-    minStock: 0,
     unitCost: 0,
     warehouseId: '',
     currentsupplierId: '',
@@ -180,7 +179,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
         type: item.type || 'consumable',
         unit: item.unit || '',
         currentStock: item.currentStock || 0,
-        minStock: item.minStock || 0,
         unitCost: item.unitCost || 0,
         warehouseId: item.warehouseId || '',
         currentsupplierId: item.currentsupplierId || '',
@@ -230,10 +228,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
       error('Unit is required');
       return;
     }
-    if (form.minStock < 0) {
-      error('Minimum stock cannot be negative');
-      return;
-    }
     if (form.currentStock < 0) {
       error('Current stock cannot be negative');
       return;
@@ -243,11 +237,29 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
       return;
     }
 
+    if (item) {
+      const noChanges =
+        (form.sku || '') === (item.sku || '') &&
+        form.name.trim() === (item.name || '').trim() &&
+        form.category === (item.category || '') &&
+        form.type === (item.type || 'consumable') &&
+        form.unit === (item.unit || '') &&
+        form.currentStock === (item.currentStock ?? 0) &&
+        form.unitCost === (item.unitCost ?? 0) &&
+        form.warehouseId === (item.warehouseId || '') &&
+        form.currentsupplierId === (item.currentsupplierId || '') &&
+        form.isActive === (item.isActive ?? true);
+      if (noChanges) {
+        error('No changes were made. Cancel or close to exit.');
+        return;
+      }
+    }
+
     const updatedData: Partial<ReplenishmentItem> = {
       ...form,
       category: form.category as ItemCategory,
       totalValue: form.currentStock * form.unitCost,
-      shortfall: Math.max(0, form.minStock - form.currentStock),
+      shortfall: Math.max(0, (item?.minStock ?? 0) - form.currentStock),
       updatedAt: new Date().toISOString(),
     };
 
@@ -448,30 +460,19 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
 
           <SectionLabel label="INVENTORY" />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-            <Field label="Current Stock" required hint="Use Stock In or Stock Out to change">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 20 }}>
+            <Field
+              label="Current Stock"
+              required
+              hint="Use Stock In or Stock Out to change"
+              hintBelow="Inventory threshold applies to all units. Edit from the Allocations view on the Items page."
+            >
               <input
                 type="number"
                 value={form.currentStock}
                 readOnly
                 min="0"
                 style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
-              />
-            </Field>
-
-            <Field label="Minimum Stock" required hint="alert threshold">
-              <input
-                type="number"
-                value={form.minStock}
-                onChange={(e) => setForm({ ...form, minStock: parseInt(e.target.value) || 0 })}
-                min="0"
-                style={inputStyle}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = C.teal;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = C.lightGray;
-                }}
               />
             </Field>
           </div>
@@ -487,7 +488,8 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                   { value: '', label: 'Select warehouse...' },
                   ...inventoryWarehouseDirectory.map((wh) => ({
                     value: wh.id,
-                    label: `${wh.name} - ${wh.location}`,
+                    label: wh.name,
+                    sublabel: wh.location,
                   })),
                 ]}
                 placeholder="Select warehouse..."
@@ -582,14 +584,6 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
                   PHP {(form.currentStock * form.unitCost).toLocaleString()}
                 </span>
               </div>
-              {form.currentStock < form.minStock && (
-                <div style={{ marginTop: 8, fontSize: 11, color: '#b45309', fontFamily: 'Poppins', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 9v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#b45309" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Stock is below minimum threshold (shortfall: {form.minStock - form.currentStock} {form.unit})
-                </div>
-              )}
             </div>
           )}
 

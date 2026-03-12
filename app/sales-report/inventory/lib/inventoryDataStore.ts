@@ -2,9 +2,10 @@ export {
   ITEM_CATEGORIES,
   ITEM_TYPES,
   ITEM_UNITS,
+  isWarehouseActive,
   loadInventoryDataset,
   isInventoryDatasetLoaded,
-  getWarehouseUnitAllocations,
+  getAllocatedQuantityForUnit,
   mockDashboardSummary as inventoryDashboardSummary,
   mockWarehouses as inventoryWarehouses,
   mockSuppliers as inventorySuppliers,
@@ -17,10 +18,13 @@ export {
   mockSupplierDirectoryData as inventorySupplierDirectory,
   mockReplenishmentItems as inventoryItems,
   mockUnitItems as inventoryUnitItems,
+  mockUnitAllocations as inventoryUnitAllocations,
   inventoryUnitsState as inventoryUnits,
   mockUnitStockMovements as inventoryUnitStockMovements,
   getDisplayableInventoryItems,
   updateInventoryItem,
+  updateProductMinStock,
+  getUnitAllocationsForDisplay,
   normalizeUnit,
 } from './inventoryData';
 
@@ -31,3 +35,5 @@ export type {
   SupplierDirectoryRecord,
   UnitStockMovementRow,
 } from './inventoryData';
+
+export type { ItemAllocation, UnitItemDisplay } from '../types';

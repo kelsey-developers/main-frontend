@@ -8,6 +8,7 @@ import {
   inventoryWarehouseDirectory,
   inventoryUnits,
   loadInventoryDataset,
+  isWarehouseActive,
 } from '@/app/sales-report/inventory/lib/inventoryDataStore';
 
 const C = {
@@ -289,7 +290,7 @@ export default function HousekeepingStockOutModal({ onClose }: HousekeepingStock
     () => [
       { value: '', label: 'Select warehouse…' },
       ...inventoryWarehouseDirectory
-        .filter((wh) => wh.isActive)
+        .filter((wh) => isWarehouseActive(wh))
         .map((w) => ({ value: w.id, label: w.name })),
     ],
     [refreshTick]

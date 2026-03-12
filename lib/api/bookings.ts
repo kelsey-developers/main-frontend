@@ -13,6 +13,7 @@ export interface MyBookingItem {
   check_in_date: string;
   check_out_date: string;
   status: string;
+  raw_status?: string;
   total_amount: number;
   transaction_number: string;
   listing: { title: string; location: string; main_image_url: string };

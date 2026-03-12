@@ -1,17 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState, type TouchEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import type { ReplenishmentItem } from '../types';
 import StatusBadge from './StatusBadge';
+import NoneBadge, { isNoneLike } from './NoneBadge';
 import {
   inventoryStockMovements,
   inventoryUnitStockMovements,
   inventoryPurchaseOrders,
   inventoryPurchaseOrderLines,
   inventorySupplierDirectory,
+  inventoryDamageAdjustments,
+  inventoryWarehouseDirectory,
+  inventoryUnitAllocations,
+  inventoryUnits,
+  inventoryItems,
+  isWarehouseActive,
 } from '../lib/inventoryDataStore';
+import { listDamageIncidents } from '@/lib/api/damageIncidents';
 
 interface AuditTrailModalProps {
   item: ReplenishmentItem | null;
@@ -60,6 +69,11 @@ interface DamageAdjustmentView {
   reportedBy: string;
   reviewedDate?: string;
   reviewedBy?: string;
+  /** For "View details" expansion */
+  incidentId?: string;
+  cause?: string;
+  estimatedCost?: number;
+  itemCost?: number;
 }
 
 interface PurchaseOrderView {
@@ -115,7 +129,7 @@ const SAMPLE_ITEM: AuditItem = {
   auditNotes: 'Recent damage incident resolved. Stock levels recovering after Q1 demand spike.',
   movements: [
     { id: 1, date: 'Feb 15, 2025', time: '08:00 AM', type: 'in', qty: 50, unit: 'pcs', notes: 'PO-2025-001 received', user: 'Admin User', ref: 'PO-2025-001' },
-    { id: 2, date: 'Feb 20, 2025', time: '08:00 AM', type: 'out', qty: 30, unit: 'pcs', notes: 'Distributed to Unit 711', user: 'Warehouse Staff' },
+    { id: 2, date: 'Feb 20, 2025', time: '08:00 AM', type: 'out', qty: 30, unit: 'pcs', notes: 'Stock out', user: 'Warehouse Staff' },
     { id: 3, date: 'Feb 22, 2025', time: '10:30 AM', type: 'adjustment', qty: -12, unit: 'pcs', notes: 'Cycle count correction', user: 'Admin User' },
     { id: 4, date: 'Feb 24, 2025', time: '02:15 PM', type: 'damage', qty: 2, unit: 'pcs', notes: 'Stained beyond use - removed', user: 'Warehouse Staff' },
     { id: 5, date: 'Mar 01, 2025', time: '09:00 AM', type: 'in', qty: 20, unit: 'pcs', notes: 'PO-2025-009 received', user: 'Admin User', ref: 'PO-2025-009' },
@@ -295,22 +309,8 @@ const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMob
           </div>
           {c.isStatus ? (
             <StatusBadge active={c.value === 'Active'} />
-          ) : c.label === 'SUPPLIER' && !c.value ? (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                padding: '4px 10px',
-                borderRadius: '9999px',
-                fontSize: '11px',
-                fontWeight: 700,
-                color: '#64748b',
-                background: '#f1f5f9',
-                border: '1px solid #e2e8f0',
-              }}
-            >
-              None
-            </span>
+          ) : (c.label === 'WAREHOUSE' || c.label === 'SUPPLIER') && isNoneLike(c.value) ? (
+            <NoneBadge />
           ) : (
             <>
               <div style={{ fontSize: '13.5px', fontWeight: 700, color: c.clickable ? B.primary : c.color }}>{c.value}</div>
@@ -323,27 +323,34 @@ const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMob
   );
 };
 
-const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMobile: boolean }) => {
-  // Extract unit distributions from movements
-  const unitDistributions = useMemo(() => {
-    const distributions: Record<string, { name: string; quantity: number }> = {};
-    
-    item.movements.forEach((movement) => {
-      if (movement.type === 'out' && movement.notes.includes('Unit')) {
-        // Extract unit name from notes (e.g., "Distributed to Unit 711")
-        const match = movement.notes.match(/Unit\s+(\d+)/);
-        if (match) {
-          const unitName = `Unit ${match[1]}`;
-          if (!distributions[unitName]) {
-            distributions[unitName] = { name: unitName, quantity: 0 };
-          }
-          distributions[unitName].quantity += movement.qty;
-        }
-      }
-    });
-    
-    return Object.values(distributions);
-  }, [item.movements]);
+const toDateTextShort = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+};
+
+const StorageDistributionSection = ({
+  isMobile,
+  productId,
+}: {
+  item: AuditItem;
+  isMobile: boolean;
+  productId: string;
+  mainWarehouseId?: string;
+  unit: string;
+}) => {
+  const allocations = useMemo(() => {
+    return inventoryUnitAllocations.filter((a) => a.productId === productId);
+  }, [productId]);
+
+  const unitNames = useMemo(() => {
+    return new Map(inventoryUnits.map((u) => [u.id, u.name]));
+  }, []);
+
+  const product = useMemo(() => {
+    return inventoryItems.find((p) => p.id === productId);
+  }, [productId]);
 
   return (
     <div style={{ 
@@ -353,83 +360,41 @@ const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMob
       padding: '16px',
       borderLeft: `3px solid ${B.primary}`
     }}>
-      {/* Warehouse Storage */}
-      <div style={{ marginBottom: unitDistributions.length > 0 ? '16px' : '0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M2 14V6L8 2L14 6V14H2Z" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M5 14V9H11V14" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>MAIN WAREHOUSE</span>
-        </div>
-        <div style={{ paddingLeft: '24px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
-            {item.warehouse}
-          </div>
-          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-            Primary storage location
-          </div>
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="12" height="12" rx="2" stroke={B.primary} strokeWidth="1.5"/>
+          <path d="M6 2V14M10 2V14M2 6H14M2 10H14" stroke={B.primary} strokeWidth="1.5"/>
+        </svg>
+        <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>INVENTORY ALLOCATION</span>
       </div>
-
-      {/* Unit Distributions */}
-      {unitDistributions.length > 0 && (
-        <>
-          <div style={{ height: '1px', background: '#e8f4f4', margin: '12px 0' }} />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="2" y="2" width="12" height="12" rx="2" stroke={B.primary} strokeWidth="1.5"/>
-                <path d="M6 2V14M10 2V14M2 6H14M2 10H14" stroke={B.primary} strokeWidth="1.5"/>
-              </svg>
-              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>DISTRIBUTED TO UNITS</span>
-            </div>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(140px, 1fr))', 
-              gap: '8px',
-              paddingLeft: '24px'
-            }}>
-              {unitDistributions.map((dist, idx) => (
-                <div 
-                  key={idx}
-                  style={{
-                    background: '#e8f4f4',
-                    border: `1px solid ${B.tint20}`,
-                    borderRadius: '8px',
-                    padding: '8px 10px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                >
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: B.dark }}>{dist.name}</span>
-                  <span style={{ 
-                    fontSize: '11px', 
-                    fontWeight: 700, 
-                    color: B.primary,
-                    background: 'white',
-                    padding: '2px 6px',
-                    borderRadius: '4px'
-                  }}>
-                    {dist.quantity} {item.movements[0]?.unit || 'pcs'}
-                  </span>
-                </div>
+      {allocations.length === 0 ? (
+        <div style={{ paddingLeft: '24px', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+          No allocation records for this product.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', fontFamily: 'Poppins' }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${B.tint20}` }}>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>ID</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>PRODUCT ID</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>UNIT</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>MIN STOCK</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>UPDATED AT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allocations.map((a) => (
+                <tr key={a.id} style={{ borderBottom: `1px solid ${B.tint10}` }}>
+                  <td style={{ padding: '10px', color: '#0f172a', fontFamily: "'DM Mono', monospace", fontSize: '11px' }}>{a.id}</td>
+                  <td style={{ padding: '10px', color: '#0f172a', fontFamily: "'DM Mono', monospace", fontSize: '11px' }}>{a.productId}</td>
+                  <td style={{ padding: '10px', color: B.dark, fontWeight: 600 }}>{unitNames.get(a.unitId) ?? a.unitId}</td>
+                  <td style={{ padding: '10px', color: '#0f172a', fontWeight: 600 }}>{product?.minStock ?? 0}</td>
+                  <td style={{ padding: '10px', color: '#64748b', fontSize: '11.5px' }}>{toDateTextShort(a.updatedAt)}</td>
+                </tr>
               ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {unitDistributions.length === 0 && (
-        <div style={{ 
-          paddingLeft: '24px', 
-          marginTop: '8px',
-          fontSize: '11.5px', 
-          color: '#94a3b8',
-          fontStyle: 'italic'
-        }}>
-          No unit distributions recorded
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -437,8 +402,11 @@ const StorageDistributionSection = ({ item, isMobile }: { item: AuditItem; isMob
 };
 
 const DamageCard = ({ d }: { d: DamageAdjustmentView }) => {
+  const [expanded, setExpanded] = useState(false);
   const sev = SEV_STYLE[d.severity];
   const dst = DST_STYLE[d.status];
+  const hasDetails = d.incidentId || d.cause || d.estimatedCost != null || d.itemCost != null;
+
   return (
     <div
       style={{
@@ -511,6 +479,56 @@ const DamageCard = ({ d }: { d: DamageAdjustmentView }) => {
           </span>
         )}
       </div>
+
+      {hasDetails && (
+        <>
+          {expanded ? (
+            <div
+              style={{
+                marginTop: '12px',
+                paddingTop: '12px',
+                borderTop: '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                fontSize: '12px',
+                color: '#475569',
+              }}
+            >
+              {d.incidentId && (
+                <div><strong style={{ color: '#64748b' }}>Incident ID:</strong> <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: 4 }}>{d.incidentId}</code></div>
+              )}
+              {d.cause && (
+                <div><strong style={{ color: '#64748b' }}>Cause:</strong> {d.cause}</div>
+              )}
+              {d.estimatedCost != null && (
+                <div><strong style={{ color: '#64748b' }}>Estimated cost:</strong> PHP {d.estimatedCost.toLocaleString()}</div>
+              )}
+              {d.itemCost != null && (
+                <div><strong style={{ color: '#64748b' }}>Item cost:</strong> PHP {d.itemCost.toLocaleString()}</div>
+              )}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            style={{
+              marginTop: '10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: B.primary,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              textAlign: 'left',
+              fontFamily: 'Poppins',
+            }}
+          >
+            {expanded ? 'Hide details' : 'View details'}
+          </button>
+        </>
+      )}
     </div>
   );
 };
@@ -657,7 +675,24 @@ const mapPOStatus = (value?: string): POStatus => {
   return 'Pending';
 };
 
-const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
+interface ApiDamageItem {
+  id: string;
+  incidentId: string;
+  productId: string;
+  quantity: number;
+  notes?: string;
+  reportedAt?: string;
+  reportedBy?: string;
+  status?: string;
+  cause?: string;
+  estimatedCost?: number;
+  itemCost?: number;
+}
+
+const normalizeAuditItem = (
+  source: ReplenishmentItem,
+  apiDamageForProduct?: ApiDamageItem[]
+): AuditItem => {
   // Use live data: source.stockMovements if provided, else inventoryStockMovements + unit movements
   const getMovementRows = (): Movement[] => {
     if (source.stockMovements && source.stockMovements.length > 0) {
@@ -698,7 +733,7 @@ const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
           id: id ?? `mv-${index + 1}`,
           date: toDateText(sm.createdAt) ?? '',
           time: toTimeText(sm.createdAt) ?? '',
-          type: (movement as { type?: 'in' | 'out' }).type ?? 'out',
+          type: (movement as { type?: MovementType }).type ?? 'out',
           qty: sm.quantity,
           unit: source.unit,
           notes: (sm.notes || 'No note provided.').trim(),
@@ -723,20 +758,44 @@ const normalizeAuditItem = (source: ReplenishmentItem): AuditItem => {
   };
   const movementRows = getMovementRows();
 
-  const damageRows: DamageAdjustmentView[] = source.damageAdjustments && source.damageAdjustments.length > 0
-    ? source.damageAdjustments.map((damage, index) => ({
-        id: damage.id ?? `da-${index + 1}`,
-        qty: damage.quantity,
-        unit: source.unit,
-        severity: mapDamageSeverity(damage.severity),
-        status: mapDamageStatus(damage.status),
-        description: (damage.notes || 'No description provided.').trim(),
-        reportedDate: toDateText(damage.reportedAt) || SAMPLE_ITEM.damageAdjustments[Math.min(index, SAMPLE_ITEM.damageAdjustments.length - 1)].reportedDate,
-        reportedBy: damage.reportedBy || 'Unknown User',
-        reviewedDate: toDateText(damage.reviewedAt),
-        reviewedBy: damage.reviewedBy,
+  const localDamage = (source.damageAdjustments && source.damageAdjustments.length > 0)
+    ? source.damageAdjustments
+    : inventoryDamageAdjustments.filter((d) => d.productId === source.id);
+  const apiDamage = apiDamageForProduct ?? [];
+  const damageSource = apiDamage.length > 0
+    ? apiDamage.map((d) => ({
+        id: d.id,
+        productId: d.productId,
+        quantity: d.quantity,
+        severity: undefined as 'low' | 'medium' | 'high' | undefined,
+        status: d.status as 'open' | 'in-review' | 'resolved' | 'rejected' | undefined,
+        notes: d.notes,
+        reportedAt: d.reportedAt,
+        reportedBy: d.reportedBy,
+        reviewedAt: undefined,
+        reviewedBy: undefined,
+        incidentId: d.incidentId,
+        cause: d.cause,
+        estimatedCost: d.estimatedCost,
+        itemCost: d.itemCost,
       }))
-    : SAMPLE_ITEM.damageAdjustments;
+    : localDamage;
+  const damageRows: DamageAdjustmentView[] = damageSource.map((damage, index) => ({
+    id: damage.id ?? `da-${index + 1}`,
+    qty: damage.quantity,
+    unit: source.unit,
+    severity: mapDamageSeverity(damage.severity ?? ''),
+    status: mapDamageStatus(damage.status ?? ''),
+    description: (damage.notes || 'No description provided.').trim(),
+    reportedDate: toDateText(damage.reportedAt) || SAMPLE_ITEM.damageAdjustments[Math.min(index, SAMPLE_ITEM.damageAdjustments.length - 1)].reportedDate,
+    reportedBy: damage.reportedBy || 'Unknown User',
+    reviewedDate: toDateText(damage.reviewedAt),
+    reviewedBy: damage.reviewedBy,
+    incidentId: (damage as { incidentId?: string }).incidentId,
+    cause: (damage as { cause?: string }).cause,
+    estimatedCost: (damage as { estimatedCost?: number }).estimatedCost,
+    itemCost: (damage as { itemCost?: number }).itemCost,
+  }));
 
   const getLastPO = (): PurchaseOrderView | null => {
     const productLines = inventoryPurchaseOrderLines
@@ -799,6 +858,43 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
   const [swipeStartY, setSwipeStartY] = useState<number | null>(null);
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
   const [movementRefreshTick, setMovementRefreshTick] = useState(0);
+  const [apiDamageForProduct, setApiDamageForProduct] = useState<ApiDamageItem[]>([]);
+  const [damageLoading, setDamageLoading] = useState(false);
+
+  useEffect(() => {
+    if (!item?.id) {
+      setApiDamageForProduct([]);
+      setDamageLoading(false);
+      return;
+    }
+    setDamageLoading(true);
+    void listDamageIncidents()
+      .then((incidents) => {
+        const items: ApiDamageItem[] = [];
+        for (const inc of incidents) {
+          for (const it of inc.items ?? []) {
+            if (it.productId === item.id) {
+              items.push({
+                id: inc.id + (it.id ?? '') + it.productId,
+                incidentId: inc.id,
+                productId: it.productId,
+                quantity: it.quantity,
+                notes: inc.description,
+                reportedAt: inc.reportDate ?? inc.dateReported ?? inc.createdAt,
+                reportedBy: inc.reportedBy,
+                status: inc.status,
+                cause: inc.cause,
+                estimatedCost: inc.estimatedCost,
+                itemCost: it.itemCost,
+              });
+            }
+          }
+        }
+        setApiDamageForProduct(items);
+      })
+      .catch(() => setApiDamageForProduct([]))
+      .finally(() => setDamageLoading(false));
+  }, [item?.id]);
 
   useEffect(() => {
     setMounted(true);
@@ -839,8 +935,8 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
   const viewItem = useMemo(() => {
     if (!item) return null;
-    return normalizeAuditItem(item);
-  }, [item, movementRefreshTick]);
+    return normalizeAuditItem(item, apiDamageForProduct);
+  }, [item, movementRefreshTick, apiDamageForProduct]);
 
   if (!viewItem || !mounted) return null;
   const pendingDamage = viewItem.damageAdjustments.filter((d) => d.status !== 'Resolved').length;
@@ -979,8 +1075,14 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
           <Divider />
 
-          <SectionLabel>Storage & Distribution</SectionLabel>
-          <StorageDistributionSection item={viewItem} isMobile={isMobile} />
+          <SectionLabel>Inventory Allocation</SectionLabel>
+          <StorageDistributionSection
+            item={viewItem}
+            isMobile={isMobile}
+            productId={item!.id}
+            mainWarehouseId={item!.warehouseId}
+            unit={item!.unit || 'pcs'}
+          />
 
           <Divider />
 
@@ -998,8 +1100,8 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
           <Divider />
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <SectionLabel>Damage Adjustments</SectionLabel>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <SectionLabel>Recent damage incidents</SectionLabel>
             {viewItem.damageAdjustments.length > 0 && (
               <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '99px', background: pendingDamage > 0 ? '#fef2f2' : '#f0fdf4', color: pendingDamage > 0 ? '#dc2626' : '#15803d', marginTop: '-8px' }}>
                 {viewItem.damageAdjustments.length} report{viewItem.damageAdjustments.length !== 1 ? 's' : ''}
@@ -1007,9 +1109,41 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {viewItem.damageAdjustments.map((d) => (
-              <DamageCard key={d.id} d={d} />
-            ))}
+            {viewItem.damageAdjustments.length > 0 ? (
+              <>
+                {viewItem.damageAdjustments.slice(0, 3).map((d) => (
+                  <DamageCard key={d.id} d={d} />
+                ))}
+                <Link
+                  href="/sales-report/inventory/damage-reports"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: B.primary,
+                    marginTop: '4px',
+                    fontFamily: 'Poppins',
+                  }}
+                >
+                  {viewItem.damageAdjustments.length > 3
+                    ? `See all ${viewItem.damageAdjustments.length} incident reports`
+                    : 'See all incident reports'}
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path d="M4.5 2L8 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Link>
+              </>
+            ) : damageLoading ? (
+              <div style={{ border: `1px solid ${B.tint20}`, borderRadius: '12px', padding: '24px 16px', background: 'white', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+                Loading damage reports…
+              </div>
+            ) : (
+              <div style={{ border: `1px solid ${B.tint20}`, borderRadius: '12px', padding: '24px 16px', background: 'white', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+                No damage report
+              </div>
+            )}
           </div>
 
           <Divider />

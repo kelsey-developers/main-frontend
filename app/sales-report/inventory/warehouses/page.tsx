@@ -1,29 +1,31 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import SummaryCard from '../components/SummaryCard';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
+import NoneBadge from '../components/NoneBadge';
 import ActiveStatusToggle from '../components/ActiveStatusToggle';
 import { getWarehouseStats } from '../helpers/warehouseHelpers';
 import {
-  getWarehouseUnitAllocations,
+  isWarehouseActive,
   loadInventoryDataset,
   inventoryWarehouseDirectory,
   inventoryItems,
-  updateInventoryItem,
   type WarehouseDirectoryRecord,
   type WarehouseInventoryBalanceRow,
   type WarehouseMovementRow,
 } from '../lib/inventoryDataStore';
-import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
+import { processStockOut, recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
 import { apiClient } from '@/lib/api/client';
 import { useToast } from '../hooks/useToast';
+import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
 type Warehouse = WarehouseDirectoryRecord;
-type SortKey = 'name' | 'mostStock' | 'mostLowStock';
+type SortKey = 'name' | 'mostStock';
 
 const formatRecordedDateTime = (value?: string) => {
   const base = value ? new Date(value) : new Date();
@@ -65,14 +67,24 @@ const WarehouseFormModal = ({
   onClose: () => void;
   onSave: (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => void;
 }) => {
+  const { error } = useToast();
   const isEdit = Boolean(warehouse);
   const [form, setForm] = useState({
     name: warehouse?.name ?? '',
     location: warehouse?.location ?? '',
     description: warehouse?.description ?? '',
-    isActive: warehouse?.isActive ?? true,
+    deletedAt: warehouse?.deletedAt ?? undefined,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setForm({
+      name: warehouse?.name ?? '',
+      location: warehouse?.location ?? '',
+      description: warehouse?.description ?? '',
+      deletedAt: warehouse?.deletedAt ?? undefined,
+    });
+  }, [warehouse?.id, warehouse?.name, warehouse?.location, warehouse?.description, warehouse?.deletedAt]);
 
   useEffect(() => {
     const fn = (event: KeyboardEvent) => {
@@ -112,17 +124,29 @@ const WarehouseFormModal = ({
       return;
     }
 
+    if (isEdit && warehouse) {
+      const noChanges =
+        form.name.trim() === (warehouse.name ?? '').trim() &&
+        form.location.trim() === (warehouse.location ?? '').trim() &&
+        form.description.trim() === (warehouse.description ?? '').trim() &&
+        (form.deletedAt ?? null) === (warehouse.deletedAt ?? null);
+      if (noChanges) {
+        error('No changes were made. Cancel or close to exit.');
+        return;
+      }
+    }
+
     onSave({
       name: form.name.trim(),
       location: form.location.trim(),
       description: form.description.trim(),
-      isActive: form.isActive,
+      deletedAt: form.deletedAt,
     });
     onClose();
   };
 
-  const handleStatusToggle = (newStatus: boolean) => {
-    setForm((prev) => ({ ...prev, isActive: newStatus }));
+  const handleStatusToggle = (active: boolean) => {
+    setForm((prev) => ({ ...prev, deletedAt: active ? undefined : new Date().toISOString().slice(0, 19) + 'Z' }));
   };
 
   const renderFieldLabel = (label: string, fieldKey: keyof typeof form) => (
@@ -213,9 +237,19 @@ const WarehouseFormModal = ({
             </div>
 
             <ActiveStatusToggle
-              isActive={form.isActive}
+              isActive={!form.deletedAt}
               onToggle={handleStatusToggle}
               entityType="warehouse"
+              canDeactivate={
+                warehouse
+                  ? () => {
+                      const stats = getWarehouseStats(warehouse);
+                      return stats.totalStockUnits === 0
+                        ? true
+                        : 'Move or deplete all stock before deactivating this warehouse.';
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -243,14 +277,14 @@ const WarehouseTransferStockModal = ({
   warehouses: Warehouse[];
   sourceWarehouse: Warehouse;
   onClose: () => void;
-  onTransfer: (params: { fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number }) => void;
+  onTransfer: (params: { fromWarehouseId: string; toWarehouseId: string; productId: string; quantity: number }) => void | Promise<void>;
 }) => {
   const [toWarehouseId, setToWarehouseId] = useState('');
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
 
-  const destinationWarehouses = warehouses.filter((warehouse) => warehouse.id !== sourceWarehouse.id && warehouse.isActive);
+  const destinationWarehouses = warehouses.filter((warehouse) => warehouse.id !== sourceWarehouse.id && isWarehouseActive(warehouse));
   const transferableProducts = sourceWarehouse.inventoryBalances.filter((row) => row.quantity > 0);
 
   useEffect(() => {
@@ -265,7 +299,9 @@ const WarehouseTransferStockModal = ({
     };
   }, [onClose]);
 
-  const submit = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = async () => {
     const qty = Number(quantity);
     const sourceRow = sourceWarehouse.inventoryBalances.find((row) => row.productId === productId);
 
@@ -286,13 +322,21 @@ const WarehouseTransferStockModal = ({
       return;
     }
 
-    onTransfer({
-      fromWarehouseId: sourceWarehouse.id,
-      toWarehouseId,
-      productId,
-      quantity: qty,
-    });
-    onClose();
+    setError('');
+    setIsSubmitting(true);
+    try {
+      await onTransfer({
+        fromWarehouseId: sourceWarehouse.id,
+        toWarehouseId,
+        productId,
+        quantity: qty,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Transfer failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return createPortal(
@@ -376,8 +420,13 @@ const WarehouseTransferStockModal = ({
           <button onClick={onClose} className="px-5 py-2.5 rounded-lg border-[1.5px] border-gray-200 bg-white text-gray-600 text-[13px] font-medium hover:bg-gray-50 transition-colors" style={{ fontFamily: 'Poppins' }}>
             Cancel
           </button>
-          <button onClick={submit} className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity" style={{ fontFamily: 'Poppins' }}>
-            Transfer Stock
+          <button
+            onClick={() => void submit()}
+            disabled={isSubmitting}
+            className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            {isSubmitting ? 'Transferring…' : 'Transfer Stock'}
           </button>
         </div>
       </div>
@@ -390,32 +439,13 @@ const WarehouseDetailModal = ({
   warehouse,
   onClose,
   onTransfer,
-  onThresholdChange,
 }: {
   warehouse: Warehouse;
   onClose: () => void;
   onTransfer: () => void;
-  onThresholdChange: (warehouseId: string, productId: string, reorderLevel: number) => void;
 }) => {
   const router = useRouter();
   const stats = getWarehouseStats(warehouse);
-  const unitAllocations = getWarehouseUnitAllocations(warehouse.id);
-  
-  // Track pending threshold changes before saving
-  const [pendingThresholds, setPendingThresholds] = useState<Record<string, number>>({});
-  
-  const hasUnsavedChanges = Object.keys(pendingThresholds).length > 0;
-  
-  const handleSaveThresholds = () => {
-    Object.entries(pendingThresholds).forEach(([productId, reorderLevel]) => {
-      onThresholdChange(warehouse.id, productId, reorderLevel);
-    });
-    setPendingThresholds({});
-  };
-  
-  const getThresholdValue = (productId: string, originalValue: number) => {
-    return pendingThresholds[productId] ?? originalValue;
-  };
 
   useEffect(() => {
     const fn = (event: KeyboardEvent) => {
@@ -450,7 +480,7 @@ const WarehouseDetailModal = ({
             </div>
             <h2 className="text-[20px] font-bold text-white" style={{ fontFamily: 'Poppins' }}>{warehouse.name}</h2>
             <p className="text-white/80 text-[13px] mt-1" style={{ fontFamily: 'Poppins' }}>{warehouse.location}</p>
-            <div className="mt-2"><StatusBadge active={warehouse.isActive} /></div>
+            <div className="mt-2"><StatusBadge active={isWarehouseActive(warehouse)} /></div>
           </div>
           <button onClick={onClose} aria-label="Close" className="bg-white/15 hover:bg-white/25 rounded-lg w-8 h-8 flex items-center justify-center transition-colors flex-shrink-0">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -466,9 +496,6 @@ const WarehouseDetailModal = ({
           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold tracking-wide bg-white text-gray-700 border border-gray-200" style={{ fontFamily: 'Poppins' }}>
             Stock Units: {stats.totalStockUnits}
           </span>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold tracking-wide bg-amber-50 text-amber-700 border border-amber-200" style={{ fontFamily: 'Poppins' }}>
-            Low Stock Alerts: {stats.lowStockItems}
-          </span>
           <div className="flex-1"></div>
           <button
             onClick={onTransfer}
@@ -482,20 +509,9 @@ const WarehouseDetailModal = ({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="border border-gray-200 rounded-lg overflow-hidden self-start">
-              <div className="px-4 py-3 bg-[#f8fbfb] border-b border-gray-200 flex items-center justify-between">
+              <div className="px-4 py-3 bg-[#f8fbfb] border-b border-gray-200">
                 <h3 className="text-[14px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>Inventory Balance</h3>
-                {hasUnsavedChanges && (
-                  <button
-                    onClick={handleSaveThresholds}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white text-[11px] font-semibold hover:opacity-90 transition-opacity"
-                    style={{ fontFamily: 'Poppins' }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M13 2L6 13L2 9" />
-                    </svg>
-                    Save Changes
-                  </button>
-                )}
+                <p className="text-[11px] text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>Warehouses track quantity only; minimum thresholds apply to units.</p>
               </div>
               {warehouse.inventoryBalances.length === 0 ? (
                 <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
@@ -508,48 +524,15 @@ const WarehouseDetailModal = ({
                       <tr className="text-[10.5px] uppercase tracking-wider text-gray-500 border-b border-gray-100" style={{ fontFamily: 'Poppins' }}>
                         <th className="px-4 py-2.5">Product</th>
                         <th className="px-4 py-2.5 text-center">Quantity</th>
-                        <th className="px-4 py-2.5 text-center">Min Threshold</th>
-                        <th className="px-4 py-2.5 text-center">Shortfall</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {warehouse.inventoryBalances.map((row) => {
-                        const currentThreshold = getThresholdValue(row.productId, row.reorderLevel);
-                        const shortfall = Math.max(0, currentThreshold - row.quantity);
-                        return (
-                          <tr key={row.productId} className="border-b border-gray-100 last:border-b-0">
-                            <td className="px-4 py-2.5 text-[13px] text-gray-800" style={{ fontFamily: 'Poppins' }}>{row.productName}</td>
-                            <td className="px-4 py-2.5 text-[13px] text-center text-gray-700" style={{ fontFamily: 'Poppins' }}>{row.quantity}</td>
-                            <td className="px-4 py-2.5 text-[13px] text-center text-gray-700" style={{ fontFamily: 'Poppins' }}>
-                              <input
-                                type="number"
-                                min={0}
-                                value={currentThreshold}
-                                onFocus={(e) => e.target.select()}
-                                onKeyDown={(e) => {
-                                  // If current value is 0 and user types a digit, select all first
-                                  // so the digit replaces the 0 instead of appending
-                                  if (currentThreshold === 0 && /^\d$/.test(e.key)) {
-                                    e.currentTarget.select();
-                                  }
-                                }}
-                                onChange={(event) => {
-                                  const rawValue = event.target.value;
-                                  // Strip leading zeros: "06" -> "6", "00" -> "0"
-                                  const cleanValue = rawValue === '' ? 0 : parseInt(rawValue, 10) || 0;
-                                  setPendingThresholds((prev) => ({
-                                    ...prev,
-                                    [row.productId]: cleanValue,
-                                  }));
-                                }}
-                                className="w-20 px-2 py-1 text-center border border-gray-200 rounded-md text-[12px]"
-                                style={{ fontFamily: 'Poppins' }}
-                              />
-                            </td>
-                            <td className="px-4 py-2.5 text-[13px] text-center font-semibold text-amber-700" style={{ fontFamily: 'Poppins' }}>{shortfall}</td>
-                          </tr>
-                        );
-                      })}
+                      {warehouse.inventoryBalances.map((row) => (
+                        <tr key={row.productId} className="border-b border-gray-100 last:border-b-0">
+                          <td className="px-4 py-2.5 text-[13px] text-gray-800" style={{ fontFamily: 'Poppins' }}>{row.productName}</td>
+                          <td className="px-4 py-2.5 text-[13px] text-center text-gray-700" style={{ fontFamily: 'Poppins' }}>{row.quantity}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -606,46 +589,6 @@ const WarehouseDetailModal = ({
                 )}
               </div>
 
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-3 bg-[#f8fbfb] border-b border-gray-200 flex items-center justify-between">
-                  <h3 className="text-[14px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>Item Allocations to Units</h3>
-                </div>
-                {unitAllocations.length === 0 ? (
-                  <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                    No items allocated to units yet.
-                  </div>
-                ) : (
-                  <div className="max-h-[320px] overflow-auto divide-y divide-gray-100">
-                    {unitAllocations.map((unit) => (
-                      <button
-                        key={unit.unitId}
-                        onClick={() => router.push(`/sales-report/inventory/units/${unit.unitId}`)}
-                        className="w-full text-left px-4 py-3 bg-white hover:bg-gray-50 transition-colors group"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[13px] font-semibold text-[#0b5858] group-hover:text-[#05807e] transition-colors" style={{ fontFamily: 'Poppins' }}>
-                            {unit.unitName}
-                          </span>
-                          <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#0b5858] group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {unit.items.map((item) => (
-                            <span
-                              key={`${unit.unitId}-${item.productId}`}
-                              className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200"
-                              style={{ fontFamily: 'Poppins' }}
-                            >
-                              {item.productName} ({item.quantity})
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -702,7 +645,7 @@ const WarehousesSkeleton = () => (
 
 export default function WarehousesPage() {
   const router = useRouter();
-  const { error, success } = useToast();
+  const { error, success, warning } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -718,7 +661,6 @@ export default function WarehousesPage() {
   const sortOptions: InventoryDropdownOption<SortKey>[] = [
     { value: 'name', label: 'Name A-Z' },
     { value: 'mostStock', label: 'Most stock units' },
-    { value: 'mostLowStock', label: 'Most low-stock items' },
   ];
 
   const filtered = useMemo(() => {
@@ -730,15 +672,12 @@ export default function WarehousesPage() {
           warehouse.location.toLowerCase().includes(q);
         const matchesFilter =
           filter === 'All' ||
-          (filter === 'Active' ? warehouse.isActive : !warehouse.isActive);
+          (filter === 'Active' ? isWarehouseActive(warehouse) : !isWarehouseActive(warehouse));
         return matchesSearch && matchesFilter;
       })
       .sort((a, b) => {
         if (sortKey === 'name') return a.name.localeCompare(b.name);
-        if (sortKey === 'mostStock') {
-          return getWarehouseStats(b).totalStockUnits - getWarehouseStats(a).totalStockUnits;
-        }
-        return getWarehouseStats(b).lowStockItems - getWarehouseStats(a).lowStockItems;
+        return getWarehouseStats(b).totalStockUnits - getWarehouseStats(a).totalStockUnits;
       });
   }, [warehouses, search, filter, sortKey]);
 
@@ -749,25 +688,35 @@ export default function WarehousesPage() {
 
   const totals = useMemo(() => {
     const totalWarehouses = warehouses.length;
-    const activeCount = warehouses.filter((warehouse) => warehouse.isActive).length;
+    const activeCount = warehouses.filter((warehouse) => isWarehouseActive(warehouse)).length;
     const inactiveCount = totalWarehouses - activeCount;
-    const lowStockTotal = warehouses.reduce((acc, warehouse) => acc + getWarehouseStats(warehouse).lowStockItems, 0);
-    return { totalWarehouses, activeCount, inactiveCount, lowStockTotal };
+    return { totalWarehouses, activeCount, inactiveCount };
   }, [warehouses]);
 
   const applyWarehouseList = () => {
     setWarehouses([...inventoryWarehouseDirectory]);
   };
 
-  const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
+  const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'> & { deletedAt?: string | null }) => {
     if (editTarget) {
       const run = async () => {
-        await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}`, {
-          name: data.name,
-          location: data.location ?? '',
-          description: data.description ?? '',
-          isActive: data.isActive ?? true,
-        });
+        const statusChanged = (data.deletedAt ?? null) !== (editTarget.deletedAt ?? null);
+        const isActive = !data.deletedAt;
+        const detailsChanged =
+          data.name.trim() !== (editTarget.name ?? '').trim() ||
+          data.location.trim() !== (editTarget.location ?? '').trim() ||
+          (data.description ?? '').trim() !== (editTarget.description ?? '').trim();
+
+        if (statusChanged) {
+          await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}/status`, { isActive });
+        }
+        if (detailsChanged) {
+          await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}`, {
+            name: data.name,
+            location: data.location ?? '',
+            description: data.description ?? '',
+          });
+        }
         await loadInventoryDataset(true);
         applyWarehouseList();
         setFormOpen(false);
@@ -832,7 +781,26 @@ export default function WarehousesPage() {
     };
   }, []);
 
-  const handleTransferStock = ({
+  const hasShownOutOfStockToast = React.useRef(false);
+  useEffect(() => {
+    if (isLoading || warehouses.length === 0) return;
+    const warehousesWithOutOfStock = warehouses.filter((wh) => {
+      if (!isWarehouseActive(wh)) return false;
+      const stats = getWarehouseStats(wh);
+      return stats.lowStockItems > 0;
+    });
+    if (warehousesWithOutOfStock.length > 0 && !hasShownOutOfStockToast.current) {
+      hasShownOutOfStockToast.current = true;
+      const names = warehousesWithOutOfStock.map((w) => w.name).join(', ');
+      warning(
+        warehousesWithOutOfStock.length === 1
+          ? `${warehousesWithOutOfStock[0].name} has items out of stock (0 quantity)`
+          : `${warehousesWithOutOfStock.length} warehouses have items out of stock: ${names}`
+      );
+    }
+  }, [isLoading, warehouses, warning]);
+
+  const handleTransferStock = async ({
     fromWarehouseId,
     toWarehouseId,
     productId,
@@ -843,98 +811,23 @@ export default function WarehousesPage() {
     productId: string;
     quantity: number;
   }) => {
-    setWarehouses((prev) => {
-      const source = prev.find((warehouse) => warehouse.id === fromWarehouseId);
-      const destination = prev.find((warehouse) => warehouse.id === toWarehouseId);
-      if (!source || !destination) return prev;
+    const product = inventoryItems.find((p) => p.id === productId);
+    const productName = product?.name ?? 'Item';
+    const destName = inventoryWarehouseDirectory.find((w) => w.id === toWarehouseId)?.name ?? 'destination';
 
-      const sourceProduct = source.inventoryBalances.find((row) => row.productId === productId);
-      if (!sourceProduct || sourceProduct.quantity < quantity) return prev;
-
-      const movementTime = formatRecordedDateTime();
-      const transferNote = `Transfer from ${source.name} to ${destination.name}`;
-      const receiveNote = `Transfer from ${source.name}`;
-      const outboundMovementId = nextWarehouseMovementId(prev);
-      const inboundMovementId = `WM-${String(Number(outboundMovementId.slice(3)) + 1).padStart(3, '0')}`;
-
-      return prev.map((warehouse) => {
-        if (warehouse.id === fromWarehouseId) {
-          const updatedBalances = warehouse.inventoryBalances
-            .map((row) =>
-              row.productId === productId
-                ? { ...row, quantity: Math.max(0, row.quantity - quantity) }
-                : row
-            )
-            .filter((row) => row.quantity > 0 || row.reorderLevel > 0);
-
-          const movement: WarehouseMovementRow = {
-            id: outboundMovementId,
-            type: 'transfer',
-            productName: sourceProduct.productName,
-            quantity,
-            date: movementTime.date,
-            time: movementTime.time,
-            recordedAt: movementTime.recordedAt,
-            note: transferNote,
-          };
-
-          return { ...warehouse, inventoryBalances: updatedBalances, stockMovements: [movement, ...warehouse.stockMovements] };
-        }
-
-        if (warehouse.id === toWarehouseId) {
-          const existingProduct = warehouse.inventoryBalances.find((row) => row.productId === productId);
-          let updatedBalances: WarehouseInventoryBalanceRow[];
-          if (existingProduct) {
-            updatedBalances = warehouse.inventoryBalances.map((row) =>
-              row.productId === productId
-                ? { ...row, quantity: row.quantity + quantity }
-                : row
-            );
-          } else {
-            updatedBalances = [
-              ...warehouse.inventoryBalances,
-              {
-                productId,
-                productName: sourceProduct.productName,
-                quantity,
-                reorderLevel: sourceProduct.reorderLevel,
-              },
-            ];
-          }
-
-          const movement: WarehouseMovementRow = {
-            id: inboundMovementId,
-            type: 'transfer',
-            productName: sourceProduct.productName,
-            quantity,
-            date: movementTime.date,
-            time: movementTime.time,
-            recordedAt: movementTime.recordedAt,
-            note: receiveNote,
-          };
-
-          return { ...warehouse, inventoryBalances: updatedBalances, stockMovements: [movement, ...warehouse.stockMovements] };
-        }
-
-        return warehouse;
-      });
+    await processStockOut({
+      productId,
+      warehouseId: fromWarehouseId,
+      quantity,
+      reason: 'Inter-warehouse Transfer',
+      date: getTodayInPhilippineTime(),
+      notes: `Transfer to ${destName}`,
+      transferToWarehouseId: toWarehouseId,
     });
-  };
 
-  const handleWarehouseThresholdChange = (
-    _warehouseId: string,
-    productId: string,
-    reorderLevel: number
-  ) => {
-    const safeValue = Math.max(0, reorderLevel);
-
-    // Persist to backend and update in-memory store (syncs warehouse directory)
-    updateInventoryItem(productId, { minStock: safeValue });
-
-    // Recompute derived values (shortfall, low stock status, etc.)
-    void recomputeAllInventoryDerivedValues().finally(() => {
-      applyWarehouseList();
-    });
+    await loadInventoryDataset(true);
+    applyWarehouseList();
+    success(`${quantity} ${productName} transferred successfully.`);
   };
 
   return (
@@ -997,19 +890,14 @@ export default function WarehousesPage() {
           { label: 'Total Warehouses', value: totals.totalWarehouses, gradient: 'from-[#0B5858] to-[#0a4a4a]' },
           { label: 'Active', value: totals.activeCount, gradient: 'from-green-600 to-green-700' },
           { label: 'Inactive', value: totals.inactiveCount, gradient: 'from-gray-500 to-gray-600' },
-          { label: 'Low Stock Items', value: totals.lowStockTotal, gradient: 'from-amber-500 to-amber-600' },
         ].map((stat, index) => (
-          <div key={index} className={`relative bg-gradient-to-br ${stat.gradient} rounded-xl shadow-md p-4 overflow-hidden`}>
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-            <div className="relative z-10">
-              <div className="text-[10px] font-bold tracking-wider text-white/70 uppercase mb-2" style={{ fontFamily: 'Poppins' }}>
-                {stat.label}
-              </div>
-              <div className="text-3xl font-bold text-white leading-none" style={{ fontFamily: 'Poppins' }}>
-                {stat.value}
-              </div>
-            </div>
-          </div>
+          <SummaryCard
+            key={index}
+            label={stat.label}
+            value={stat.value}
+            gradient={stat.gradient}
+            isLoading={isLoading}
+          />
         ))}
       </div>
 
@@ -1070,7 +958,7 @@ export default function WarehousesPage() {
             {['WAREHOUSE NAME', 'LOCATION', 'TOTAL ITEMS', 'TOTAL STOCK UNITS', 'LOW STOCK ITEMS', 'STATUS', 'ACTIONS'].map((header, index) => (
               <div
                 key={header}
-                className={`text-[10.5px] font-semibold tracking-wider text-white/70 ${index >= 2 && index <= 4 ? 'text-center' : ''}`}
+                className={`text-[10.5px] font-semibold tracking-wider text-white/70 ${index >= 2 && index <= 3 ? 'text-center' : ''}`}
                 style={{ fontFamily: 'Poppins' }}
               >
                 {header}
@@ -1099,7 +987,7 @@ export default function WarehousesPage() {
                   key={warehouse.id}
                   className={`warehouse-row grid grid-cols-1 lg:grid-cols-[1.45fr_1.25fr_100px_120px_130px_120px_340px] gap-3 lg:gap-0 px-4 py-4 ${
                     !isLast ? 'border-b border-gray-100' : ''
-                  } ${warehouse.isActive ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
+                  } ${isWarehouseActive(warehouse) ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-start justify-between lg:block">
@@ -1119,7 +1007,7 @@ export default function WarehousesPage() {
                       </div>
                       {/* Mobile status badge in top-right */}
                       <div className="ml-3 lg:hidden">
-                        <StatusBadge active={warehouse.isActive} />
+                        <StatusBadge active={isWarehouseActive(warehouse)} />
                       </div>
                     </div>
                   </div>
@@ -1130,25 +1018,14 @@ export default function WarehousesPage() {
 
                   <div className="hidden lg:flex items-center justify-center text-[14px] font-bold text-[#0b5858]" style={{ fontFamily: 'Poppins' }}>{stats.totalItems}</div>
                   <div className="hidden lg:flex items-center justify-center text-[14px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.totalStockUnits}</div>
-                  <div className="hidden lg:flex items-center justify-center text-[14px] font-bold text-amber-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</div>
-                  <div className="hidden lg:flex items-center"><StatusBadge active={warehouse.isActive} /></div>
+                  <div className="hidden lg:flex items-center justify-center">
+                    {stats.lowStockItems === 0 ? <NoneBadge /> : (
+                      <span className="text-[14px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</span>
+                    )}
+                  </div>
+                  <div className="hidden lg:flex items-center"><StatusBadge active={isWarehouseActive(warehouse)} /></div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setEditTarget(warehouse);
-                        setFormOpen(true);
-                      }}
-                      className="text-[#05807e] hover:text-[#0b5858] transition-colors p-1.5 rounded hover:bg-[#e8f4f4]"
-                      title="Edit warehouse"
-                      aria-label="Edit warehouse"
-                      style={{ fontFamily: 'Poppins' }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-
                     <button
                       onClick={() => {
                         setSelectedWarehouseId(warehouse.id);
@@ -1171,6 +1048,21 @@ export default function WarehousesPage() {
                     >
                       View Inventory
                     </button>
+
+                    <button
+                      onClick={() => {
+                        setEditTarget(warehouse);
+                        setFormOpen(true);
+                      }}
+                      className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
+                      title="Edit warehouse"
+                      aria-label="Edit warehouse"
+                      style={{ fontFamily: 'Poppins' }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
                   </div>
 
                   <div className="lg:hidden grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
@@ -1184,7 +1076,7 @@ export default function WarehousesPage() {
                     </div>
                     <div className="bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Low Stock</div>
-                      <div className="text-[15px] font-bold text-amber-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</div>
+                      {stats.lowStockItems === 0 ? <NoneBadge /> : <div className="text-[15px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</div>}
                     </div>
                   </div>
                 </div>
@@ -1233,7 +1125,6 @@ export default function WarehousesPage() {
             setTransferTarget(selectedWarehouse);
             setDetailModalOpen(false);
           }}
-          onThresholdChange={handleWarehouseThresholdChange}
         />
       )}
     </>

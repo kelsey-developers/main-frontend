@@ -5,33 +5,76 @@ import { createPortal } from 'react-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getBookingCommissions, getCommissionWallet } from '@/services/commissionService';
-import type { BookingCommission, CommissionWallet, CommissionStatus } from '@/types/commission';
+import { getMyBookings } from '@/lib/api/bookings';
+import type { MyBookingItem } from '@/lib/api/bookings';
+import type { CommissionStatus } from '@/types/commission';
 import CommissionBreakdownModal from './components/CommissionBreakdownModal';
 import SingleDatePicker from '@/components/SingleDatePicker';
 
-const AGENT_ID = 'agent-001';
+const COMMISSION_RATE = 0.1; // 10%
+
+/** Map booking status to commission status */
+function mapStatus(raw: string): CommissionStatus {
+  if (raw === 'penciled') return 'pending';
+  if (raw === 'confirmed') return 'available';
+  if (raw === 'completed') return 'paid';
+  return 'pending';
+}
+
+/** Convert MyBookingItem to commission row (10% of total_amount) */
+function bookingToCommission(b: MyBookingItem) {
+  const checkIn = b.check_in_date || '';
+  const checkOut = b.check_out_date || '';
+  const nights = checkIn && checkOut
+    ? Math.max(0, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / (24 * 60 * 60 * 1000)))
+    : 0;
+  const total = b.total_amount ?? 0;
+  const commission = Math.round(total * COMMISSION_RATE);
+  return {
+    id: b.id,
+    bookingId: b.id,
+    bookingRef: b.reference_code || `BKG-${b.id}`,
+    agentId: 'me',
+    referralCode: 'Direct',
+    propertyId: '',
+    propertyName: b.listing?.title || 'Unit',
+    guestName: [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ') || 'Guest',
+    checkIn,
+    checkOut,
+    numberOfNights: nights,
+    numberOfGuests: 1,
+    baseAmount: total,
+    extraCharges: 0,
+    totalBookingAmount: total,
+    commissionRate: 10,
+    commissionAmount: commission,
+    referralLevel: 1 as const,
+    referralAgentName: undefined,
+    status: mapStatus(b.raw_status || b.status || 'penciled'),
+    createdAt: checkIn || new Date().toISOString(),
+  };
+}
 
 function fmt(n: number) {
   return `₱${n.toLocaleString()}`;
 }
 
-const STATUS_CONFIG: Record<CommissionStatus, { label: string; classes: string; dot: string }> = {
+const STATUS_CONFIG: Record<string, { label: string; classes: string; dot: string }> = {
   pending:   { label: 'Pending',   classes: 'bg-[#FACC15]/10 text-[#0B5858] border border-[#FACC15]/30', dot: 'bg-[#FACC15]' },
   approved:  { label: 'Approved',  classes: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20', dot: 'bg-[#0B5858]/50' },
   available: { label: 'Available', classes: 'bg-[#0B5858] text-white border border-[#0B5858]', dot: 'bg-white' },
   paid:      { label: 'Paid',      classes: 'bg-gray-50 text-gray-600 border border-gray-200', dot: 'bg-gray-400' },
+  cancelled: { label: 'Cancelled', classes: 'bg-gray-100 text-gray-500 border border-gray-200', dot: 'bg-gray-400' },
 };
 
-// L1 = own referral code, 10% | L2 = direct sub-agent's code, 5% | L3 = sub-sub-agent's code, 2%
 const LEVEL_BADGE: Record<1 | 2 | 3, { classes: string; label: string }> = {
   1: { classes: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20',   label: 'L1' },
   2: { classes: 'bg-[#FACC15]/10 text-[#0B5858] border border-[#FACC15]/30',   label: 'L2'  },
   3: { classes: 'bg-gray-100 text-gray-500 border border-gray-200',             label: 'L3'  },
 };
 
-function StatusBadge({ status }: { status: CommissionStatus }) {
-  const cfg = STATUS_CONFIG[status];
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.classes}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
@@ -224,12 +267,11 @@ function ExportModal({
 }
 
 export default function CommissionsPage() {
-  const [wallet, setWallet] = useState<CommissionWallet | null>(null);
-  const [commissions, setCommissions] = useState<BookingCommission[]>([]);
+  const [commissions, setCommissions] = useState<ReturnType<typeof bookingToCommission>[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<CommissionStatus | 'all'>('all');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<BookingCommission | null>(null);
+  const [selected, setSelected] = useState<ReturnType<typeof bookingToCommission> | null>(null);
   const [dateFilter, setDateFilter] = useState<'all' | '7days' | '30days' | 'thisMonth'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -237,13 +279,14 @@ export default function CommissionsPage() {
 
   useEffect(() => {
     (async () => {
-      const [w, c] = await Promise.all([
-        getCommissionWallet(AGENT_ID),
-        getBookingCommissions(AGENT_ID),
-      ]);
-      setWallet(w);
-      setCommissions(c);
-      setLoading(false);
+      try {
+        const bookings = await getMyBookings();
+        setCommissions(bookings.map(bookingToCommission));
+      } catch {
+        setCommissions([]);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -255,8 +298,7 @@ export default function CommissionsPage() {
       data = data.filter((c) =>
         c.bookingRef.toLowerCase().includes(q) ||
         c.propertyName.toLowerCase().includes(q) ||
-        c.guestName.toLowerCase().includes(q) ||
-        (c.referralAgentName?.toLowerCase().includes(q) ?? false)
+        c.guestName.toLowerCase().includes(q)
       );
     }
     
@@ -297,30 +339,14 @@ export default function CommissionsPage() {
   }, [filtered, currentPage, itemsPerPage]);
 
   const chartData = useMemo(() => {
-    // Generate a simple mock trend if actual historical grouping is complex for now,
-    // or properly group the `commissions` if they have valid `checkIn` dates.
-    // For a nice dashboard look, let's group by month from the commissions.
-    const monthlyMap: Record<string, number> = {};
-    commissions.forEach(c => {
-      const date = new Date(c.checkIn);
-      const month = date.toLocaleString('default', { month: 'short' });
-      monthlyMap[month] = (monthlyMap[month] || 0) + c.commissionAmount;
+    const byMonth: Record<string, number> = {};
+    commissions.forEach((c) => {
+      const d = new Date(c.checkIn || Date.now());
+      const m = d.toLocaleString('default', { month: 'short' });
+      byMonth[m] = (byMonth[m] || 0) + c.commissionAmount;
     });
-    
-    // Sort logic could be added, but if the data is recent, let's just convert it.
-    // If empty or small, fallback to a nice looking mock so the chart isn't empty.
-    let data = Object.entries(monthlyMap).map(([month, amount]) => ({ month, amount }));
-    if (data.length < 3) {
-      data = [
-        { month: 'Oct', amount: 2100 },
-        { month: 'Nov', amount: 1800 },
-        { month: 'Dec', amount: 3500 },
-        { month: 'Jan', amount: 2900 },
-        { month: 'Feb', amount: 4100 },
-        { month: 'Mar', amount: 4530 },
-      ];
-    }
-    return data;
+    const data = Object.entries(byMonth).map(([month, amount]) => ({ month, amount }));
+    return data.length > 0 ? data : [{ month: '—', amount: 0 }];
   }, [commissions]);
 
   const handleExport = (format: 'csv' | 'pdf', start: string, end: string) => {
@@ -337,14 +363,11 @@ export default function CommissionsPage() {
 
     if (format === 'csv') {
       const rows = [
-        ['Booking Ref', 'Agent ID', 'Referral Code', 'Property', 'Guest', 'Check-In', 'Check-Out', 'Nights', 'Base Amount', 'Extra Charges', 'Total', 'Commission Rate', 'Commission', 'Via Agent', 'Level', 'Status'],
+        ['Booking Ref', 'Property', 'Guest', 'Check-In', 'Check-Out', 'Nights', 'Total', 'Commission Rate', 'Commission', 'Status'],
         ...dataToExport.map((c) => [
-          c.bookingRef, c.agentId, c.referralCode, c.propertyName, c.guestName,
+          c.bookingRef, c.propertyName, c.guestName,
           c.checkIn.slice(0, 10), c.checkOut.slice(0, 10),
-          c.numberOfNights, c.baseAmount, c.extraCharges,
-          c.totalBookingAmount, `${c.commissionRate}%`, c.commissionAmount,
-          c.referralAgentName ?? 'Direct',
-          `L${c.referralLevel}`,
+          c.numberOfNights, c.totalBookingAmount, `${c.commissionRate}%`, c.commissionAmount,
           c.status,
         ]),
       ];
@@ -373,47 +396,16 @@ export default function CommissionsPage() {
       doc.text(start && end ? `Period: ${start} to ${end}` : `Generated: ${today}`, 14, 27);
 
       doc.setTextColor(0, 0, 0);
-      let startY = 42;
-
-      if (wallet && !start) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.text('Wallet Summary', 14, 42);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        const cols = [
-          ['Available', `PHP ${wallet.available.toLocaleString()}`],
-          ['Pending', `PHP ${wallet.pending.toLocaleString()}`],
-          ['Approved', `PHP ${wallet.approved.toLocaleString()}`],
-          ['Total Paid', `PHP ${wallet.paid.toLocaleString()}`],
-        ];
-        cols.forEach(([label, val], i) => {
-          const x = 14 + i * 47;
-          doc.setFillColor(245, 245, 245);
-          doc.roundedRect(x, 46, 44, 16, 2, 2, 'F');
-          doc.setTextColor(100, 100, 100);
-          doc.text(label, x + 3, 52);
-          doc.setTextColor(11, 88, 88);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(10);
-          doc.text(val, x + 3, 58);
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(9);
-        });
-        startY = 70;
-      }
-
+      const startY = 42;
       const totalCommission = dataToExport.reduce((sum, c) => sum + c.commissionAmount, 0);
       autoTable(doc, {
         startY,
-        head: [['Booking', 'Ref. Code', 'Property', 'Guest', 'Via Agent', 'Lvl', 'Commission', 'Rate', 'Status']],
+        head: [['Booking', 'Ref. Code', 'Property', 'Guest', 'Commission', 'Rate', 'Status']],
         body: dataToExport.map((c) => [
           c.bookingRef,
           c.referralCode,
           c.propertyName.length > 18 ? c.propertyName.slice(0, 16) + '…' : c.propertyName,
           c.guestName,
-          c.referralAgentName ?? 'Direct',
-          `L${c.referralLevel}`,
           `PHP ${c.commissionAmount.toLocaleString()}`,
           `${c.commissionRate}%`,
           c.status.charAt(0).toUpperCase() + c.status.slice(1),
@@ -422,10 +414,9 @@ export default function CommissionsPage() {
         headStyles: { fillColor: teal, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
         alternateRowStyles: { fillColor: [248, 250, 250] },
         columnStyles: {
-          0: { cellWidth: 22 }, 1: { cellWidth: 32 }, 2: { cellWidth: 25 },
-          3: { cellWidth: 28 }, 4: { cellWidth: 16, halign: 'center' },
-          5: { cellWidth: 12, halign: 'center' }, 6: { cellWidth: 26, halign: 'right' },
-          7: { cellWidth: 12, halign: 'center' }, 8: { cellWidth: 18 },
+          0: { cellWidth: 28 }, 1: { cellWidth: 32 }, 2: { cellWidth: 35 },
+          3: { cellWidth: 32 }, 4: { cellWidth: 28, halign: 'right' },
+          5: { cellWidth: 14, halign: 'center' }, 6: { cellWidth: 20 },
         },
       });
 
@@ -460,27 +451,6 @@ export default function CommissionsPage() {
           <p className="text-sm text-gray-500 mt-1">Track your referral earnings across all bookings.</p>
         </div>
       </div>
-
-      {/* Wallet Cards */}
-      {wallet && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-          {[
-            { label: 'Available', value: wallet.available, sub: 'Ready to withdraw', dot: 'bg-[#0B5858]' },
-            { label: 'Pending',   value: wallet.pending,   sub: 'Awaiting approval', dot: 'bg-[#FACC15]' },
-            { label: 'Approved',  value: wallet.approved,  sub: 'Cleared, awaiting payout', dot: 'bg-[#0B5858]/50' },
-            { label: 'Total Paid', value: wallet.paid,      sub: 'Lifetime paid out', dot: 'bg-gray-300' },
-          ].map((c) => (
-            <div key={c.label} className={`rounded-3xl border border-gray-100 shadow-sm p-6 transition-all bg-white hover:shadow-md`}>
-              <div className="flex items-center gap-2.5 mb-4">
-                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${c.dot}`} />
-                <p className={`text-[11px] font-bold uppercase tracking-widest text-gray-400`}>{c.label}</p>
-              </div>
-              <p className={`text-3xl font-bold tracking-tight text-gray-900`}>{fmt(c.value)}</p>
-              <p className={`text-xs font-medium mt-1 text-gray-400`}>{c.sub}</p>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Earnings Chart */}
       <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-7">
@@ -567,7 +537,6 @@ export default function CommissionsPage() {
               options={[
                 { value: 'all', label: 'All Statuses' },
                 { value: 'pending', label: 'Pending' },
-                { value: 'approved', label: 'Approved' },
                 { value: 'available', label: 'Available' },
                 { value: 'paid', label: 'Paid' },
               ]}
@@ -608,23 +577,22 @@ export default function CommissionsPage() {
               ) : (
                 paginatedCommissions.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
-                    {/* Booking Details: property + ref + referral code used */}
+                    {/* Booking Details: property + ref */}
                     <td className="px-5 py-4">
                       <p className="font-bold text-gray-900 truncate max-w-[180px]">{c.propertyName}</p>
                       <p className="text-xs font-medium text-gray-500 mt-0.5">{c.bookingRef}</p>
-                      <p className="text-[11px] font-mono font-medium text-gray-400 mt-0.5 tracking-wide">{c.referralCode}</p>
                     </td>
                     {/* Guest & Stay */}
                     <td className="px-5 py-4">
                       <p className="font-medium text-gray-900 whitespace-nowrap">{c.guestName}</p>
                       <p className="text-xs font-medium text-gray-500 mt-0.5">{c.numberOfNights} night{c.numberOfNights > 1 ? 's' : ''}</p>
                     </td>
-                    {/* Commission */}
+                    {/* Commission: 10% of total */}
                     <td className="px-5 py-4">
                       <p className="font-bold text-[#0B5858] whitespace-nowrap">{fmt(c.commissionAmount)}</p>
                       <p className="text-xs font-medium text-gray-500 mt-0.5 whitespace-nowrap">{c.commissionRate}% of {fmt(c.totalBookingAmount)}</p>
                     </td>
-                    {/* Agent: who referred + L1/L2/L3 level badge */}
+                    {/* Agent: Direct + L1 badge (all bookings are agent's own) */}
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-gray-900 whitespace-nowrap">

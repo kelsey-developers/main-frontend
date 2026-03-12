@@ -86,7 +86,7 @@ export default function ApprovalQueuePage() {
         return (
           entry.id.toLowerCase().includes(normalizedSearch) ||
           entry.itemName.toLowerCase().includes(normalizedSearch) ||
-          entry.requestedBy.toLowerCase().includes(normalizedSearch) ||
+          (entry.requestedBy ?? '').toLowerCase().includes(normalizedSearch) ||
           entry.kind.toLowerCase().includes(normalizedSearch) ||
           (entry.referenceId ?? '').toLowerCase().includes(normalizedSearch)
         );

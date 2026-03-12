@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiClient } from '@/lib/api/client';
 import type { ItemType, ItemCategory } from '../types';
-import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset } from '../lib/inventoryDataStore';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventoryItems } from '../lib/inventoryDataStore';
 import InventoryDropdown, { type InventoryDropdownOption } from './InventoryDropdown';
 import { useToast } from '../hooks/useToast';
 
@@ -22,38 +22,54 @@ interface AddItemModalProps {
   onClose: () => void;
 }
 
+const isDuplicateProductName = (name: string, existing: { name?: string }[]): boolean => {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return false;
+  return existing.some((item) => (item.name ?? '').trim().toLowerCase() === normalized);
+};
+
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
-  const { success } = useToast();
+  const { success, error } = useToast();
   const [mounted, setMounted] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [name, setName] = useState('');
   const [sku, setSku] = useState('');
   const [unit, setUnit] = useState('pcs');
   const [type, setType] = useState<ItemType | ''>('');
-  const [category, setCategory] = useState<ItemCategory | ''>('');
+  const [category, setCategory] = useState<ItemCategory | '' | '__create_new__'>('');
+  const [customCategoryName, setCustomCategoryName] = useState('');
   const [reorderLevel, setReorderLevel] = useState<string>('');
+
+  const effectiveCategory = category === '__create_new__' ? customCategoryName.trim() : category;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !type || !category) return;
+    if (!name.trim() || !type) return;
+    if (category === '__create_new__' && !customCategoryName.trim()) return;
+    if (category !== '__create_new__' && !category) return;
+    if (isDuplicateProductName(name, inventoryItems)) {
+      error('An item with this name already exists. Product names must be unique (case-insensitive).');
+      return;
+    }
     void (async () => {
       setIsSaving(true);
       try {
         const reorder = Math.max(0, Math.floor(Number(reorderLevel || 0)));
         const skuValue = sku.trim() || `SKU-${Date.now()}`;
 
-        // Ensure category exists (backend will validate categoryId if required by implementation).
+        // Ensure category exists; create via POST /api/product-categories if needed.
+        const categoryName = effectiveCategory;
         const { categories } = await apiClient.get<{ categories: Array<{ id: string; name: string; code: string }> }>(
           '/api/product-categories'
         );
-        const normalized = category.toLowerCase();
+        const normalized = categoryName.toLowerCase();
         const existing = categories.find((c) => c.name.toLowerCase() === normalized);
         const categoryId =
           existing?.id ??
           (await apiClient.post<{ id: string }>('/api/product-categories', {
-            code: category.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
-            name: category,
-            description: `Auto-created for category ${category}`,
+            code: categoryName.toUpperCase().replace(/[^A-Z0-9]+/g, '_'),
+            name: categoryName,
+            description: `Auto-created for category ${categoryName}`,
           })).id;
 
         await apiClient.post('/api/products', {
@@ -71,6 +87,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
         setUnit('pcs');
         setType('');
         setCategory('');
+        setCustomCategoryName('');
         setReorderLevel('');
         success('Item created successfully.');
         onClose();
@@ -179,10 +196,11 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
             </label>
             <InventoryDropdown
               value={category}
-              onChange={(value) => setCategory(value as ItemCategory | '')}
+              onChange={(value) => setCategory(value as ItemCategory | '' | '__create_new__')}
               options={[
                 { value: '', label: 'Select category' },
                 ...ITEM_CATEGORIES.map((cat) => ({ value: cat, label: cat })),
+                { value: '__create_new__', label: '+ Create new category...' },
               ]}
               placeholder="Select category"
               placeholderWhen=""
@@ -192,6 +210,15 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
               backdropZIndexClass="z-[10005]"
               menuZIndexClass="z-[10010]"
             />
+            {category === '__create_new__' && (
+              <input
+                type="text"
+                value={customCategoryName}
+                onChange={(e) => setCustomCategoryName(e.target.value)}
+                placeholder="Enter new category name"
+                className={`${inputClass} mt-2`}
+              />
+            )}
           </div>
           <div>
             <label htmlFor="add-item-unit" className={labelClass}>
@@ -223,11 +250,14 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
               placeholder="0"
               className={inputClass}
             />
+            <p className="mt-1 text-[11px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
+              Inventory threshold (product-level). Edit from the Allocations view on the Items page.
+            </p>
           </div>
           <div className="pt-2 flex justify-end">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || !name.trim() || !type || (category === '__create_new__' ? !customCategoryName.trim() : !category)}
               className="px-4 py-2 rounded-lg border border-gray-200 bg-[#0B5858] text-white font-medium focus:ring-2 focus:ring-[#0B5858]/20 outline-none hover:bg-[#0a4a4a] disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isSaving ? 'Saving…' : 'Create item'}
