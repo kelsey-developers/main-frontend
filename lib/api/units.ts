@@ -12,7 +12,7 @@ const isUnitsApiUnavailable = (err: unknown) => {
 };
 
 export async function createUnit(payload: NewListingFormPayload): Promise<Listing> {
-  const body = {
+  const body: Record<string, unknown> = {
     unit_name: payload.title,
     description: payload.description,
     base_price: payload.price,
@@ -35,6 +35,9 @@ export async function createUnit(payload: NewListingFormPayload): Promise<Listin
     is_featured: false,
     images: buildImages(payload.main_image_url, payload.image_urls),
   };
+  if (payload.assigned_agent_ids != null && payload.assigned_agent_ids.length > 0) {
+    body.assigned_agent_ids = payload.assigned_agent_ids;
+  }
   const data = await apiClient.post<Record<string, unknown>>('/api/units', body);
   return toListing(data);
 }
@@ -71,13 +74,13 @@ export async function listUnitsForManage(): Promise<Listing[]> {
 
 export async function updateUnit(
   id: string,
-  updates: { status?: 'available' | 'unavailable' | 'maintenance'; is_featured?: boolean }
-): Promise<{ id: string; status: string; is_available: boolean; is_featured: boolean; updated_at: string }> {
+  updates: { status?: 'available' | 'unavailable' | 'maintenance'; is_featured?: boolean; assigned_agent_ids?: string[] }
+): Promise<{ id: string; status?: string; is_available?: boolean; is_featured?: boolean; updated_at: string; assigned_agent_ids?: string[] }> {
   return apiClient.patch(`/api/units/${id}`, updates);
 }
 
 export async function updateUnitFull(id: string, payload: NewListingFormPayload): Promise<Listing> {
-  const body = {
+  const body: Record<string, unknown> = {
     unit_name: payload.title,
     description: payload.description,
     base_price: payload.price,
@@ -98,6 +101,9 @@ export async function updateUnitFull(id: string, payload: NewListingFormPayload)
     longitude: payload.longitude,
     images: buildImages(payload.main_image_url, payload.image_urls),
   };
+  if (payload.assigned_agent_ids != null) {
+    body.assigned_agent_ids = payload.assigned_agent_ids;
+  }
   const data = await apiClient.put<Record<string, unknown>>(`/api/units/${id}`, body);
   return toListing(data);
 }
@@ -109,10 +115,13 @@ export async function deleteUnit(id: string): Promise<{ id: string; deleted: boo
 function toManageListing(u: Record<string, unknown>): Listing {
   const base = toListing(u);
   const owner = u.owner as { id: string; fullname: string; email: string } | null | undefined;
+  const assignedAgents = u.assigned_agents as { id: string; username: string; fullname: string }[] | undefined;
   return {
     ...base,
     owner: owner ? { id: String(owner.id), fullname: owner.fullname || 'N/A', email: owner.email || '' } : null,
     bookings_count: typeof u.bookings_count === 'number' ? u.bookings_count : 0,
+    assigned_agents: Array.isArray(assignedAgents) ? assignedAgents : [],
+    assigned_agent_ids: Array.isArray(u.assigned_agent_ids) ? u.assigned_agent_ids.map(String) : [],
   };
 }
 
@@ -136,6 +145,22 @@ export async function listUnits(params?: ListUnitsParams): Promise<ListingView[]
     return (Array.isArray(data) ? data : []).map((u) => toListingView(u as Record<string, unknown>));
   } catch (err) {
     if (isUnitsApiUnavailable(err)) return [];
+    throw err;
+  }
+}
+
+/**
+ * Fetch properties (units) for an agent by username. Used by agent profile page.
+ * Calls GET /api/agents/:username/properties.
+ */
+export async function getAgentProperties(username: string): Promise<ListingView[]> {
+  try {
+    const data = await apiClient.get<unknown[]>(`/api/agents/${encodeURIComponent(username)}/properties`);
+    return Array.isArray(data) ? data.map((u) => toListingView(u as Record<string, unknown>)) : [];
+  } catch (err) {
+    if (err instanceof Error && ((err as Error & { status?: number }).status === 404 || isUnitsApiUnavailable(err))) {
+      return [];
+    }
     throw err;
   }
 }
@@ -183,6 +208,7 @@ function toListingView(u: Record<string, unknown>): ListingView {
 
 function toListing(u: Record<string, unknown>): Listing {
   const price = Number(u.price ?? 0);
+  const assignedAgentIds = Array.isArray(u.assigned_agent_ids) ? u.assigned_agent_ids.map(String) : undefined;
   return {
     id: String(u.id),
     title: String(u.title ?? ''),
@@ -211,5 +237,6 @@ function toListing(u: Record<string, unknown>): Listing {
     excess_pax_fee: u.excess_pax_fee != null ? Number(u.excess_pax_fee) : undefined,
     created_at: String(u.created_at ?? ''),
     updated_at: String(u.updated_at ?? ''),
+    ...(assignedAgentIds ? { assigned_agent_ids: assignedAgentIds } : {}),
   };
 }

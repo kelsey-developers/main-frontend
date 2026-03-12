@@ -58,7 +58,7 @@ export type MyAgentRegistration =
   | { hasRegistration: true; status: 'pending' | 'approved' | 'rejected'; email: string; fullname?: string };
 
 export async function getMyAgentRegistration(): Promise<MyAgentRegistration> {
-  const res = await fetch('/api/agent-registration/me', { credentials: 'same-origin' });
+  const res = await fetch('/api/agents/me/registration', { credentials: 'same-origin' });
   if (!res.ok) return { hasRegistration: false };
   return res.json();
 }

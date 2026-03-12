@@ -51,3 +51,16 @@ export interface AgentNetworkResponse {
 export async function getAgentNetwork(): Promise<AgentNetworkResponse> {
   return apiClient.get<AgentNetworkResponse>('/api/agents/me/network');
 }
+
+export interface AgentForAssign {
+  id: string;
+  fullname: string;
+  email: string;
+  username: string;
+}
+
+export async function listAgents(search?: string): Promise<AgentForAssign[]> {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+  const data = await apiClient.get<unknown>(`/api/agents/list${qs}`);
+  return Array.isArray(data) ? (data as AgentForAssign[]) : [];
+}
