@@ -5,7 +5,7 @@ import {
   inventoryDashboardSummary,
   inventoryItems,
   inventoryWarehouseDirectory,
-  getWarehouseUnitAllocations,
+  getAllocatedQuantityForUnit,
 } from './inventoryDataStore';
 
 type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
@@ -108,36 +108,28 @@ const postMovement = async (
   return response.movement.id;
 };
 
-/** Input for manual stock adjustments (cycle count, corrections). Quantity: positive = add, negative = remove. */
-export type StockAdjustmentInput = LedgerMovementInput;
+/** Input for manual stock adjustments (cycle count, additions only). Quantity must be positive. */
+export type StockAdjustmentInput = LedgerMovementInput & { unitId?: string };
 
 /**
- * Manual adjustments are sent as IN (add) or OUT (remove) with referenceType 'manual_adjustment'
- * for backend compatibility. Many backends only support IN/OUT with positive quantities and
- * do not handle ADJUSTMENT type or negative quantities. The frontend normalizes these to
- * display as "adjustment" in the UI based on referenceType.
+ * Manual adjustments for cycle count are sent as IN (add) with positive quantity.
+ * Use referenceType 'BOOKING' and referenceId when items are transferred from a booking.
  */
 export const processStockAdjustment = async (input: StockAdjustmentInput): Promise<LedgerResult> => {
   if (input.quantity === 0) {
     throw new Error('Adjustment quantity cannot be zero.');
   }
-
-  const isAdd = input.quantity > 0;
-  if (!isAdd) {
-    const absQty = Math.abs(input.quantity);
-    const avail = getAvailableQuantity(input.productId, input.warehouseId);
-    if (avail < absQty) {
-      throw new Error(
-        `Remove quantity (${absQty}) exceeds available stock (${avail}) in this warehouse. Cannot go negative.`
-      );
-    }
+  if (input.quantity < 0) {
+    throw new Error('Cycle count adjustments are additions only. Less found physically = loss (track separately).');
   }
 
-  const absQty = Math.abs(input.quantity);
+  const overrides: Partial<{ warehouseId: string; referenceId: string; notes: string; unitId?: string }> = {};
+  if (input.unitId) overrides.unitId = input.unitId;
+
   const movementId = await postMovement(
-    { ...input, quantity: absQty, referenceType: 'MANUAL' },
-    isAdd ? 'IN' : 'OUT',
-    undefined
+    { ...input, quantity: input.quantity, referenceType: input.referenceType ?? 'MANUAL' },
+    'IN',
+    Object.keys(overrides).length > 0 ? overrides : undefined
   );
 
   await loadInventoryDataset(true);
@@ -170,10 +162,7 @@ export const processUnitWriteOff = async (input: UnitWriteOffInput): Promise<Led
     throw new Error('Quantity must be greater than zero.');
   }
 
-  const allocations = getWarehouseUnitAllocations(input.warehouseId);
-  const unitAlloc = allocations.find((a) => a.unitId === input.unitId);
-  const itemAlloc = unitAlloc?.items.find((i) => i.productId === input.productId);
-  const allocated = itemAlloc?.quantity ?? 0;
+  const allocated = getAllocatedQuantityForUnit(input.productId, input.unitId);
 
   if (allocated < input.quantity) {
     throw new Error(

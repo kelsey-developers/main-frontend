@@ -13,6 +13,7 @@ import {
   getDisplayableInventoryItems,
   inventoryWarehouseDirectory,
   inventoryUnits,
+  isWarehouseActive,
 } from '@/app/sales-report/inventory/lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
@@ -346,7 +347,7 @@ function UnitForm({ onDraftChange }: { onDraftChange: (draft: UnitDraft) => void
     });
   }, [confirmedBy, idNumber, unit, booking, reason, srcWarehouse, date, reference, notes, items, onDraftChange]);
 
-  const warehouses = inventoryWarehouseDirectory.filter((wh) => wh.isActive);
+  const warehouses = inventoryWarehouseDirectory.filter((wh) => isWarehouseActive(wh));
 
   return (
     <>

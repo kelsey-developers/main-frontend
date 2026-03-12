@@ -7,12 +7,16 @@ interface InventorySummaryCardsProps {
 }
 
 const InventorySummaryCards: React.FC<InventorySummaryCardsProps> = ({ summary, isLoading = false }) => {
+  const DigitSkeleton = () => (
+    <span
+      className="inline-block h-9 min-w-[3.5rem] max-w-[5rem] rounded-md bg-white/40 animate-pulse"
+      style={{ fontFamily: 'Poppins' }}
+      aria-hidden
+    />
+  );
+
   const Value = ({ children }: { children: React.ReactNode }) =>
-    isLoading ? (
-      <span className="mt-1 h-8 w-16 rounded bg-white/30 animate-pulse inline-block align-middle" />
-    ) : (
-      <>{children}</>
-    );
+    isLoading ? <DigitSkeleton /> : <>{children}</>;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

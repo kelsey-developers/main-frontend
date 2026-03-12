@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import SummaryCard from '../components/SummaryCard';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
+import NoneBadge from '../components/NoneBadge';
 import ActiveStatusToggle from '../components/ActiveStatusToggle';
 import { getWarehouseStats } from '../helpers/warehouseHelpers';
 import {
-  getWarehouseUnitAllocations,
+  isWarehouseActive,
   loadInventoryDataset,
   inventoryWarehouseDirectory,
   inventoryItems,
@@ -71,9 +73,18 @@ const WarehouseFormModal = ({
     name: warehouse?.name ?? '',
     location: warehouse?.location ?? '',
     description: warehouse?.description ?? '',
-    isActive: warehouse?.isActive ?? true,
+    deletedAt: warehouse?.deletedAt ?? undefined,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setForm({
+      name: warehouse?.name ?? '',
+      location: warehouse?.location ?? '',
+      description: warehouse?.description ?? '',
+      deletedAt: warehouse?.deletedAt ?? undefined,
+    });
+  }, [warehouse?.id, warehouse?.name, warehouse?.location, warehouse?.description, warehouse?.deletedAt]);
 
   useEffect(() => {
     const fn = (event: KeyboardEvent) => {
@@ -118,7 +129,7 @@ const WarehouseFormModal = ({
         form.name.trim() === (warehouse.name ?? '').trim() &&
         form.location.trim() === (warehouse.location ?? '').trim() &&
         form.description.trim() === (warehouse.description ?? '').trim() &&
-        form.isActive === (warehouse.isActive ?? true);
+        (form.deletedAt ?? null) === (warehouse.deletedAt ?? null);
       if (noChanges) {
         error('No changes were made. Cancel or close to exit.');
         return;
@@ -129,13 +140,13 @@ const WarehouseFormModal = ({
       name: form.name.trim(),
       location: form.location.trim(),
       description: form.description.trim(),
-      isActive: form.isActive,
+      deletedAt: form.deletedAt,
     });
     onClose();
   };
 
-  const handleStatusToggle = (newStatus: boolean) => {
-    setForm((prev) => ({ ...prev, isActive: newStatus }));
+  const handleStatusToggle = (active: boolean) => {
+    setForm((prev) => ({ ...prev, deletedAt: active ? undefined : new Date().toISOString().slice(0, 19) + 'Z' }));
   };
 
   const renderFieldLabel = (label: string, fieldKey: keyof typeof form) => (
@@ -226,9 +237,19 @@ const WarehouseFormModal = ({
             </div>
 
             <ActiveStatusToggle
-              isActive={form.isActive}
+              isActive={!form.deletedAt}
               onToggle={handleStatusToggle}
               entityType="warehouse"
+              canDeactivate={
+                warehouse
+                  ? () => {
+                      const stats = getWarehouseStats(warehouse);
+                      return stats.totalStockUnits === 0
+                        ? true
+                        : 'Move or deplete all stock before deactivating this warehouse.';
+                    }
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -263,7 +284,7 @@ const WarehouseTransferStockModal = ({
   const [quantity, setQuantity] = useState('');
   const [error, setError] = useState('');
 
-  const destinationWarehouses = warehouses.filter((warehouse) => warehouse.id !== sourceWarehouse.id && warehouse.isActive);
+  const destinationWarehouses = warehouses.filter((warehouse) => warehouse.id !== sourceWarehouse.id && isWarehouseActive(warehouse));
   const transferableProducts = sourceWarehouse.inventoryBalances.filter((row) => row.quantity > 0);
 
   useEffect(() => {
@@ -425,7 +446,6 @@ const WarehouseDetailModal = ({
 }) => {
   const router = useRouter();
   const stats = getWarehouseStats(warehouse);
-  const unitAllocations = getWarehouseUnitAllocations(warehouse.id);
 
   useEffect(() => {
     const fn = (event: KeyboardEvent) => {
@@ -460,7 +480,7 @@ const WarehouseDetailModal = ({
             </div>
             <h2 className="text-[20px] font-bold text-white" style={{ fontFamily: 'Poppins' }}>{warehouse.name}</h2>
             <p className="text-white/80 text-[13px] mt-1" style={{ fontFamily: 'Poppins' }}>{warehouse.location}</p>
-            <div className="mt-2"><StatusBadge active={warehouse.isActive} /></div>
+            <div className="mt-2"><StatusBadge active={isWarehouseActive(warehouse)} /></div>
           </div>
           <button onClick={onClose} aria-label="Close" className="bg-white/15 hover:bg-white/25 rounded-lg w-8 h-8 flex items-center justify-center transition-colors flex-shrink-0">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
@@ -569,46 +589,6 @@ const WarehouseDetailModal = ({
                 )}
               </div>
 
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-3 bg-[#f8fbfb] border-b border-gray-200 flex items-center justify-between">
-                  <h3 className="text-[14px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>Item Allocations to Units</h3>
-                </div>
-                {unitAllocations.length === 0 ? (
-                  <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                    No items allocated to units yet.
-                  </div>
-                ) : (
-                  <div className="max-h-[320px] overflow-auto divide-y divide-gray-100">
-                    {unitAllocations.map((unit) => (
-                      <button
-                        key={unit.unitId}
-                        onClick={() => router.push(`/sales-report/inventory/units/${unit.unitId}`)}
-                        className="w-full text-left px-4 py-3 bg-white hover:bg-gray-50 transition-colors group"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-[13px] font-semibold text-[#0b5858] group-hover:text-[#05807e] transition-colors" style={{ fontFamily: 'Poppins' }}>
-                            {unit.unitName}
-                          </span>
-                          <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#0b5858] group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {unit.items.map((item) => (
-                            <span
-                              key={`${unit.unitId}-${item.productId}`}
-                              className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200"
-                              style={{ fontFamily: 'Poppins' }}
-                            >
-                              {item.productName} ({item.quantity})
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -620,8 +600,8 @@ const WarehouseDetailModal = ({
 
 const WarehousesSkeleton = () => (
   <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-    <div className="px-4 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e] hidden lg:grid grid-cols-[1.45fr_1.25fr_100px_120px_120px_340px]">
-      {['WAREHOUSE NAME', 'LOCATION', 'TOTAL ITEMS', 'TOTAL STOCK UNITS', 'STATUS', 'ACTIONS'].map((header) => (
+    <div className="px-4 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e] hidden lg:grid grid-cols-[1.45fr_1.25fr_100px_120px_130px_120px_340px]">
+      {['WAREHOUSE NAME', 'LOCATION', 'TOTAL ITEMS', 'TOTAL STOCK UNITS', 'LOW STOCK ITEMS', 'STATUS', 'ACTIONS'].map((header) => (
         <div key={header} className="text-[10.5px] font-semibold tracking-wider text-white/70" style={{ fontFamily: 'Poppins' }}>
           {header}
         </div>
@@ -631,7 +611,7 @@ const WarehousesSkeleton = () => (
       {Array.from({ length: 6 }).map((_, index) => (
         <div
           key={`skeleton-${index}`}
-          className="grid grid-cols-1 lg:grid-cols-[1.45fr_1.25fr_100px_120px_120px_340px] gap-3 lg:gap-0 px-4 py-4 border-b border-gray-100 last:border-b-0"
+          className="grid grid-cols-1 lg:grid-cols-[1.45fr_1.25fr_100px_120px_130px_120px_340px] gap-3 lg:gap-0 px-4 py-4 border-b border-gray-100 last:border-b-0"
         >
           <div className="flex flex-col gap-2">
             <div className="h-4 w-40 rounded bg-slate-200" />
@@ -639,6 +619,9 @@ const WarehousesSkeleton = () => (
           </div>
           <div className="flex items-center">
             <div className="h-3 w-32 rounded bg-slate-200" />
+          </div>
+          <div className="flex items-center justify-center">
+            <div className="h-6 w-12 rounded bg-slate-200" />
           </div>
           <div className="flex items-center justify-center">
             <div className="h-6 w-12 rounded bg-slate-200" />
@@ -662,7 +645,7 @@ const WarehousesSkeleton = () => (
 
 export default function WarehousesPage() {
   const router = useRouter();
-  const { error, success } = useToast();
+  const { error, success, warning } = useToast();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -689,7 +672,7 @@ export default function WarehousesPage() {
           warehouse.location.toLowerCase().includes(q);
         const matchesFilter =
           filter === 'All' ||
-          (filter === 'Active' ? warehouse.isActive : !warehouse.isActive);
+          (filter === 'Active' ? isWarehouseActive(warehouse) : !isWarehouseActive(warehouse));
         return matchesSearch && matchesFilter;
       })
       .sort((a, b) => {
@@ -705,7 +688,7 @@ export default function WarehousesPage() {
 
   const totals = useMemo(() => {
     const totalWarehouses = warehouses.length;
-    const activeCount = warehouses.filter((warehouse) => warehouse.isActive).length;
+    const activeCount = warehouses.filter((warehouse) => isWarehouseActive(warehouse)).length;
     const inactiveCount = totalWarehouses - activeCount;
     return { totalWarehouses, activeCount, inactiveCount };
   }, [warehouses]);
@@ -714,15 +697,26 @@ export default function WarehousesPage() {
     setWarehouses([...inventoryWarehouseDirectory]);
   };
 
-  const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'>) => {
+  const handleSaveWarehouse = (data: Omit<Warehouse, 'id' | 'inventoryBalances' | 'stockMovements'> & { deletedAt?: string | null }) => {
     if (editTarget) {
       const run = async () => {
-        await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}`, {
-          name: data.name,
-          location: data.location ?? '',
-          description: data.description ?? '',
-          isActive: data.isActive ?? true,
-        });
+        const statusChanged = (data.deletedAt ?? null) !== (editTarget.deletedAt ?? null);
+        const isActive = !data.deletedAt;
+        const detailsChanged =
+          data.name.trim() !== (editTarget.name ?? '').trim() ||
+          data.location.trim() !== (editTarget.location ?? '').trim() ||
+          (data.description ?? '').trim() !== (editTarget.description ?? '').trim();
+
+        if (statusChanged) {
+          await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}/status`, { isActive });
+        }
+        if (detailsChanged) {
+          await apiClient.patch(`/api/inventory/warehouses/${editTarget.id}`, {
+            name: data.name,
+            location: data.location ?? '',
+            description: data.description ?? '',
+          });
+        }
         await loadInventoryDataset(true);
         applyWarehouseList();
         setFormOpen(false);
@@ -786,6 +780,25 @@ export default function WarehousesPage() {
       window.removeEventListener('focus', refresh);
     };
   }, []);
+
+  const hasShownOutOfStockToast = React.useRef(false);
+  useEffect(() => {
+    if (isLoading || warehouses.length === 0) return;
+    const warehousesWithOutOfStock = warehouses.filter((wh) => {
+      if (!isWarehouseActive(wh)) return false;
+      const stats = getWarehouseStats(wh);
+      return stats.lowStockItems > 0;
+    });
+    if (warehousesWithOutOfStock.length > 0 && !hasShownOutOfStockToast.current) {
+      hasShownOutOfStockToast.current = true;
+      const names = warehousesWithOutOfStock.map((w) => w.name).join(', ');
+      warning(
+        warehousesWithOutOfStock.length === 1
+          ? `${warehousesWithOutOfStock[0].name} has items out of stock (0 quantity)`
+          : `${warehousesWithOutOfStock.length} warehouses have items out of stock: ${names}`
+      );
+    }
+  }, [isLoading, warehouses, warning]);
 
   const handleTransferStock = async ({
     fromWarehouseId,
@@ -878,17 +891,13 @@ export default function WarehousesPage() {
           { label: 'Active', value: totals.activeCount, gradient: 'from-green-600 to-green-700' },
           { label: 'Inactive', value: totals.inactiveCount, gradient: 'from-gray-500 to-gray-600' },
         ].map((stat, index) => (
-          <div key={index} className={`relative bg-gradient-to-br ${stat.gradient} rounded-xl shadow-md p-4 overflow-hidden`}>
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-            <div className="relative z-10">
-              <div className="text-[10px] font-bold tracking-wider text-white/70 uppercase mb-2" style={{ fontFamily: 'Poppins' }}>
-                {stat.label}
-              </div>
-              <div className="text-3xl font-bold text-white leading-none" style={{ fontFamily: 'Poppins' }}>
-                {stat.value}
-              </div>
-            </div>
-          </div>
+          <SummaryCard
+            key={index}
+            label={stat.label}
+            value={stat.value}
+            gradient={stat.gradient}
+            isLoading={isLoading}
+          />
         ))}
       </div>
 
@@ -976,9 +985,9 @@ export default function WarehousesPage() {
               return (
                 <div
                   key={warehouse.id}
-                  className={`warehouse-row grid grid-cols-1 lg:grid-cols-[1.45fr_1.25fr_100px_120px_120px_340px] gap-3 lg:gap-0 px-4 py-4 ${
+                  className={`warehouse-row grid grid-cols-1 lg:grid-cols-[1.45fr_1.25fr_100px_120px_130px_120px_340px] gap-3 lg:gap-0 px-4 py-4 ${
                     !isLast ? 'border-b border-gray-100' : ''
-                  } ${warehouse.isActive ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
+                  } ${isWarehouseActive(warehouse) ? 'bg-white' : 'bg-gray-50 opacity-80'} transition-colors`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-start justify-between lg:block">
@@ -998,7 +1007,7 @@ export default function WarehousesPage() {
                       </div>
                       {/* Mobile status badge in top-right */}
                       <div className="ml-3 lg:hidden">
-                        <StatusBadge active={warehouse.isActive} />
+                        <StatusBadge active={isWarehouseActive(warehouse)} />
                       </div>
                     </div>
                   </div>
@@ -1009,24 +1018,14 @@ export default function WarehousesPage() {
 
                   <div className="hidden lg:flex items-center justify-center text-[14px] font-bold text-[#0b5858]" style={{ fontFamily: 'Poppins' }}>{stats.totalItems}</div>
                   <div className="hidden lg:flex items-center justify-center text-[14px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.totalStockUnits}</div>
-                  <div className="hidden lg:flex items-center"><StatusBadge active={warehouse.isActive} /></div>
+                  <div className="hidden lg:flex items-center justify-center">
+                    {stats.lowStockItems === 0 ? <NoneBadge /> : (
+                      <span className="text-[14px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</span>
+                    )}
+                  </div>
+                  <div className="hidden lg:flex items-center"><StatusBadge active={isWarehouseActive(warehouse)} /></div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => {
-                        setEditTarget(warehouse);
-                        setFormOpen(true);
-                      }}
-                      className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
-                      title="Edit warehouse"
-                      aria-label="Edit warehouse"
-                      style={{ fontFamily: 'Poppins' }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-
                     <button
                       onClick={() => {
                         setSelectedWarehouseId(warehouse.id);
@@ -1049,9 +1048,24 @@ export default function WarehousesPage() {
                     >
                       View Inventory
                     </button>
+
+                    <button
+                      onClick={() => {
+                        setEditTarget(warehouse);
+                        setFormOpen(true);
+                      }}
+                      className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
+                      title="Edit warehouse"
+                      aria-label="Edit warehouse"
+                      style={{ fontFamily: 'Poppins' }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
                   </div>
 
-                  <div className="lg:hidden grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                  <div className="lg:hidden grid grid-cols-3 gap-2 pt-2 border-t border-gray-100">
                     <div className="bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Items</div>
                       <div className="text-[15px] font-bold text-[#0b5858]" style={{ fontFamily: 'Poppins' }}>{stats.totalItems}</div>
@@ -1059,6 +1073,10 @@ export default function WarehousesPage() {
                     <div className="bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Stock Units</div>
                       <div className="text-[15px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.totalStockUnits}</div>
+                    </div>
+                    <div className="bg-[#e8f4f4] rounded-lg p-2">
+                      <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Low Stock</div>
+                      {stats.lowStockItems === 0 ? <NoneBadge /> : <div className="text-[15px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>{stats.lowStockItems}</div>}
                     </div>
                   </div>
                 </div>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiClient } from '@/lib/api/client';
 import { loadInventoryDataset, inventorySupplierDirectory } from "../lib/inventoryDataStore";
+import SummaryCard from "../components/SummaryCard";
 import InventoryDropdown, { type InventoryDropdownOption } from "../components/InventoryDropdown";
 import ActiveStatusToggle from "../components/ActiveStatusToggle";
 import { useToast } from "../hooks/useToast";
@@ -406,17 +407,13 @@ export default function SuppliersPage() {
           { label: "Inactive", value: suppliers.filter(s => !s.isActive).length, gradient: "from-gray-500 to-gray-600" },
           { label: "Active PO Orders", value: suppliers.reduce((acc, s) => acc + s.activePOs, 0), gradient: "from-[#05807e] to-[#0B5858]" },
         ].map((stat, i) => (
-          <div key={i} className={`relative bg-gradient-to-br ${stat.gradient} rounded-xl shadow-md p-4 overflow-hidden`}>
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-            <div className="relative z-10">
-              <div className="text-[10px] font-bold tracking-wider text-white/70 uppercase mb-2" style={{ fontFamily: 'Poppins' }}>
-                {stat.label}
-              </div>
-              <div className="text-3xl font-bold text-white leading-none" style={{ fontFamily: 'Poppins' }}>
-                {stat.value}
-              </div>
-            </div>
-          </div>
+          <SummaryCard
+            key={i}
+            label={stat.label}
+            value={stat.value}
+            gradient={stat.gradient}
+            isLoading={isLoading}
+          />
         ))}
       </div>
 

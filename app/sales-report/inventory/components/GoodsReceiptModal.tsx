@@ -8,7 +8,7 @@ import InventoryDropdown from './InventoryDropdown';
 import { useToast } from '../hooks/useToast';
 import { useProductNames } from '../hooks/useProductNames';
 import { useMockAuth } from '@/contexts/MockAuthContext';
-import { inventoryPurchaseOrderLines, inventoryWarehouseDirectory, inventoryItems } from '../lib/inventoryDataStore';
+import { inventoryPurchaseOrderLines, inventoryWarehouseDirectory, inventoryItems, isWarehouseActive } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 
 const C = {
@@ -348,7 +348,7 @@ export default function GoodsReceiptModal({
                 options={[
                   { value: '', label: 'Select warehouse...' },
                   ...inventoryWarehouseDirectory
-                    .filter(w => w.isActive)
+                    .filter(w => isWarehouseActive(w))
                     .map(w => ({ value: w.id, label: w.name }))
                 ]}
                 placeholder="Select warehouse..."

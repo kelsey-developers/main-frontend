@@ -7,12 +7,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
+import SingleDatePicker from '@/components/SingleDatePicker';
+import SummaryCard from '../components/SummaryCard';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import StatusBadge from '../components/StatusBadge';
 import GoodsReceiptModal from '../components/GoodsReceiptModal';
 import GoodsReceiptEvidenceImages from '../components/GoodsReceiptEvidenceImages';
 import { useToast } from '../hooks/useToast';
-import { formatPhp, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
+import { formatPhp, isPOOverdue, PO_STATUS_CONFIG, type POStatus } from '../helpers/purchaseOrderHelpers';
 import { 
   loadInventoryDataset,
   inventoryPurchaseOrders, 
@@ -44,7 +46,6 @@ function EditPOModal({
 }) {
   const { error } = useToast();
   const [form, setForm] = useState({
-    supplierId: po.supplierId,
     expectedDelivery: po.expectedDelivery.split('T')[0], // Format as YYYY-MM-DD
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -76,7 +77,6 @@ function EditPOModal({
 
   const validate = () => {
     const nextErrors: Record<string, string> = {};
-    if (!form.supplierId) nextErrors.supplierId = 'Required';
     if (!form.expectedDelivery) nextErrors.expectedDelivery = 'Required';
     return nextErrors;
   };
@@ -88,16 +88,14 @@ function EditPOModal({
       return;
     }
 
-    const noChanges =
-      form.supplierId === po.supplierId &&
-      form.expectedDelivery === po.expectedDelivery.split('T')[0];
+    const noChanges = form.expectedDelivery === po.expectedDelivery.split('T')[0];
     if (noChanges) {
       error('No changes were made. Cancel or close to exit.');
       return;
     }
 
     onSave({
-      supplierId: form.supplierId,
+      supplierId: po.supplierId,
       expectedDelivery: form.expectedDelivery,
     });
     onClose();
@@ -135,35 +133,25 @@ function EditPOModal({
         <div className="flex-1 overflow-y-auto px-6 py-5">
           <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
-              {renderFieldLabel('Supplier', 'supplierId')}
-              <InventoryDropdown
-                value={form.supplierId}
-                onChange={(value) => {
-                  setForm((prev) => ({ ...prev, supplierId: value }));
-                  setErrors((prev) => ({ ...prev, supplierId: '' }));
-                }}
-                options={inventorySuppliers.map((supplier) => ({ value: supplier.id, label: supplier.name }))}
-                hideIcon={true}
-                fullWidth={true}
-                minWidthClass="min-w-0"
-              />
+              <label className="text-[10.5px] font-bold tracking-wider uppercase text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                Supplier
+              </label>
+              <div className="px-3 py-2.5 border-[1.5px] border-gray-200 rounded-lg text-[13px] bg-gray-50 text-gray-700" style={{ fontFamily: 'Poppins' }}>
+                {inventorySuppliers.find((s) => s.id === po.supplierId)?.name ?? 'Unknown Supplier'}
+              </div>
+              <p className="text-[11px] text-gray-400" style={{ fontFamily: 'Poppins' }}>Supplier cannot be changed after PO creation.</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
               {renderFieldLabel('Expected Delivery Date', 'expectedDelivery')}
-              <input
-                type="date"
+              <SingleDatePicker
                 value={form.expectedDelivery}
-                onChange={(event) => {
-                  setForm((prev) => ({ ...prev, expectedDelivery: event.target.value }));
+                onChange={(date) => {
+                  setForm((prev) => ({ ...prev, expectedDelivery: date }));
                   setErrors((prev) => ({ ...prev, expectedDelivery: '' }));
                 }}
-                className={`px-3 py-2.5 border-[1.5px] rounded-lg text-[13px] outline-none w-full ${
-                  errors.expectedDelivery
-                    ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
-                    : 'border-gray-200 bg-white focus:border-[#05807e] focus:ring-4 focus:ring-[#cce8e8]'
-                }`}
-                style={{ fontFamily: 'Poppins' }}
+                placeholder="Select expected delivery date"
+                className="w-full"
               />
             </div>
 
@@ -281,23 +269,6 @@ function DetailDrawer({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {po.status !== "cancelled" && (
-                <button
-                  onClick={() => onEditPO(po)}
-                  className="rounded-lg border-0 flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:scale-105 active:scale-95"
-                  style={{
-                    width: 34, height: 34,
-                    background: "rgba(255,255,255,0.2)", color: "white",
-                    cursor: "pointer",
-                  }}
-                  title="Edit PO"
-                  aria-label="Edit PO"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              )}
               <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
               <button onClick={handleClose} className="rounded-full border-0 text-2xl flex items-center justify-center flex-shrink-0 transition-colors"
                 style={{
@@ -312,13 +283,25 @@ function DetailDrawer({
           <div className="flex gap-6 mt-5 flex-wrap" style={{ fontFamily: 'Poppins' }}>
             {[
               { label: "Ordered", val: new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) },
-              { label: "Expected Delivery", val: new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) },
+              {
+                label: "Expected Delivery",
+                val: (
+                  <span className="flex items-center gap-2">
+                    {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                    {isPOOverdue(po) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/90 text-white" title="Exceeded expected delivery time">
+                        Overdue
+                      </span>
+                    )}
+                  </span>
+                ),
+              },
               { label: "Total Amount", val: formatPhp(po.totalAmount) },
               { label: "Receipts", val: `${goodsReceipts.length} GR${goodsReceipts.length !== 1 ? "s" : ""}` },
             ].map(m => (
               <div key={m.label}>
                 <div className="text-[10px] font-semibold tracking-wider mb-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>{m.label}</div>
-                <div className="text-sm font-semibold">{m.val}</div>
+                <div className="text-sm font-semibold">{typeof m.val === 'string' ? m.val : m.val}</div>
               </div>
             ))}
           </div>
@@ -640,6 +623,8 @@ function PurchaseOrdersPageContent() {
   const [search, setSearch] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<'all' | string>(supplierIdFromQuery ?? 'all');
   const [statusFilter, setStatusFilter] = useState<'all' | POStatus>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [goodsReceiptModalPO, setGoodsReceiptModalPO] = useState<PurchaseOrder | null>(null);
   const [editPOTarget, setEditPOTarget] = useState<PurchaseOrder | null>(null);
@@ -706,6 +691,10 @@ function PurchaseOrdersPageContent() {
       document.head.removeChild(style);
     };
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dateFrom, dateTo]);
 
   const statusOptions: InventoryDropdownOption<'all' | POStatus>[] = [
     { value: 'all', label: 'All Statuses' },
@@ -895,15 +884,27 @@ function PurchaseOrdersPageContent() {
       if (selectedSupplierId !== 'all' && po.supplierId !== selectedSupplierId) {
         return false;
       }
-      
+
       const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
-      const matchesSearch = 
+      const matchesSearch =
         po.id.toLowerCase().includes(search.toLowerCase()) ||
         (supplier?.name.toLowerCase() || '').includes(search.toLowerCase());
       const matchesStatus = statusFilter === 'all' || po.status === statusFilter;
-      return matchesSearch && matchesStatus;
+
+      let matchesDate = true;
+      if (dateFrom || dateTo) {
+        const orderDate = new Date(po.orderDate);
+        if (dateFrom) matchesDate = matchesDate && orderDate >= new Date(dateFrom);
+        if (dateTo) {
+          const to = new Date(dateTo);
+          to.setHours(23, 59, 59, 999);
+          matchesDate = matchesDate && orderDate <= to;
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [purchaseOrders, search, selectedSupplierId, statusFilter]);
+  }, [purchaseOrders, search, selectedSupplierId, statusFilter, dateFrom, dateTo]);
 
   const scopedOrders = useMemo(
     () =>
@@ -979,17 +980,13 @@ function PurchaseOrdersPageContent() {
           { label: 'RECEIVED', value: stats.received, gradient: 'from-green-600 to-green-700' },
           { label: 'CANCELLED', value: stats.cancelled, gradient: 'from-red-500 to-red-600' },
         ].map((stat) => (
-          <div key={stat.label} className={`relative bg-gradient-to-br ${stat.gradient} rounded-xl shadow-md p-4 overflow-hidden`}>
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-            <div className="relative z-10">
-              <div className="text-[10px] font-bold tracking-wider text-white/70 uppercase mb-2" style={{ fontFamily: 'Poppins' }}>
-                {stat.label}
-              </div>
-              <div className="text-3xl font-bold text-white leading-none" style={{ fontFamily: 'Poppins' }}>
-                {stat.value}
-              </div>
-            </div>
-          </div>
+          <SummaryCard
+            key={stat.label}
+            label={stat.label}
+            value={stat.value}
+            gradient={stat.gradient}
+            isLoading={isLoading}
+          />
         ))}
       </div>
 
@@ -1063,6 +1060,34 @@ function PurchaseOrdersPageContent() {
             menuZIndexClass="z-[999]"
           />
         </div>
+
+        <SingleDatePicker
+          value={dateFrom}
+          onChange={setDateFrom}
+          placeholder="From date"
+          className="min-w-[140px]"
+        />
+        <SingleDatePicker
+          value={dateTo}
+          onChange={setDateTo}
+          placeholder="To date"
+          className="min-w-[140px]"
+        />
+
+        {(dateFrom || dateTo) && (
+          <button
+            type="button"
+            onClick={() => {
+              setDateFrom('');
+              setDateTo('');
+              setPage(1);
+            }}
+            className="px-3.5 py-2 rounded-lg border-[1.5px] border-gray-200 bg-white text-gray-600 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            Clear date
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -1119,8 +1144,13 @@ function PurchaseOrdersPageContent() {
                   <div className="text-[12.5px] text-gray-700">
                     {new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
                   </div>
-                  <div className="text-[12.5px] text-gray-700">
+                  <div className="text-[12.5px] text-gray-700 flex items-center gap-2">
                     {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                    {isPOOverdue(po) && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/90 text-white" title="Exceeded expected delivery time">
+                        Overdue
+                      </span>
+                    )}
                   </div>
                   <div className="text-[12.5px] font-semibold text-gray-900">{formatPhp(po.totalAmount)}</div>
                   <div className="flex items-center">
@@ -1161,8 +1191,11 @@ function PurchaseOrdersPageContent() {
                     </div>
                     <div className="bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1" style={{ fontFamily: 'Poppins' }}>Expected</div>
-                      <div className="text-[13px] font-bold text-gray-700" style={{ fontFamily: 'Poppins' }}>
+                      <div className="text-[13px] font-bold text-gray-700 flex items-center gap-1.5 flex-wrap" style={{ fontFamily: 'Poppins' }}>
                         {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {isPOOverdue(po) && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/90 text-white">Overdue</span>
+                        )}
                       </div>
                     </div>
                     <div className="bg-[#e8f4f4] rounded-lg p-2">

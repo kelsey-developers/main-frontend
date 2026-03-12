@@ -69,3 +69,13 @@ export const PO_STATUS_CONFIG: Record<
 
 export const formatPhp = (value: number) =>
   'PHP ' + value.toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+/** True if PO is not yet fully received and expected delivery date has passed */
+export function isPOOverdue(po: PurchaseOrder): boolean {
+  if (po.status === 'received' || po.status === 'cancelled') return false;
+  const expected = new Date(po.expectedDelivery);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  expected.setHours(0, 0, 0, 0);
+  return today > expected;
+}

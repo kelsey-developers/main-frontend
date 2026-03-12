@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { apiClient } from '@/lib/api/client';
 import InventoryDropdown, { type InventoryDropdownOption } from '../../components/InventoryDropdown';
-import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems, inventoryPurchaseOrders, inventoryPurchaseOrderLines } from '../../lib/inventoryDataStore';
+import { ITEM_CATEGORIES, ITEM_UNITS, loadInventoryDataset, inventorySuppliers, inventoryItems, inventoryPurchaseOrders, inventoryPurchaseOrderLines, updateInventoryItem } from '../../lib/inventoryDataStore';
 import { useProductDetails, useAllProducts } from '../../hooks/useProductNames';
 import type { ReplenishmentItem } from '../../types';
 import { getLastUnitPriceForProduct } from '../../helpers/purchaseOrderHelpers';
@@ -544,6 +544,15 @@ function CreatePurchaseOrderPageContent() {
           ...(line.unitPrice > 0 ? { unitCost: line.unitPrice } : {}),
         })),
       });
+
+      // When PO provides a new unit price for an existing item (different from previous), update the item's unitCost
+      for (const line of realRows) {
+        if (!line.productId || line.unitPrice <= 0) continue;
+        const item = inventoryItems.find((i) => i.id === line.productId);
+        if (item && line.unitPrice !== (item.unitCost ?? 0)) {
+          updateInventoryItem(line.productId, { unitCost: line.unitPrice });
+        }
+      }
 
       await loadInventoryDataset(true);
       setCreatedPoId(created.id);

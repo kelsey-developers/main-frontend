@@ -93,15 +93,48 @@ function isHtmlErrorPage(text: string): boolean {
   );
 }
 
-function getUserFriendlyErrorMessage(status: number, rawText: string): string {
+function getUserFriendlyErrorMessage(status: number, rawText: string, payload?: Record<string, unknown>): string {
+  const payloadError = typeof payload?.error === 'string' ? payload.error : '';
   if (status === 502) return 'The server is temporarily unavailable. Please try again in a few minutes.';
+  if (status === 503 && /MARKET_API_URL|not configured/i.test(payloadError)) {
+    return payloadError || 'MARKET_API_URL is not configured.';
+  }
   if (status === 503) return 'The service is temporarily unavailable. Please try again later.';
   if (status === 504) return 'The request timed out. Please try again.';
   if (status >= 500) return 'Something went wrong on our end. Please try again later.';
   if (status === 404) return 'The requested resource was not found.';
   if (status === 401 || status === 403) return 'You don\'t have permission to perform this action.';
   if (isHtmlErrorPage(rawText)) return 'The server is temporarily unavailable. Please try again in a few minutes.';
-  return `Request failed. Please try again.`;
+  // Surface validation error details (422, 400)
+  if (payload && (status === 422 || status === 400)) {
+    const baseMsg = (payload.message ?? payload.error ?? payload.detail) as string | undefined;
+    const extractDetails = (): string[] => {
+      const out: string[] = [];
+      const errs = payload!.errors ?? payload!.details ?? payload!.validation_errors ?? payload!.validation;
+      if (errs && typeof errs === 'object') {
+        if (Array.isArray(errs)) {
+          errs.forEach((e) => {
+            if (typeof e === 'string') out.push(e);
+            else if (e && typeof e === 'object' && 'message' in e) out.push(String((e as { message: unknown }).message));
+            else if (e && typeof e === 'object' && 'msg' in e) out.push(String((e as { msg: unknown }).msg));
+          });
+        } else {
+          Object.entries(errs as Record<string, unknown>).forEach(([k, v]) => {
+            const arr = Array.isArray(v) ? v : [v];
+            arr.forEach((m) => out.push(`${k}: ${m}`));
+          });
+        }
+      }
+      return out;
+    };
+    const details = extractDetails();
+    if (details.length > 0) return details.slice(0, 3).join('; ');
+    if (typeof baseMsg === 'string' && baseMsg.trim()) return baseMsg;
+    if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+      console.warn('[apiClient] Validation error response:', payload);
+    }
+  }
+  return 'Request failed. Please try again.';
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -213,11 +246,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       (typeof payload.message === 'string' && payload.message.trim()) ||
       raw;
 
-    const message = isHtmlErrorPage(String(rawMessage))
-      ? getUserFriendlyErrorMessage(res.status, raw)
+    // Use friendly messages for gateway/infrastructure errors (502, 503, 504)
+    const useFriendly =
+      res.status === 502 || res.status === 503 || res.status === 504 ||
+      isHtmlErrorPage(String(rawMessage));
+    const message = useFriendly
+      ? getUserFriendlyErrorMessage(res.status, raw, payload)
       : (typeof rawMessage === 'string' && rawMessage.length < 500
           ? rawMessage
-          : getUserFriendlyErrorMessage(res.status, raw));
+          : getUserFriendlyErrorMessage(res.status, raw, payload));
 
     if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production' && isHtmlErrorPage(raw)) {
       console.warn(`[apiClient] ${res.status} HTML error page received (${raw.length} chars). Backend may be down.`);

@@ -15,66 +15,12 @@ import {
   inventorySupplierDirectory,
   inventoryDamageAdjustments,
   inventoryWarehouseDirectory,
+  inventoryUnitAllocations,
+  inventoryUnits,
+  inventoryItems,
+  isWarehouseActive,
 } from '../lib/inventoryDataStore';
-import { listDamageIncidents, type DamageIncident } from '@/lib/api/damageIncidents';
-
-/** When true, use mock damage incidents instead of API (for testing) */
-const USE_MOCK_DAMAGE = process.env.NEXT_PUBLIC_USE_MOCK_DAMAGE_INCIDENTS === 'true';
-
-/** Mock damage incidents for testing - returns incidents that include the given productId */
-function getMockDamageIncidents(productId: string): DamageIncident[] {
-  return [
-    {
-      id: 'mock-di-001',
-      reportDate: '2025-03-10',
-      dateReported: '2025-03-10T14:30:00',
-      description: 'Guest damage - stained beyond use during checkout',
-      cause: 'Guest negligence',
-      reportedBy: 'Housekeeping Staff',
-      estimatedCost: 450,
-      actualCost: 420,
-      status: 'resolved',
-      createdAt: '2025-03-10T14:30:00',
-      items: [
-        { productId, quantity: 2, itemCost: 210 },
-      ],
-    },
-    {
-      id: 'mock-di-002',
-      reportDate: '2025-03-08',
-      description: 'Wear and tear from repeated use',
-      cause: 'Normal wear',
-      reportedBy: 'Warehouse Staff',
-      status: 'open',
-      items: [
-        { productId, quantity: 1, itemCost: 150 },
-      ],
-    },
-    {
-      id: 'mock-di-003',
-      reportDate: '2025-03-05',
-      description: 'Mold damage in storage area',
-      cause: 'Storage conditions',
-      reportedBy: 'Inventory Manager',
-      estimatedCost: 300,
-      status: 'in-review',
-      items: [
-        { productId, quantity: 3, itemCost: 100 },
-      ],
-    },
-    {
-      id: 'mock-di-004',
-      reportDate: '2025-03-01',
-      description: 'Broken during transport',
-      cause: 'Handling',
-      reportedBy: 'Delivery Staff',
-      status: 'resolved',
-      items: [
-        { productId, quantity: 1 },
-      ],
-    },
-  ];
-}
+import { listDamageIncidents } from '@/lib/api/damageIncidents';
 
 interface AuditTrailModalProps {
   item: ReplenishmentItem | null;
@@ -183,7 +129,7 @@ const SAMPLE_ITEM: AuditItem = {
   auditNotes: 'Recent damage incident resolved. Stock levels recovering after Q1 demand spike.',
   movements: [
     { id: 1, date: 'Feb 15, 2025', time: '08:00 AM', type: 'in', qty: 50, unit: 'pcs', notes: 'PO-2025-001 received', user: 'Admin User', ref: 'PO-2025-001' },
-    { id: 2, date: 'Feb 20, 2025', time: '08:00 AM', type: 'out', qty: 30, unit: 'pcs', notes: 'Distributed to Unit 711', user: 'Warehouse Staff' },
+    { id: 2, date: 'Feb 20, 2025', time: '08:00 AM', type: 'out', qty: 30, unit: 'pcs', notes: 'Stock out', user: 'Warehouse Staff' },
     { id: 3, date: 'Feb 22, 2025', time: '10:30 AM', type: 'adjustment', qty: -12, unit: 'pcs', notes: 'Cycle count correction', user: 'Admin User' },
     { id: 4, date: 'Feb 24, 2025', time: '02:15 PM', type: 'damage', qty: 2, unit: 'pcs', notes: 'Stained beyond use - removed', user: 'Warehouse Staff' },
     { id: 5, date: 'Mar 01, 2025', time: '09:00 AM', type: 'in', qty: 20, unit: 'pcs', notes: 'PO-2025-009 received', user: 'Admin User', ref: 'PO-2025-009' },
@@ -377,12 +323,16 @@ const MetaCards = ({ item, isMobile, itemId, onClose }: { item: AuditItem; isMob
   );
 };
 
+const toDateTextShort = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
+};
+
 const StorageDistributionSection = ({
-  item,
   isMobile,
   productId,
-  mainWarehouseId,
-  unit,
 }: {
   item: AuditItem;
   isMobile: boolean;
@@ -390,45 +340,17 @@ const StorageDistributionSection = ({
   mainWarehouseId?: string;
   unit: string;
 }) => {
-  // Main warehouse quantity
-  const mainWarehouseQty = useMemo(() => {
-    if (!mainWarehouseId) return null;
-    const wh = inventoryWarehouseDirectory.find((w) => w.id === mainWarehouseId);
-    const bal = wh?.inventoryBalances?.find((b) => b.productId === productId);
-    return bal && bal.quantity > 0 ? bal.quantity : null;
-  }, [productId, mainWarehouseId]);
+  const allocations = useMemo(() => {
+    return inventoryUnitAllocations.filter((a) => a.productId === productId);
+  }, [productId]);
 
-  // Other warehouses where this product has stock (excluding main warehouse)
-  const otherWarehouses = useMemo(() => {
-    return inventoryWarehouseDirectory
-      .filter((wh) => wh.isActive && wh.id !== mainWarehouseId)
-      .map((wh) => {
-        const bal = wh.inventoryBalances?.find((b) => b.productId === productId);
-        return bal && bal.quantity > 0 ? { name: wh.name, quantity: bal.quantity } : null;
-      })
-      .filter((x): x is { name: string; quantity: number } => x != null);
-  }, [productId, mainWarehouseId]);
+  const unitNames = useMemo(() => {
+    return new Map(inventoryUnits.map((u) => [u.id, u.name]));
+  }, []);
 
-  // Extract unit distributions from movements
-  const unitDistributions = useMemo(() => {
-    const distributions: Record<string, { name: string; quantity: number }> = {};
-    
-    item.movements.forEach((movement) => {
-      if (movement.type === 'out' && movement.notes.includes('Unit')) {
-        // Extract unit name from notes (e.g., "Distributed to Unit 711")
-        const match = movement.notes.match(/Unit\s+(\d+)/);
-        if (match) {
-          const unitName = `Unit ${match[1]}`;
-          if (!distributions[unitName]) {
-            distributions[unitName] = { name: unitName, quantity: 0 };
-          }
-          distributions[unitName].quantity += movement.qty;
-        }
-      }
-    });
-    
-    return Object.values(distributions);
-  }, [item.movements]);
+  const product = useMemo(() => {
+    return inventoryItems.find((p) => p.id === productId);
+  }, [productId]);
 
   return (
     <div style={{ 
@@ -438,155 +360,41 @@ const StorageDistributionSection = ({
       padding: '16px',
       borderLeft: `3px solid ${B.primary}`
     }}>
-      {/* Warehouse Storage */}
-      <div style={{ marginBottom: unitDistributions.length > 0 ? '16px' : '0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M2 14V6L8 2L14 6V14H2Z" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M5 14V9H11V14" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>MAIN WAREHOUSE</span>
-        </div>
-        <div style={{ paddingLeft: '24px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
-              {isNoneLike(item.warehouse) ? <NoneBadge /> : item.warehouse}
-            </div>
-            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-              Primary storage location
-            </div>
-          </div>
-          {mainWarehouseQty != null && (
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                color: B.primary,
-                background: '#e8f4f4',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {mainWarehouseQty} {unit}
-            </span>
-          )}
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="12" height="12" rx="2" stroke={B.primary} strokeWidth="1.5"/>
+          <path d="M6 2V14M10 2V14M2 6H14M2 10H14" stroke={B.primary} strokeWidth="1.5"/>
+        </svg>
+        <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>INVENTORY ALLOCATION</span>
       </div>
-
-      {/* Other Warehouses */}
-      {otherWarehouses.length > 0 && (
-        <>
-          <div style={{ height: '1px', background: '#e8f4f4', margin: '12px 0' }} />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2 14V6L8 2L14 6V14H2Z" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M5 14V9H11V14" stroke={B.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>ALSO IN OTHER WAREHOUSES</span>
-            </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(140px, 1fr))',
-              gap: '8px',
-              paddingLeft: '24px',
-            }}>
-              {otherWarehouses.map((wh, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    background: '#e8f4f4',
-                    border: `1px solid ${B.tint20}`,
-                    borderRadius: '8px',
-                    padding: '8px 10px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: B.dark }}>{wh.name}</span>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      color: B.primary,
-                      background: 'white',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {wh.quantity} {unit}
-                  </span>
-                </div>
+      {allocations.length === 0 ? (
+        <div style={{ paddingLeft: '24px', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+          No allocation records for this product.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', fontFamily: 'Poppins' }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${B.tint20}` }}>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>ID</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>PRODUCT ID</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>UNIT</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>MIN STOCK</th>
+                <th style={{ textAlign: 'left', padding: '8px 10px', fontWeight: 700, color: '#64748b', fontSize: '10px', letterSpacing: '0.06em' }}>UPDATED AT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allocations.map((a) => (
+                <tr key={a.id} style={{ borderBottom: `1px solid ${B.tint10}` }}>
+                  <td style={{ padding: '10px', color: '#0f172a', fontFamily: "'DM Mono', monospace", fontSize: '11px' }}>{a.id}</td>
+                  <td style={{ padding: '10px', color: '#0f172a', fontFamily: "'DM Mono', monospace", fontSize: '11px' }}>{a.productId}</td>
+                  <td style={{ padding: '10px', color: B.dark, fontWeight: 600 }}>{unitNames.get(a.unitId) ?? a.unitId}</td>
+                  <td style={{ padding: '10px', color: '#0f172a', fontWeight: 600 }}>{product?.minStock ?? 0}</td>
+                  <td style={{ padding: '10px', color: '#64748b', fontSize: '11.5px' }}>{toDateTextShort(a.updatedAt)}</td>
+                </tr>
               ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Unit Distributions */}
-      {unitDistributions.length > 0 && (
-        <>
-          <div style={{ height: '1px', background: '#e8f4f4', margin: '12px 0' }} />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="2" y="2" width="12" height="12" rx="2" stroke={B.primary} strokeWidth="1.5"/>
-                <path d="M6 2V14M10 2V14M2 6H14M2 10H14" stroke={B.primary} strokeWidth="1.5"/>
-              </svg>
-              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', color: B.dark }}>DISTRIBUTED TO UNITS</span>
-            </div>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(140px, 1fr))', 
-              gap: '8px',
-              paddingLeft: '24px'
-            }}>
-              {unitDistributions.map((dist, idx) => (
-                <div 
-                  key={idx}
-                  style={{
-                    background: '#e8f4f4',
-                    border: `1px solid ${B.tint20}`,
-                    borderRadius: '8px',
-                    padding: '8px 10px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}
-                >
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: B.dark }}>{dist.name}</span>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      color: B.primary,
-                      background: 'white',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {dist.quantity} {item.movements[0]?.unit || 'pcs'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {unitDistributions.length === 0 && (
-        <div style={{ 
-          paddingLeft: '24px', 
-          marginTop: '8px',
-          fontSize: '11.5px', 
-          color: '#94a3b8',
-          fontStyle: 'italic'
-        }}>
-          No unit distributions recorded
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -1051,37 +859,15 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
   const [swipeOffsetY, setSwipeOffsetY] = useState(0);
   const [movementRefreshTick, setMovementRefreshTick] = useState(0);
   const [apiDamageForProduct, setApiDamageForProduct] = useState<ApiDamageItem[]>([]);
+  const [damageLoading, setDamageLoading] = useState(false);
 
   useEffect(() => {
     if (!item?.id) {
       setApiDamageForProduct([]);
+      setDamageLoading(false);
       return;
     }
-    if (USE_MOCK_DAMAGE) {
-      const incidents = getMockDamageIncidents(item.id);
-      const items: ApiDamageItem[] = [];
-      for (const inc of incidents) {
-        for (const it of inc.items ?? []) {
-          if (it.productId === item.id) {
-            items.push({
-              id: inc.id + (it.id ?? '') + it.productId,
-              incidentId: inc.id,
-              productId: it.productId,
-              quantity: it.quantity,
-              notes: inc.description,
-              reportedAt: inc.reportDate ?? inc.dateReported ?? inc.createdAt,
-              reportedBy: inc.reportedBy,
-              status: inc.status,
-              cause: inc.cause,
-              estimatedCost: inc.estimatedCost,
-              itemCost: it.itemCost,
-            });
-          }
-        }
-      }
-      setApiDamageForProduct(items);
-      return;
-    }
+    setDamageLoading(true);
     void listDamageIncidents()
       .then((incidents) => {
         const items: ApiDamageItem[] = [];
@@ -1106,7 +892,8 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
         }
         setApiDamageForProduct(items);
       })
-      .catch(() => setApiDamageForProduct([]));
+      .catch(() => setApiDamageForProduct([]))
+      .finally(() => setDamageLoading(false));
   }, [item?.id]);
 
   useEffect(() => {
@@ -1288,7 +1075,7 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
 
           <Divider />
 
-          <SectionLabel>Storage & Distribution</SectionLabel>
+          <SectionLabel>Inventory Allocation</SectionLabel>
           <StorageDistributionSection
             item={viewItem}
             isMobile={isMobile}
@@ -1348,9 +1135,13 @@ const AuditTrailModal = ({ item, onClose }: AuditTrailModalProps) => {
                   </svg>
                 </Link>
               </>
+            ) : damageLoading ? (
+              <div style={{ border: `1px solid ${B.tint20}`, borderRadius: '12px', padding: '24px 16px', background: 'white', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
+                Loading damage reports…
+              </div>
             ) : (
               <div style={{ border: `1px solid ${B.tint20}`, borderRadius: '12px', padding: '24px 16px', background: 'white', textAlign: 'center', fontSize: '13px', color: '#64748b', fontFamily: 'Poppins' }}>
-                No damage incident found
+                No damage report
               </div>
             )}
           </div>

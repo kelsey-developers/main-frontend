@@ -3,8 +3,8 @@ import type {
   DamageAdjustment,
   GoodsReceipt,
   InventoryDashboardSummary,
-  InventoryItem,
   InventoryUnit,
+  ItemAllocation,
   ItemCategory,
   ItemType,
   PurchaseOrder,
@@ -12,6 +12,7 @@ import type {
   ReplenishmentItem,
   StockMovement,
   Supplier,
+  UnitItemDisplay,
   Warehouse,
 } from '../types';
 
@@ -95,10 +96,15 @@ export interface WarehouseDirectoryRecord {
   name: string;
   location: string;
   description?: string;
-  isActive: boolean;
+  /** Soft deletion: when set, warehouse is considered inactive/deleted. No isActive in ERD. */
+  deletedAt?: string | null;
   inventoryBalances: WarehouseInventoryBalanceRow[];
   stockMovements: WarehouseMovementRow[];
 }
+
+/** Warehouse status: supports deletedAt (soft delete) or isActive from backend. */
+export const isWarehouseActive = (wh: { deletedAt?: string | null; isActive?: boolean }): boolean =>
+  wh.isActive !== undefined ? wh.isActive : !wh.deletedAt;
 
 export interface SupplierDirectoryRecord {
   id: string;
@@ -118,6 +124,8 @@ export interface WarehouseUnitAllocationItem {
   productId: string;
   productName: string;
   quantity: number;
+  /** Inventory threshold (product-level), not per unit. */
+  minStock?: number;
 }
 
 export interface WarehouseUnitAllocationSummary {
@@ -125,6 +133,34 @@ export interface WarehouseUnitAllocationSummary {
   unitName: string;
   items: WarehouseUnitAllocationItem[];
 }
+
+/** Allocations grouped by unit. Min stock = product-level inventory threshold. */
+export const getUnitAllocationsForDisplay = (): WarehouseUnitAllocationSummary[] => {
+  const productById = new Map(mockReplenishmentItems.map((p) => [p.id, p]));
+  const byUnit = new Map<string, WarehouseUnitAllocationSummary>();
+
+  mockUnitAllocations.forEach((a) => {
+    const unit = inventoryUnitsState.find((u) => u.id === a.unitId);
+    if (!unit || a.quantity <= 0) return;
+
+    const product = productById.get(a.productId);
+    const productName = product?.name ?? a.productId;
+    const minStock = product?.minStock ?? 0;
+
+    if (!byUnit.has(unit.id)) {
+      byUnit.set(unit.id, { unitId: unit.id, unitName: unit.name, items: [] });
+    }
+    const row = byUnit.get(unit.id)!;
+    const existing = row.items.find((i) => i.productId === a.productId);
+    if (existing) {
+      existing.quantity += a.quantity;
+    } else {
+      row.items.push({ productId: a.productId, productName, quantity: a.quantity, minStock });
+    }
+  });
+
+  return Array.from(byUnit.values());
+};
 
 interface InventoryDatasetResponse {
   dashboardSummary?: InventoryDashboardSummary;
@@ -139,7 +175,8 @@ interface InventoryDatasetResponse {
   goodsReceipts?: GoodsReceipt[];
   replenishmentItems?: ReplenishmentItem[];
   units?: InventoryUnit[];
-  unitItems?: InventoryItem[];
+  /** Raw unitItems from API – normalized to ItemAllocation (ERD) in applyDataset */
+  unitItems?: unknown[];
   unitStockMovements?: UnitStockMovementRow[];
 }
 
@@ -231,7 +268,10 @@ export const mockPurchaseOrderLines: PurchaseOrderLine[] = [];
 export const mockGoodsReceipts: GoodsReceipt[] = [];
 export const mockSupplierDirectoryData: SupplierDirectoryRecord[] = [];
 export const mockReplenishmentItems: ReplenishmentItem[] = [];
-export const mockUnitItems: InventoryItem[] = [];
+/** Item allocations (ERD): id, productId, unitId, quantity, minStock, updatedAt */
+export const mockUnitAllocations: ItemAllocation[] = [];
+/** Display cache: joins allocations with product info. Refreshed in applyDataset and updateProductMinStock. */
+export const mockUnitItems: UnitItemDisplay[] = [];
 export const inventoryUnitsState: InventoryUnit[] = [];
 export const mockUnitStockMovements: UnitStockMovementRow[] = [];
 
@@ -250,8 +290,74 @@ const hasMeaningfulDataset = (dataset: InventoryDatasetResponse) => {
   return false;
 };
 
+/** Normalize raw API unitItem to ItemAllocation (ERD). Supports ERD shape and legacy (name, assignedToUnit, currentStock). */
+const normalizeUnitItemToAllocation = (
+  item: unknown,
+  existingAllocations: ItemAllocation[]
+): ItemAllocation | null => {
+  if (!item || typeof item !== 'object') return null;
+  const obj = item as Record<string, unknown>;
+
+  const productId = obj.productId != null ? String(obj.productId) : obj.id != null ? String(obj.id) : null;
+  const unitId = obj.unitId != null ? String(obj.unitId) : obj.assignedToUnit != null ? String(obj.assignedToUnit) : null;
+  const allocationId = obj.id != null ? String(obj.id) : productId && unitId ? `${productId}::${unitId}` : null;
+
+  if (!allocationId || !productId || !unitId) return null;
+
+  const quantity = typeof obj.quantity === 'number' ? obj.quantity : Number(obj.currentStock) || 0;
+  let minStock = typeof obj.minStock === 'number' ? obj.minStock : Number(obj.minStock) || 0;
+
+  if (minStock === 0) {
+    const existing = existingAllocations.find((a) => a.id === allocationId);
+    if (existing && existing.minStock > 0) minStock = existing.minStock;
+  }
+
+  const updatedAt = obj.updatedAt != null ? String(obj.updatedAt) : undefined;
+
+  return { id: allocationId, productId, unitId, quantity, minStock, updatedAt };
+};
+
+/** Builds mockUnitItems from allocations + products for display. Min stock = product-level inventory threshold. */
+const refreshUnitItemsDisplay = () => {
+  const productById = new Map(mockReplenishmentItems.map((p) => [p.id, p]));
+  const display: UnitItemDisplay[] = mockUnitAllocations.map((a) => {
+    const product = productById.get(a.productId);
+    const name = product?.name ?? a.productId;
+    const unit = product ? normalizeUnit(product.unit) : 'pcs';
+    return {
+      id: a.id,
+      productId: a.productId,
+      unitId: a.unitId,
+      name,
+      unit,
+      currentStock: a.quantity,
+      minStock: product?.minStock ?? 0,
+      assignedToUnit: a.unitId,
+    };
+  });
+  replaceArray(mockUnitItems, display);
+};
+
+const normalizeWarehouseRecord = (wh: Record<string, unknown>): WarehouseDirectoryRecord => {
+  const { isActive, is_active, deletedAt, deleted_at, ...rest } = wh;
+  // Backend has no isActive; use deletedAt/deleted_at for soft deletion. Legacy isActive/is_active → deletedAt.
+  const rawDeleted = deletedAt ?? deleted_at;
+  const legacyInactive = isActive === false || is_active === false;
+  const effectiveDeletedAt =
+    rawDeleted != null && rawDeleted !== ''
+      ? String(rawDeleted)
+      : legacyInactive
+        ? '1970-01-01T00:00:00Z' // legacy: treat inactive as soft-deleted
+        : undefined;
+  return { ...rest, deletedAt: effectiveDeletedAt } as WarehouseDirectoryRecord;
+};
+
 const applyDataset = (dataset: InventoryDatasetResponse) => {
-  replaceArray(mockWarehouseDirectoryData, dataset.warehouseDirectoryData);
+  const rawWarehouses = Array.isArray(dataset.warehouseDirectoryData) ? dataset.warehouseDirectoryData : [];
+  const normalizedWarehouses = rawWarehouses.map((wh) =>
+    wh && typeof wh === 'object' ? normalizeWarehouseRecord(wh as unknown as Record<string, unknown>) : wh
+  ) as WarehouseDirectoryRecord[];
+  replaceArray(mockWarehouseDirectoryData, normalizedWarehouses);
   replaceArray(mockSuppliers, dataset.suppliers);
   replaceArray(mockPurchaseOrders, dataset.purchaseOrders);
   replaceArray(mockPurchaseOrderLines, dataset.purchaseOrderLines);
@@ -300,16 +406,11 @@ const applyDataset = (dataset: InventoryDatasetResponse) => {
   });
   replaceArray(mockReplenishmentItems, normalizedItems);
   const unitItems = Array.isArray(dataset.unitItems) ? dataset.unitItems : [];
-  const normalizedUnitItems = unitItems.map((item) => {
-    if (item && typeof item === 'object' && 'unit' in item) {
-      const canonical = normalizeUnit((item as { unit?: string }).unit);
-      if (canonical !== (item as { unit?: string }).unit) {
-        return { ...item, unit: canonical };
-      }
-    }
-    return item;
-  });
-  replaceArray(mockUnitItems, normalizedUnitItems);
+  const normalizedAllocations = unitItems
+    .map((item: unknown) => normalizeUnitItemToAllocation(item, mockUnitAllocations))
+    .filter((a): a is ItemAllocation => a != null);
+  replaceArray(mockUnitAllocations, normalizedAllocations);
+  refreshUnitItemsDisplay();
   replaceArray(mockUnitStockMovements, dataset.unitStockMovements);
 
   // Warehouses come from backend dataset only.
@@ -371,10 +472,9 @@ const syncUnitsFromExternalSource = (externalUnits: ExternalUnitListing[]) => {
   }
 
   const itemCountByUnitId = new Map<string, number>();
-  mockUnitItems.forEach((item) => {
-    if (!item.assignedToUnit) return;
-    const current = itemCountByUnitId.get(item.assignedToUnit) ?? 0;
-    itemCountByUnitId.set(item.assignedToUnit, current + 1);
+  mockUnitAllocations.forEach((a) => {
+    const current = itemCountByUnitId.get(a.unitId) ?? 0;
+    itemCountByUnitId.set(a.unitId, current + 1);
   });
 
   const mappedUnits: InventoryUnit[] = externalUnits
@@ -431,102 +531,10 @@ export const loadInventoryDataset = async (force = false): Promise<void> => {
 // Note: we intentionally do not auto-fetch on module import. Pages/components control when
 // loading spinners should show, and tying fetch timing to import can cause confusing flashes.
 
-const normalizeInventoryName = (value: string) =>
-  value
-    .toLowerCase()
-    .replace(/\([^)]*\)/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-
-const buildWarehouseUnitAllocationMap = (): Record<string, WarehouseUnitAllocationSummary[]> => {
-  const replenishmentByName = new Map(
-    mockReplenishmentItems.map((item) => [normalizeInventoryName(item.name), item])
-  );
-
-  const latestMovementByUnitProduct = new Map<string, UnitStockMovementRow>();
-  for (const movement of mockUnitStockMovements) {
-    const key = `${movement.unitId}::${movement.productId}`;
-    const existing = latestMovementByUnitProduct.get(key);
-    if (!existing) {
-      latestMovementByUnitProduct.set(key, movement);
-      continue;
-    }
-    const existingTime = new Date(existing.recordedAt).getTime();
-    const nextTime = new Date(movement.recordedAt).getTime();
-    if (Number.isNaN(existingTime) || nextTime >= existingTime) {
-      latestMovementByUnitProduct.set(key, movement);
-    }
-  }
-
-  const byWarehouse = new Map<string, Map<string, WarehouseUnitAllocationSummary>>();
-
-  mockUnitItems.forEach((unitItem) => {
-    if (!unitItem.assignedToUnit || unitItem.currentStock <= 0) return;
-
-    const replenishmentItem = replenishmentByName.get(normalizeInventoryName(unitItem.name));
-    const unit = inventoryUnitsState.find((entry) => entry.id === unitItem.assignedToUnit);
-    if (!unit) return;
-
-    const maybeProductId = (unitItem as InventoryItem & { productId?: string }).productId;
-    const movementByProduct = maybeProductId
-      ? latestMovementByUnitProduct.get(`${unit.id}::${maybeProductId}`)
-      : undefined;
-    const movementByName = !movementByProduct
-      ? mockUnitStockMovements
-          .filter(
-            (movement) =>
-              movement.unitId === unit.id &&
-              normalizeInventoryName(movement.productName) === normalizeInventoryName(unitItem.name)
-          )
-          .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())[0]
-      : undefined;
-
-    const sourceWarehouseId =
-      movementByProduct?.sourceWarehouseId ||
-      movementByName?.sourceWarehouseId ||
-      replenishmentItem?.warehouseId ||
-      '';
-    if (!sourceWarehouseId) return;
-
-    if (!byWarehouse.has(sourceWarehouseId)) {
-      byWarehouse.set(sourceWarehouseId, new Map<string, WarehouseUnitAllocationSummary>());
-    }
-
-    const byUnit = byWarehouse.get(sourceWarehouseId)!;
-    if (!byUnit.has(unit.id)) {
-      byUnit.set(unit.id, {
-        unitId: unit.id,
-        unitName: unit.name,
-        items: [],
-      });
-    }
-
-    const row = byUnit.get(unit.id)!;
-    const productId = maybeProductId || replenishmentItem?.id || unitItem.id;
-    const productName = replenishmentItem?.name || unitItem.name;
-    const existing = row.items.find((entry) => entry.productId === productId);
-    if (existing) {
-      existing.quantity += unitItem.currentStock;
-    } else {
-      row.items.push({
-        productId,
-        productName,
-        quantity: unitItem.currentStock,
-      });
-    }
-  });
-
-  const result: Record<string, WarehouseUnitAllocationSummary[]> = {};
-  byWarehouse.forEach((unitMap, warehouseId) => {
-    result[warehouseId] = Array.from(unitMap.values());
-  });
-
-  return result;
-};
-
-export const getWarehouseUnitAllocations = (warehouseId: string): WarehouseUnitAllocationSummary[] => {
-  const map = buildWarehouseUnitAllocationMap();
-  return map[warehouseId] ?? [];
+/** Returns allocated quantity for a product in a unit (from ItemAllocation). Used for write-off validation. */
+export const getAllocatedQuantityForUnit = (productId: string, unitId: string): number => {
+  const a = mockUnitAllocations.find((x) => x.productId === productId && x.unitId === unitId);
+  return a?.quantity ?? 0;
 };
 
 /**
@@ -615,6 +623,7 @@ export const updateInventoryItem = (
     if (updates.warehouseId !== undefined) payload.warehouseId = merged.warehouseId;
     if (updates.minStock !== undefined) payload.reorderLevel = merged.minStock;
     if (updates.unit !== undefined) payload.unit = merged.unit;
+    if (updates.unitCost !== undefined) payload.unitCost = merged.unitCost;
     if (Object.keys(payload).length > 0) {
       apiClient.patch(`/api/products/${itemId}`, payload).catch(() => {
         // Backend may not support PATCH; in-memory update is already applied
@@ -625,23 +634,15 @@ export const updateInventoryItem = (
 };
 
 /**
- * Updates the minimum stock (threshold) for a unit item.
- * Unit items have per-unit minStock; this does not affect product-level minStock.
+ * Updates the inventory threshold (product-level min stock). Not per unit/warehouse.
+ * Uses updateInventoryItem which PATCHes /api/products/:productId { reorderLevel }.
  */
-export const updateUnitItemMinStock = (itemId: string, minStock: number): boolean => {
-  const idx = mockUnitItems.findIndex((i) => i.id === itemId);
+export const updateProductMinStock = async (productId: string, minStock: number): Promise<boolean> => {
+  const idx = mockReplenishmentItems.findIndex((i) => i.id === productId);
   if (idx < 0) return false;
 
   const safeValue = Math.max(0, minStock);
-  mockUnitItems[idx] = { ...mockUnitItems[idx], minStock: safeValue };
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('inventory:movement-updated', { detail: { source: 'unit-threshold', itemId } }));
-    apiClient
-      .patch(`/api/inventory/unit-items/${itemId}`, { minStock: safeValue })
-      .catch(() => {
-        // Backend may not support this; in-memory update is applied
-      });
-  }
+  updateInventoryItem(productId, { minStock: safeValue });
+  refreshUnitItemsDisplay();
   return true;
 };

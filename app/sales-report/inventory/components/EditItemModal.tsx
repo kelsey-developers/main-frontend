@@ -465,7 +465,7 @@ export default function EditItemModal({ item, onClose, onSave }: EditItemModalPr
               label="Current Stock"
               required
               hint="Use Stock In or Stock Out to change"
-              hintBelow="Minimum thresholds are set per unit on the unit page."
+              hintBelow="Inventory threshold applies to all units. Edit from the Allocations view on the Items page."
             >
               <input
                 type="number"

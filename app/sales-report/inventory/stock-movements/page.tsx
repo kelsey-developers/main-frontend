@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import SingleDatePicker from '@/components/SingleDatePicker';
+import SummaryCard from '../components/SummaryCard';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import {
   loadInventoryDataset,
@@ -577,7 +578,7 @@ export default function StockMovementsPage() {
             </nav>
 
             <h1 className="text-[32px] font-extrabold text-[#0b5858] mb-2">Stock Movement History</h1>
-            <p className="text-sm text-gray-600">Comprehensive audit trail for warehouse and unit inventory movements.</p>
+            <p className="text-sm text-gray-600">Comprehensive audit trail for inventory movements.</p>
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -642,13 +643,13 @@ export default function StockMovementsPage() {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 inventory-reveal">
           {summaryStats.map((stat) => (
-            <div key={stat.label} className={`relative bg-gradient-to-br ${stat.gradient} rounded-xl shadow-md p-4 overflow-hidden`}>
-              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-              <div className="relative z-10">
-                <div className="text-[10px] font-bold tracking-wider text-white/70 uppercase mb-2">{stat.label}</div>
-                <div className="text-3xl font-bold text-white leading-none">{stat.value}</div>
-              </div>
-            </div>
+            <SummaryCard
+              key={stat.label}
+              label={stat.label}
+              value={stat.value}
+              gradient={stat.gradient}
+              isLoading={isLoading}
+            />
           ))}
         </div>
 

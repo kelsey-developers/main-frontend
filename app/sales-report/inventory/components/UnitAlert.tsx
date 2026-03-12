@@ -1,17 +1,17 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import type { InventoryUnit, InventoryItem } from '../types';
+import type { InventoryUnit, UnitItemDisplay } from '../types';
 
 interface UnitAlertProps {
   units: InventoryUnit[];
-  unitItems: InventoryItem[];
+  unitItems: UnitItemDisplay[];
   onUnitClick?: (unit: InventoryUnit) => void;
 }
 
 interface UnitWithAlerts {
   unit: InventoryUnit;
-  lowStockItems: InventoryItem[];
+  lowStockItems: UnitItemDisplay[];
 }
 
 const UnitAlert: React.FC<UnitAlertProps> = ({ units, unitItems, onUnitClick }) => {

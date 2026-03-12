@@ -7,23 +7,22 @@ import { Suspense } from 'react';
 import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
-import UnitSearchInput from '../components/UnitSearchInput';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
-import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getWarehouseUnitAllocations, inventoryUnitItems } from '../lib/inventoryDataStore';
+import UnitSearchInput from '../components/UnitSearchInput';
+import EditUnitThresholdModal from '../components/EditUnitThresholdModal';
+import { inventoryItems, getDisplayableInventoryItems, inventoryWarehouseDirectory, getUnitAllocationsForDisplay, inventoryUnitItems } from '../lib/inventoryDataStore';
 import { recomputeAllInventoryDerivedValues } from '../lib/inventoryLedger';
-import { useToast } from '../hooks/useToast';
 
 function InventoryItemsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { warning } = useToast();
   const warehouseIdFromQuery = searchParams.get('warehouseId');
   const warehouseNameFromQuery = searchParams.get('warehouseName');
   const itemIdFromQuery = searchParams.get('itemId');
   const [refreshTick, setRefreshTick] = useState(0);
-  const [view, setView] = useState<'items' | 'unitAllocations'>('items');
+  const [view, setView] = useState<'items' | 'allocations'>('items');
   const [unitFilter, setUnitFilter] = useState<'all' | string>('all');
-
+  const [thresholdEditProduct, setThresholdEditProduct] = useState<typeof inventoryItems[number] | null>(null);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(warehouseIdFromQuery);
   const [selectedItem, setSelectedItem] = useState<typeof inventoryItems[number] | null>(
     itemIdFromQuery ? inventoryItems.find((item) => item.id === itemIdFromQuery) || null : null
@@ -61,17 +60,8 @@ function InventoryItemsPageContent() {
     return () => window.removeEventListener('inventory:movement-updated', onMovementUpdated);
   }, []);
 
-  const preferredWarehouseId = useMemo(() => {
-    if (warehouseIdFromQuery || selectedWarehouseId) return null;
-    return (
-      inventoryWarehouseDirectory.find(
-        (warehouse) => getWarehouseUnitAllocations(warehouse.id).length > 0
-      )?.id ?? null
-    );
-  }, [warehouseIdFromQuery, selectedWarehouseId, refreshTick]);
-
-  // Combine query param with local state (query param takes precedence)
-  const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId || preferredWarehouseId;
+  // Query param takes precedence; otherwise use selected warehouse or null (All Warehouses)
+  const activeWarehouseId = warehouseIdFromQuery || selectedWarehouseId || null;
   const activeWarehouse = inventoryWarehouseDirectory.find((wh) => wh.id === activeWarehouseId);
   const activeWarehouseName = warehouseNameFromQuery || activeWarehouse?.name;
 
@@ -83,35 +73,14 @@ function InventoryItemsPageContent() {
     return buildWarehouseOptions(inventoryWarehouseDirectory);
   }, []);
 
-  const allWarehouseUnitAllocations = useMemo(() => {
-    return inventoryWarehouseDirectory.flatMap((warehouse) =>
-      getWarehouseUnitAllocations(warehouse.id).map((unit) => ({
-        ...unit,
-        __warehouseId: warehouse.id,
-      }))
-    );
-  }, [refreshTick]);
-
-  const unitAllocations = useMemo(() => {
-    if (!activeWarehouseId) return allWarehouseUnitAllocations;
-    return getWarehouseUnitAllocations(activeWarehouseId).map((unit) => ({
-      ...unit,
-      __warehouseId: activeWarehouseId,
-    }));
-  }, [activeWarehouseId, allWarehouseUnitAllocations, refreshTick]);
-
-
+  const unitAllocations = useMemo(() => getUnitAllocationsForDisplay(), [refreshTick]);
   const effectiveUnitFilter =
-    unitFilter === 'all' || unitAllocations.some((unit) => unit.unitId === unitFilter)
-      ? unitFilter
-      : 'all';
-
+    unitFilter === 'all' || unitAllocations.some((u) => u.unitId === unitFilter) ? unitFilter : 'all';
   const filteredUnitAllocations = useMemo(() => {
     if (effectiveUnitFilter === 'all') return unitAllocations;
-    return unitAllocations.filter((unit) => unit.unitId === effectiveUnitFilter);
+    return unitAllocations.filter((u) => u.unitId === effectiveUnitFilter);
   }, [effectiveUnitFilter, unitAllocations]);
 
-  // Low stock alert toast when viewing unit allocation
   const lowStockByUnit = useMemo(() => {
     const map = new Map<string, { name: string; count: number }>();
     const unitNames = new Map(unitAllocations.map((u) => [u.unitId, u.unitName]));
@@ -125,28 +94,6 @@ function InventoryItemsPageContent() {
     return map;
   }, [unitAllocations, refreshTick]);
 
-  const hasShownLowStockToast = React.useRef(false);
-  useEffect(() => {
-    if (view !== 'unitAllocations') {
-      hasShownLowStockToast.current = false;
-      return;
-    }
-    if (!activeWarehouseId || unitAllocations.length === 0) return;
-    if (hasShownLowStockToast.current) return;
-    const unitsWithLowStock = filteredUnitAllocations.filter((u) => {
-      const info = lowStockByUnit.get(u.unitId);
-      return info && info.count > 0;
-    });
-    if (unitsWithLowStock.length > 0) {
-      hasShownLowStockToast.current = true;
-      const msg =
-        unitsWithLowStock.length === 1
-          ? `${unitsWithLowStock[0].unitName} has ${lowStockByUnit.get(unitsWithLowStock[0].unitId)!.count} item(s) below threshold`
-          : `${unitsWithLowStock.length} units have items below threshold`;
-      warning(msg);
-    }
-  }, [view, activeWarehouseId, filteredUnitAllocations, lowStockByUnit, unitAllocations.length, warning]);
-
   const handleWarehouseChange = (value: string) => {
     if (value === 'all') {
       setSelectedWarehouseId(null);
@@ -155,7 +102,6 @@ function InventoryItemsPageContent() {
       }
       return;
     }
-
     setSelectedWarehouseId(value);
     if (warehouseIdFromQuery) {
       router.push('/sales-report/inventory/items');
@@ -334,42 +280,40 @@ function InventoryItemsPageContent() {
             </div>
           )}
 
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={() => setView('items')}
-              className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
-                view === 'items' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-              style={{ fontFamily: 'Poppins' }}
-            >
-              Items View
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('unitAllocations')}
-              className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
-                view === 'unitAllocations' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-              style={{ fontFamily: 'Poppins' }}
-            >
-              Unit Allocation Summary
-            </button>
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+        <button
+          type="button"
+          onClick={() => setView('items')}
+          className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
+            view === 'items' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+          style={{ fontFamily: 'Poppins' }}
+        >
+          Items
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('allocations')}
+          className={`px-3.5 py-1.5 text-[12px] font-semibold rounded-md transition-colors ${
+            view === 'allocations' ? 'bg-[#0b5858] text-white' : 'text-gray-600 hover:bg-gray-50'
+          }`}
+          style={{ fontFamily: 'Poppins' }}
+        >
+          Allocations
+        </button>
           </div>
         </div>
       </div>
 
       {view === 'items' ? (
-        <>
-          <div className="inventory-reveal">
-            <InventoryTable
+        <div className="inventory-reveal">
+          <InventoryTable
             items={filteredItems}
             limitRows={true}
             onItemClick={setSelectedItem}
             warehouseId={activeWarehouseId}
           />
-          </div>
-        </>
+        </div>
       ) : (
         <div className="inventory-reveal">
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -378,9 +322,11 @@ function InventoryItemsPageContent() {
                 <h3 className="text-[14px] font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>
                   Item allocations to units
                 </h3>
+                <p className="text-[11px] text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>
+                  Min stock is inventory threshold (product-level), not per unit.
+                </p>
               </div>
-
-              {activeWarehouseId && unitAllocations.length > 0 && (
+              {unitAllocations.length > 0 && (
                 <div className="w-full sm:w-auto">
                   <UnitSearchInput
                     unitAllocations={unitAllocations}
@@ -391,10 +337,9 @@ function InventoryItemsPageContent() {
                 </div>
               )}
             </div>
-
             {unitAllocations.length === 0 ? (
               <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                No items have been allocated to units yet for this warehouse.
+                No items have been allocated to units yet.
               </div>
             ) : filteredUnitAllocations.length === 0 ? (
               <div className="px-4 py-8 text-[13px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
@@ -451,10 +396,19 @@ function InventoryItemsPageContent() {
                         {unit.items.map((item) => (
                           <span
                             key={`${unit.unitId}-${item.productId}`}
-                            className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const product = inventoryItems.find((p) => p.id === item.productId);
+                              if (product) setThresholdEditProduct(product);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 hover:bg-[#e8f4f4] hover:border-[#0b5858]/30 cursor-pointer transition-colors"
                             style={{ fontFamily: 'Poppins' }}
+                            title="Edit inventory threshold"
                           >
                             {item.productName} ({item.quantity})
+                            {item.minStock != null && item.minStock > 0 && (
+                              <span className="text-[10px] text-gray-500">· min {item.minStock}</span>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -466,6 +420,12 @@ function InventoryItemsPageContent() {
           </div>
         </div>
       )}
+
+      <EditUnitThresholdModal
+        item={thresholdEditProduct}
+        onClose={() => setThresholdEditProduct(null)}
+        onSaved={() => setRefreshTick((t) => t + 1)}
+      />
 
       <AuditTrailModal 
         item={selectedItem} 

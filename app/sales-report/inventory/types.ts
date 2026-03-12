@@ -168,6 +168,34 @@ export interface InventoryUnit {
   imageUrl?: string;
 }
 
+/**
+ * Item Allocation (ERD) – links product to unit with quantity and minStock.
+ * Matches backend table: id, productId, unitId, quantity, minStock, updatedAt.
+ */
+export interface ItemAllocation {
+  id: string;
+  productId: string;
+  unitId: string;
+  quantity: number;
+  minStock: number;
+  updatedAt?: string;
+}
+
+/**
+ * Display shape for unit allocations – joins ItemAllocation with product info.
+ * Used by UnitAlert, UnitPage, items page. id = allocation id (for PATCH).
+ */
+export interface UnitItemDisplay {
+  id: string;
+  productId: string;
+  unitId: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  minStock: number;
+  assignedToUnit: string;
+}
+
 export interface InventoryFeatureLink {
   href: string;
   title: string;

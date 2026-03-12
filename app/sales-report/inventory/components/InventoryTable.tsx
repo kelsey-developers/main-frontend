@@ -22,6 +22,8 @@ interface ReplenishmentTableProps {
   warehouseId?: string | null;
   /** When provided and isUnitView, shows an edit-threshold button per row. */
   onEditThreshold?: (item: ReplenishmentItem) => void;
+  /** When provided and isUnitView, shows a restock button per row. */
+  onRestockClick?: (item: ReplenishmentItem) => void;
 }
 
 type StockStatus = 'out' | 'critical' | 'low' | 'ok';
@@ -353,6 +355,7 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
   isLoading = false,
   warehouseId = null,
   onEditThreshold,
+  onRestockClick,
 }) => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -581,21 +584,39 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                           </button>
                         </div>
                       )}
-                      {hideEditButton && onEditThreshold && isUnitView && (
-                        <div className="px-2 sm:px-3 py-3 sm:py-5 flex items-center justify-center">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditThreshold(item);
-                            }}
-                            className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
-                            title="Edit minimum threshold"
-                            aria-label="Edit minimum threshold"
-                          >
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                              <path d="M2 12h12M4 8v4M8 6v6M12 4v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </button>
+                      {hideEditButton && isUnitView && (onEditThreshold || onRestockClick) && (
+                        <div className="px-2 sm:px-3 py-3 sm:py-5 flex items-center justify-center gap-1">
+                          {onRestockClick && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRestockClick(item);
+                              }}
+                              className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
+                              title="Restock / Stock out"
+                              aria-label="Restock"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 2v6m0 0l3-3m-3 3L5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                <path d="M2 10v2a2 2 0 002 2h8a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          )}
+                          {onEditThreshold && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditThreshold(item);
+                              }}
+                              className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
+                              title="Edit minimum threshold"
+                              aria-label="Edit minimum threshold"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M2 12h12M4 8v4M8 6v6M12 4v8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

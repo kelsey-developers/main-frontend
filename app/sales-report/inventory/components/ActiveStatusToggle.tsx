@@ -8,6 +8,8 @@ interface ActiveStatusToggleProps {
   entityType: 'supplier' | 'warehouse';
   description?: string;
   disabled?: boolean;
+  /** When deactivating (entityType=warehouse): return false or error message to block. E.g. require stock depleted first. */
+  canDeactivate?: () => true | false | string;
 }
 
 export default function ActiveStatusToggle({
@@ -16,9 +18,11 @@ export default function ActiveStatusToggle({
   entityType,
   description,
   disabled = false,
+  canDeactivate,
 }: ActiveStatusToggleProps) {
   const [statusConfirmOpen, setStatusConfirmOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<boolean | null>(null);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
 
   const defaultDescriptions = {
     supplier: 'Inactive suppliers are hidden from new purchase orders',
@@ -38,11 +42,20 @@ export default function ActiveStatusToggle({
 
   const requestStatusToggle = () => {
     setPendingStatus(!isActive);
+    setDeactivateError(null);
     setStatusConfirmOpen(true);
   };
 
   const confirmStatusToggle = () => {
     if (pendingStatus === null) return;
+    if (!pendingStatus && canDeactivate) {
+      const result = canDeactivate();
+      if (result !== true) {
+        setDeactivateError(typeof result === 'string' ? result : 'Cannot deactivate.');
+        return;
+      }
+    }
+    setDeactivateError(null);
     onToggle(pendingStatus);
     setStatusConfirmOpen(false);
     setPendingStatus(null);
@@ -51,6 +64,7 @@ export default function ActiveStatusToggle({
   const cancelStatusToggle = () => {
     setStatusConfirmOpen(false);
     setPendingStatus(null);
+    setDeactivateError(null);
   };
 
   useEffect(() => {
@@ -121,6 +135,11 @@ export default function ActiveStatusToggle({
             <div className="px-5 py-4 text-[13px] text-gray-700" style={{ fontFamily: 'Poppins' }}>
               {confirmMessage}
             </div>
+            {deactivateError && (
+              <div className="px-5 py-2 text-[13px] text-red-600 font-medium" style={{ fontFamily: 'Poppins' }}>
+                {deactivateError}
+              </div>
+            )}
             <div className="px-5 py-3.5 border-t border-[#e8f4f4] flex justify-end gap-2.5">
               <button
                 onClick={cancelStatusToggle}

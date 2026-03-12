@@ -251,7 +251,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose }) => {
               className={inputClass}
             />
             <p className="mt-1 text-[11px] text-gray-500" style={{ fontFamily: 'Poppins' }}>
-              Default threshold for new unit allocations. Can be changed per unit later on the unit page.
+              Inventory threshold (product-level). Edit from the Allocations view on the Items page.
             </p>
           </div>
           <div className="pt-2 flex justify-end">

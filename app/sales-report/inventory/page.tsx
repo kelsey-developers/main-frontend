@@ -15,6 +15,7 @@ import {
   inventoryUnits,
   inventoryUnitItems,
   inventoryWarehouseDirectory,
+  isWarehouseActive,
 } from './lib/inventoryDataStore';
 import { filterItemsByWarehouse, getItemQuantityForWarehouse } from './helpers/itemsHelpers';
 import InventoryDropdown, { type InventoryDropdownOption } from './components/InventoryDropdown';
@@ -36,13 +37,19 @@ export default function InventoryDashboardPage() {
     () => [
       { value: 'all', label: 'All Warehouses' },
       ...inventoryWarehouseDirectory
-        .filter((w) => w.isActive)
+        .filter((w) => isWarehouseActive(w))
         .map((w) => ({ value: w.id, label: w.name })),
     ],
     []
   );
   const unitsSnapshot = useMemo(() => [...inventoryUnits], [refreshTick]);
   const unitItemsSnapshot = useMemo(() => [...inventoryUnitItems], [refreshTick]);
+  const unitsWithAllocations = useMemo(() => {
+    const unitIdsWithItems = new Set(
+      inventoryUnitItems.filter((i) => i.assignedToUnit).map((i) => i.assignedToUnit!)
+    );
+    return inventoryUnits.filter((u) => unitIdsWithItems.has(u.id));
+  }, [refreshTick]);
 
   useEffect(() => {
     let isMounted = true;
@@ -208,7 +215,7 @@ export default function InventoryDashboardPage() {
           {isLoading && !initialLoadDone ? (
             <div className="inventory-panel-skeleton animate-pulse h-24" />
           ) : (
-            <SearchUnits units={unitsSnapshot} />
+            <SearchUnits units={unitsWithAllocations} />
           )}
           <div className="mt-6">
             <InventoryDashboardLinks />
