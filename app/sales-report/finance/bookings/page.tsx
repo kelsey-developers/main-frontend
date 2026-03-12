@@ -9,6 +9,7 @@ import { defaultSalesReportFilters } from '../types';
 import type { BookingLinkedRow, SalesReportFilters } from '../types';
 import { exportBookingLinkedToCsv, exportBookingLinkedToPdf } from '../lib/exportBookingLinked';
 import { logExport } from '../lib/audit';
+import { fetchFinanceBookings } from '../lib/financeDataService';
 
 function BookingsPageSkeleton() {
   return (
@@ -74,8 +75,18 @@ export default function BookingsPage() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 350);
-    return () => clearTimeout(timer);
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await fetchFinanceBookings();
+        if (mounted) setRows(data);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
   const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
 

@@ -5,7 +5,10 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/purchase-orders',
   '/api/goods-receipts',
   '/api/product-categories',
-  '/api/market', // bookings, damage-incidents via market-backend (finance dashboard)
+  '/api/charge-types',
+  '/api/bookings',
+  '/api/damage-incidents',
+  '/api/market', // legacy prefix for market-backend routes
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -21,6 +24,8 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'GET' && endpoint.startsWith('/api/bookings/my')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/market/bookings/my')) return true;
   if (method === 'PATCH' && endpoint.startsWith('/api/units/')) return true;
+  // Allow dev-auth for charge types while there's no real login flow.
+  if (endpoint.startsWith('/api/charge-types') || endpoint.startsWith('/api/market/charge-types')) return true;
   if (method === 'DELETE' && endpoint.startsWith('/api/units/')) return true;
   if (method === 'PUT' && endpoint.startsWith('/api/units/')) return true;
   return false;
