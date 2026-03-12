@@ -30,6 +30,7 @@ function UnauthorizedScreen({ allowedRoles }: { allowedRoles: NormalizedRole[] }
     agent: 'Agent',
     finance: 'Finance',
     inventory: 'Inventory',
+    housekeeping: 'Housekeeping',
     operations: 'Operations',
     frontdesk: 'Front Desk',
     cleaner: 'Housekeeping',
