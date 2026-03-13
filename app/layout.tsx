@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import "./globals.css";
 import Chatbot from "@/components/Chatbot";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Navbar from "@/components/Navbar";
 import ConditionalFooter from "@/components/ConditionalFooter";
-import type { UserInfo } from "@/lib/api/auth";
+import { getUserFromServer } from "@/lib/actions/auth";
 
 export const metadata: Metadata = {
   title: "Kelsey's Homestay - Never feel the homesickness again",
   description: "Find your perfect home away from home while you're on your dream vacation",
+  icons: {
+    icon: '/logo-only.png',
+  },
 };
 
 export default async function RootLayout({
@@ -17,11 +19,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const userCookie = cookieStore.get("user")?.value;
-  const initialUser: UserInfo | null = userCookie
-    ? (JSON.parse(userCookie) as UserInfo)
-    : null;
+  const initialUser = await getUserFromServer();
 
   return (
     <html lang="en" suppressHydrationWarning>

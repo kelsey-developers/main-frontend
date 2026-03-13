@@ -1,14 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { use } from 'react';
-import { getCommissionWallet, getBookingCommissions } from '@/services/commissionService';
-import { getAgentPayouts } from '@/services/payoutService';
-import { getReferralStats } from '@/services/referralTreeService';
-import type { CommissionWallet, BookingCommission, CommissionStatus } from '@/types/commission';
-import type { Payout, PayoutStatus } from '@/types/payout';
-import type { ReferralStats } from '@/types/referralTree';
+import { getViewAgent } from '@/lib/api/agents';
+import type { ViewAgentResponse } from '@/lib/api/agents';
+import type { PayoutStatus } from '@/types/payout';
 
 /** Shared card tokens — match admin overview and agents list */
 const CARD = {
@@ -21,32 +17,10 @@ const CARD = {
   innerRow: 'p-4 rounded-2xl border border-gray-100',
 } as const;
 
-const AGENT_DIRECTORY: Record<string, { name: string; email: string; phone: string; referralCode: string; level: 1 | 2 | 3; status: 'active' | 'inactive'; joinedAt: string }> = {
-  'agent-001': { name: 'Juan Dela Cruz', email: 'juan@example.com', phone: '+63 912 345 6789', referralCode: 'JUAN2025', level: 1, status: 'active', joinedAt: '2024-01-10' },
-  'agent-002': { name: 'Maria Santos', email: 'maria@example.com', phone: '+63 917 234 5678', referralCode: 'MARIA2025', level: 2, status: 'active', joinedAt: '2024-03-05' },
-  'agent-003': { name: 'Roberto Cruz', email: 'roberto@example.com', phone: '+63 920 345 6789', referralCode: 'ROBERTO2025', level: 2, status: 'active', joinedAt: '2024-03-22' },
-  'agent-004': { name: 'Pedro Flores', email: 'pedro@example.com', phone: '+63 918 456 7890', referralCode: 'PEDRO2025', level: 2, status: 'active', joinedAt: '2024-04-18' },
-  'agent-005': { name: 'Ana Reyes', email: 'ana@example.com', phone: '+63 915 567 8901', referralCode: 'ANA2025', level: 3, status: 'active', joinedAt: '2024-06-01' },
-};
-
-const STATUS_COLORS: Record<CommissionStatus, string> = {
-  pending: 'bg-amber-100 text-amber-800 border border-amber-200',
-  approved: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20',
-  available: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20',
-  paid: 'bg-gray-100 text-gray-600 border border-gray-200',
-  cancelled: 'bg-gray-100 text-gray-500 border border-gray-200',
-};
-
 const PAYOUT_STATUS_COLORS: Record<PayoutStatus, string> = {
   pending: 'bg-amber-100 text-amber-800 border border-amber-200',
   paid: 'bg-green-100 text-green-800 border border-green-200',
   declined: 'bg-gray-100 text-gray-500 border border-gray-200',
-};
-
-const LEVEL_STYLES: Record<number, string> = {
-  1: 'bg-teal-100 text-teal-700 border border-teal-200',
-  2: 'bg-yellow-100 text-yellow-700 border border-yellow-200',
-  3: 'bg-purple-100 text-purple-700 border border-purple-200',
 };
 
 function getInitials(name: string): string {
@@ -68,39 +42,48 @@ type Tab = 'overview' | 'commissions' | 'payouts' | 'network';
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const agent = AGENT_DIRECTORY[id] ?? { name: 'Unknown Agent', email: '—', phone: '—', referralCode: '—', level: 1 as const, status: 'inactive' as const, joinedAt: '—' };
-
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
-  const [wallet, setWallet] = useState<CommissionWallet | null>(null);
-  const [commissions, setCommissions] = useState<BookingCommission[]>([]);
-  const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [networkStats, setNetworkStats] = useState<ReferralStats | null>(null);
+  const [data, setData] = useState<ViewAgentResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const [w, c, p, s] = await Promise.all([
-        getCommissionWallet(id),
-        getBookingCommissions(id),
-        getAgentPayouts(id),
-        getReferralStats(id),
-      ]);
-      setWallet(w);
-      setCommissions(c);
-      setPayouts(p);
-      setNetworkStats(s);
-      setLoading(false);
+      setError(null);
+      try {
+        const res = await getViewAgent(id);
+        setData(res);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load agent');
+        setData(null);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [id]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[#0B5858] border-r-transparent" />
+        <p className="text-sm text-gray-500 mt-3">Loading agent...</p>
       </div>
     );
   }
+
+  if (error || !data) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <p className="text-red-600 font-medium">{error || 'Agent not found'}</p>
+        <Link href="/admin/agents" className="mt-4 text-[#0B5858] font-bold hover:underline">
+          Back to Directory
+        </Link>
+      </div>
+    );
+  }
+
+  const { agent, wallet, totalCommissions, commissions, payouts, network } = data;
 
   const TABS: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
@@ -111,10 +94,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="space-y-6">
-      {/* Page header — same pattern as admin overview: title left, back + action right */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      {/* Page header */}
+      <div className="flex flex-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{agent.name}</h1>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{agent.fullname}</h1>
           <p className="text-sm text-gray-500 mt-1">
             Agent profile, commission wallet, payouts, and network.
           </p>
@@ -130,7 +113,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             Back to Directory
           </Link>
           <Link
-            href={`/${id.replace('agent-', '')}`}
+            href={`/agent/${agent.username}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-5 py-3 bg-[#0B5858] text-white text-sm font-bold rounded-2xl hover:bg-[#094848] hover:shadow-lg transition-all active:scale-[0.98]"
@@ -143,7 +126,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      {/* Agent profile card — CARD tokens, header strip */}
+      {/* Agent profile card */}
       <div className={CARD.base}>
         <div className={CARD.header}>
           <h2 className="text-lg font-bold text-gray-900 tracking-tight">Profile</h2>
@@ -152,14 +135,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         <div className={`${CARD.padding} flex flex-col sm:flex-row sm:items-center gap-6 flex-wrap`}>
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-[#0B5858]/10 flex items-center justify-center text-xl font-bold text-[#0B5858] shrink-0">
-              {getInitials(agent.name)}
+              {getInitials(agent.fullname)}
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-lg font-bold text-gray-900 tracking-tight">{agent.name}</span>
-                <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider ${LEVEL_STYLES[agent.level]}`}>
-                  L{agent.level}
-                </span>
+                <span className="text-lg font-bold text-gray-900 tracking-tight">{agent.fullname}</span>
                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
                   agent.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                 }`}>
@@ -169,26 +149,26 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm text-gray-500">
                 <span>{agent.email}</span>
-                <span>{agent.phone}</span>
-                <span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-700">{agent.referralCode}</code></span>
-                <span>Joined {new Date(agent.joinedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                {agent.phone && <span>{agent.phone}</span>}
+                <span><code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs text-gray-700">{agent.username}</code></span>
+                {agent.joinedAt && (
+                  <span>Joined {new Date(agent.joinedAt).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Wallet summary — StatCards, same as overview (no colored bg, no icons) */}
-      {wallet && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
-          <StatCard label="Available" value={`₱${wallet.available.toLocaleString()}`} sub="Ready to withdraw" />
-          <StatCard label="Pending" value={`₱${wallet.pending.toLocaleString()}`} sub="Awaiting approval" />
-          <StatCard label="Approved" value={`₱${wallet.approved.toLocaleString()}`} sub="Cleared for payout" />
-          <StatCard label="Total Paid" value={`₱${wallet.paid.toLocaleString()}`} sub="Lifetime paid out" />
-        </div>
-      )}
+      {/* Wallet summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+        <StatCard label="Available" value={`₱${wallet.available.toLocaleString()}`} sub="Ready to withdraw" />
+        <StatCard label="Pending" value={`₱${wallet.pending.toLocaleString()}`} sub="Penciled bookings" />
+        <StatCard label="Approved" value={`₱${wallet.approved.toLocaleString()}`} sub="Confirmed bookings" />
+        <StatCard label="Total Paid" value={`₱${wallet.totalPaid.toLocaleString()}`} sub="Lifetime paid out" />
+      </div>
 
-      {/* Tabs card — header strip for tab row, then content */}
+      {/* Tabs card */}
       <div className={CARD.base}>
         <div className={`${CARD.header} flex flex-wrap items-center gap-2`}>
           <div className="flex border-b border-transparent gap-1 overflow-x-auto">
@@ -213,10 +193,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
-                <StatCard label="Total Commissions" value={commissions.length} sub="Recorded entries" />
+                <StatCard label="Total Commissions" value={totalCommissions} sub="Penciled, confirmed, completed" />
                 <StatCard label="Total Payouts" value={payouts.length} sub="Payout requests" />
-                <StatCard label="Network Size" value={networkStats?.totalSubAgents ?? 0} sub="Sub-agents" />
-                <StatCard label="Network Bookings" value={networkStats?.networkBookings ?? 0} sub="From network" />
+                <StatCard label="Network Size" value={network.totalSubAgents} sub="Sub-agents" />
+                <StatCard label="Network Bookings" value={network.networkBookings} sub="From sub-agents" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-gray-900 tracking-tight mb-3">Recent Commissions</h3>
@@ -224,15 +204,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                   {commissions.length === 0 ? (
                     <p className="text-sm text-gray-400 py-4">No commissions recorded.</p>
                   ) : (
-                    commissions.slice(0, 5).map((c) => (
-                      <div key={c.id} className={`flex items-center justify-between ${CARD.innerRow} hover:border-[#0B5858]/20 hover:bg-gray-50/50 transition-all`}>
+                    commissions.slice(0, 5).map((c, idx) => (
+                      <div key={idx} className={`flex items-center justify-between ${CARD.innerRow} hover:border-[#0B5858]/20 hover:bg-gray-50/50 transition-all`}>
                         <div className="min-w-0">
                           <p className="text-sm font-bold text-gray-900 truncate">{c.bookingRef}</p>
-                          <p className="text-xs font-medium text-gray-500 mt-0.5">{c.propertyName} · {c.guestName}</p>
-                        </div>
-                        <div className="text-right shrink-0 ml-4">
-                          <p className="text-sm font-bold text-[#0B5858]">₱{c.commissionAmount.toLocaleString()}</p>
-                          <span className={`inline-flex mt-0.5 text-[11px] font-bold px-2 py-0.5 rounded-md ${STATUS_COLORS[c.status]}`}>{c.status}</span>
+                          <p className="text-xs font-medium text-gray-500 mt-0.5">{c.property} · {c.guest}</p>
                         </div>
                       </div>
                     ))
@@ -248,7 +224,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    {['Booking Ref', 'Property', 'Guest', 'Total', 'Commission', 'Level', 'Status', 'Date'].map((h) => (
+                    {['Booking Ref', 'Property', 'Guest', 'Check-in', 'Check-out', 'Nights', 'Total', 'Commission', 'Status'].map((h) => (
                       <th key={h} className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                         {h}
                       </th>
@@ -258,28 +234,29 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                 <tbody className="divide-y divide-gray-50">
                   {commissions.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-7 py-14 text-center text-sm font-medium text-gray-400">
+                      <td colSpan={9} className="px-7 py-14 text-center text-sm font-medium text-gray-400">
                         No commissions recorded.
                       </td>
                     </tr>
                   ) : (
-                    commissions.map((c) => (
-                      <tr key={c.id} className="hover:bg-gray-50/80 transition-colors">
+                    commissions.map((c, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-5 py-4 font-medium text-[#0B5858]">{c.bookingRef}</td>
-                        <td className="px-5 py-4 text-gray-600 max-w-[140px] truncate">{c.propertyName}</td>
-                        <td className="px-5 py-4 text-gray-600">{c.guestName}</td>
-                        <td className="px-5 py-4 font-medium text-gray-900">₱{c.totalBookingAmount.toLocaleString()}</td>
-                        <td className="px-5 py-4 font-bold text-[#0B5858]">₱{c.commissionAmount.toLocaleString()}</td>
+                        <td className="px-5 py-4 text-gray-600 max-w-[140px] truncate">{c.property}</td>
+                        <td className="px-5 py-4 text-gray-600">{c.guest}</td>
+                        <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{c.checkIn ?? '—'}</td>
+                        <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{c.checkOut ?? '—'}</td>
+                        <td className="px-5 py-4 text-gray-600">{c.nights}</td>
+                        <td className="px-5 py-4 text-gray-600 whitespace-nowrap">₱{c.totalAmount.toLocaleString()}</td>
+                        <td className="px-5 py-4 font-bold text-[#0B5858] whitespace-nowrap">₱{c.commission.toLocaleString()}</td>
                         <td className="px-5 py-4">
-                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wider ${LEVEL_STYLES[c.referralLevel as 1 | 2 | 3] ?? 'bg-gray-100 text-gray-600'}`}>
-                            L{c.referralLevel}
+                          <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium capitalize ${
+                            c.status === 'penciled' ? 'bg-amber-100 text-amber-800' :
+                            c.status === 'confirmed' ? 'bg-[#0B5858]/10 text-[#0B5858]' :
+                            c.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {c.status}
                           </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold ${STATUS_COLORS[c.status]}`}>{c.status}</span>
-                        </td>
-                        <td className="px-5 py-4 text-xs font-medium text-gray-500 whitespace-nowrap">
-                          {new Date(c.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </td>
                       </tr>
                     ))
@@ -308,7 +285,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     </div>
                     <div className="text-right shrink-0 ml-4">
                       <p className="text-sm font-bold text-[#0B5858]">₱{p.amount.toLocaleString()}</p>
-                      <span className={`inline-flex mt-0.5 text-[11px] font-bold px-2 py-0.5 rounded-md ${PAYOUT_STATUS_COLORS[p.status]}`}>{p.status}</span>
+                      <span className={`inline-flex mt-0.5 text-[11px] font-bold px-2 py-0.5 rounded-md ${PAYOUT_STATUS_COLORS[p.status as PayoutStatus] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span>
                     </div>
                   </div>
                 ))
@@ -319,23 +296,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           {/* Network Tab */}
           {activeTab === 'network' && (
             <div className="space-y-6">
-              {networkStats ? (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
-                    <StatCard label="Total Sub-Agents" value={networkStats.totalSubAgents} sub="In network" />
-                    <StatCard label="Active" value={networkStats.activeSubAgents} sub="With activity" />
-                    <StatCard label="Network Bookings" value={networkStats.networkBookings} sub="From sub-agents" />
-                    <StatCard label="Network Commissions" value={`₱${networkStats.totalNetworkCommissions.toLocaleString()}`} sub="Total from network" />
-                  </div>
-                  <div className="rounded-2xl border border-[#0B5858]/20 bg-[#0B5858]/5 p-4">
-                    <p className="text-sm font-medium text-[#0B5858]">
-                      View the full referral tree on the agent&apos;s network page.
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-gray-400 py-8 text-center">No network data available.</p>
-              )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+                <StatCard label="Total Sub-Agents" value={network.totalSubAgents} sub="In network" />
+                <StatCard label="Active" value={network.activeSubAgents} sub="With activity" />
+                <StatCard label="Network Bookings" value={network.networkBookings} sub="From sub-agents" />
+              </div>
+              <div className="rounded-2xl border border-[#0B5858]/20 bg-[#0B5858]/5 p-4">
+                <p className="text-sm font-medium text-[#0B5858]">
+                  View the full referral tree on the agent&apos;s network page.
+                </p>
+              </div>
             </div>
           )}
         </div>

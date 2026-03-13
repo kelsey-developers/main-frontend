@@ -114,7 +114,11 @@ export function AuthProvider({
     }
   }, [router, pathname]);
 
-  const primaryRole = user?.roles?.[0] ? normalizeRole(user.roles[0]) : null;
+  // Prefer non-user roles when user has multiple (e.g. User + Agent after approval)
+  const rawRoles = user?.roles ?? [];
+  const normalizedRoles = rawRoles.map((r) => normalizeRole(r));
+  const primaryRole =
+    normalizedRoles.find((r) => r !== 'user') ?? normalizedRoles[0] ?? null;
   const fullname = user
     ? [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ')
     : '';

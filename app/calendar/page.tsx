@@ -141,7 +141,12 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     setLoading(true);
     try {
       const items = await getMyBookings();
-      setBookings(items.map(myBookingToCalendarBooking));
+      const allowed = ['penciled', 'confirmed'];
+      const filtered = items.filter((item) => {
+        const status = (item.raw_status || item.status || '').toLowerCase();
+        return allowed.includes(status);
+      });
+      setBookings(filtered.map(myBookingToCalendarBooking));
       setHasInitiallyLoaded(true);
     } catch {
       setBookings([]);

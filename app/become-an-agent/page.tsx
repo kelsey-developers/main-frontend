@@ -26,9 +26,9 @@ function BecomeAnAgentContent() {
   useEffect(() => {
     if (roleLoading) return;
     if (user && hasNonGuestRole) {
-      router.replace('/home');
+      router.replace(isAgent ? '/agent' : '/home');
     }
-  }, [user, hasNonGuestRole, roleLoading, router]);
+  }, [user, hasNonGuestRole, isAgent, roleLoading, router]);
   const [step, setStep] = useState<Step>('form');
   const [registrationFee, setRegistrationFee] = useState(500);
   const [loading, setLoading] = useState(true);

@@ -2,7 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { loginApi, getUserInfoApi } from '@/lib/api/auth';
+import { loginApi, getUserInfoApi, type UserInfo } from '@/lib/api/auth';
 import { apiClient } from '@/lib/api/client';
 
 function isRedirectError(err: unknown): boolean {
@@ -30,9 +30,7 @@ function getRedirectForRole(user: { roles?: string[] }): string {
 }
 
 /** Merge internal roles from market-backend into user.roles so AuthContext gets correct role. */
-async function mergeInternalRoles(
-  user: { email: string; roles?: string[] }
-): Promise<{ email: string; roles: string[] }> {
+async function mergeInternalRoles(user: UserInfo): Promise<UserInfo> {
   const authRoles = user.roles ?? [];
   try {
     const map = await apiClient.get<Record<string, string>>('/api/user-roles');
@@ -79,4 +77,21 @@ export async function logoutAction(): Promise<void> {
   const jar = await cookies();
   jar.delete('accessToken');
   jar.delete('user');
+}
+
+/** Fetch fresh user from /api/auth/userinfo when we have a token. No cookie modification (Server Component cannot). */
+export async function getUserFromServer(): Promise<UserInfo | null> {
+  const jar = await cookies();
+  const accessToken = jar.get('accessToken')?.value;
+  const userCookie = jar.get('user')?.value;
+  if (!accessToken) {
+    return userCookie ? (JSON.parse(userCookie) as UserInfo) : null;
+  }
+  try {
+    const user = await getUserInfoApi(accessToken);
+    const userWithRoles = await mergeInternalRoles(user);
+    return userWithRoles;
+  } catch {
+    return userCookie ? (JSON.parse(userCookie) as UserInfo) : null;
+  }
 }

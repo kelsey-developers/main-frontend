@@ -18,6 +18,15 @@ const STATUS_BADGE: Record<string, string> = {
   approved:  'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20',
   available: 'bg-[#0B5858] text-white border border-[#0B5858]',
   paid:      'bg-gray-50 text-gray-600 border border-gray-200',
+  cancelled: 'bg-gray-100 text-gray-500 border border-gray-200',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  approved: 'Approved',
+  available: 'Available',
+  paid: 'Paid',
+  cancelled: 'Canceled',
 };
 
 // L1 = own code (10%) · L2 = direct sub-agent's code (5%) · L3 = sub-sub-agent's code (2%)
@@ -55,7 +64,7 @@ export default function CommissionBreakdownModal({ commission: c, onClose }: Pro
             <div className="flex items-center gap-2 mb-0.5">
               <h2 className="text-lg font-bold text-gray-900 tracking-tight">Commission</h2>
               <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${STATUS_BADGE[c.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                {c.status}
+                {STATUS_LABEL[c.status] ?? c.status}
               </span>
             </div>
             <p className="text-xs font-medium text-gray-500">{c.bookingRef} &middot; {c.propertyName}</p>

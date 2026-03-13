@@ -18,6 +18,7 @@ function mapStatus(raw: string): CommissionStatus {
   if (raw === 'penciled') return 'pending';
   if (raw === 'confirmed') return 'approved';
   if (raw === 'completed') return 'available';
+  if (raw === 'cancelled') return 'cancelled';
   return 'pending';
 }
 
@@ -59,12 +60,20 @@ function fmt(n: number) {
   return `₱${n.toLocaleString()}`;
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  approved: 'Approved',
+  available: 'Available',
+  paid: 'Paid',
+  cancelled: 'Canceled',
+};
+
 const STATUS_CONFIG: Record<string, { label: string; classes: string; dot: string }> = {
   pending:   { label: 'Pending',   classes: 'bg-[#FACC15]/10 text-[#0B5858] border border-[#FACC15]/30', dot: 'bg-[#FACC15]' },
   approved:  { label: 'Approved',  classes: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20', dot: 'bg-[#0B5858]/50' },
   available: { label: 'Available', classes: 'bg-[#0B5858] text-white border border-[#0B5858]', dot: 'bg-white' },
   paid:      { label: 'Paid',      classes: 'bg-gray-50 text-gray-600 border border-gray-200', dot: 'bg-gray-400' },
-  cancelled: { label: 'Cancelled', classes: 'bg-gray-100 text-gray-500 border border-gray-200', dot: 'bg-gray-400' },
+  cancelled: { label: 'Canceled', classes: 'bg-gray-100 text-gray-500 border border-gray-200', dot: 'bg-gray-400' },
 };
 
 const LEVEL_BADGE: Record<1 | 2 | 3, { classes: string; label: string }> = {
@@ -340,11 +349,13 @@ export default function CommissionsPage() {
 
   const chartData = useMemo(() => {
     const byMonth: Record<string, number> = {};
-    commissions.forEach((c) => {
-      const d = new Date(c.checkIn || Date.now());
-      const m = d.toLocaleString('default', { month: 'short' });
-      byMonth[m] = (byMonth[m] || 0) + c.commissionAmount;
-    });
+    commissions
+      .filter((c) => c.status === 'approved' || c.status === 'available')
+      .forEach((c) => {
+        const d = new Date(c.checkIn || Date.now());
+        const m = d.toLocaleString('default', { month: 'short' });
+        byMonth[m] = (byMonth[m] || 0) + c.commissionAmount;
+      });
     const data = Object.entries(byMonth).map(([month, amount]) => ({ month, amount }));
     return data.length > 0 ? data : [{ month: '—', amount: 0 }];
   }, [commissions]);
@@ -368,7 +379,7 @@ export default function CommissionsPage() {
           c.bookingRef, c.propertyName, c.guestName,
           c.checkIn.slice(0, 10), c.checkOut.slice(0, 10),
           c.numberOfNights, c.totalBookingAmount, `${c.commissionRate}%`, c.commissionAmount,
-          c.status,
+          STATUS_LABEL[c.status] ?? c.status,
         ]),
       ];
       const csv = rows.map((r) => r.join(',')).join('\n');
@@ -408,7 +419,7 @@ export default function CommissionsPage() {
           c.guestName,
           `PHP ${c.commissionAmount.toLocaleString()}`,
           `${c.commissionRate}%`,
-          c.status.charAt(0).toUpperCase() + c.status.slice(1),
+          STATUS_LABEL[c.status] ?? c.status,
         ]),
         styles: { fontSize: 7.5, cellPadding: 2.5, font: 'helvetica' },
         headStyles: { fillColor: teal, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
@@ -539,6 +550,7 @@ export default function CommissionsPage() {
                 { value: 'pending', label: 'Pending' },
                 { value: 'approved', label: 'Approved' },
                 { value: 'available', label: 'Available' },
+                { value: 'cancelled', label: 'Canceled' },
               ]}
               className="min-w-[140px] capitalize"
             />

@@ -44,6 +44,7 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'PATCH' && endpoint.startsWith('/api/users/') && !endpoint.endsWith('/')) return true;
   if (endpoint.startsWith('/api/agents/register/')) return true;
   if (endpoint.startsWith('/api/admin/agents/')) return true;
+  if (endpoint.startsWith('/api/admin/viewagent')) return true;
   if (endpoint.startsWith('/api/admin/analytics')) return true;
   if (endpoint.startsWith('/api/agents/payouts')) return true;
   if (endpoint.startsWith('/api/admin/payouts')) return true;

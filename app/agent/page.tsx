@@ -14,10 +14,11 @@ function fmt(n: number) {
   return `₱${n.toLocaleString()}`;
 }
 
-function mapStatus(raw: string): 'pending' | 'approved' | 'available' {
+function mapStatus(raw: string): 'pending' | 'approved' | 'available' | 'cancelled' {
   if (raw === 'penciled') return 'pending';
   if (raw === 'confirmed') return 'approved';
   if (raw === 'completed') return 'available';
+  if (raw === 'cancelled') return 'cancelled';
   return 'pending';
 }
 
@@ -39,6 +40,7 @@ const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
   approved:  { label: 'Approved',  classes: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20' },
   available: { label: 'Available', classes: 'bg-[#0B5858] text-white border border-[#0B5858]' },
   paid:      { label: 'Paid',      classes: 'bg-gray-50 text-gray-600 border border-gray-200' },
+  cancelled: { label: 'Canceled',  classes: 'bg-gray-100 text-gray-500 border border-gray-200' },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -103,12 +105,15 @@ export default function AgentOverviewPage() {
   const recent = useMemo(() => commissions.slice(0, 5), [commissions]);
   const chartData = useMemo(() => {
     const byMonth: Record<string, number> = {};
-    bookings.forEach((b) => {
-      const d = new Date(b.check_in_date || Date.now());
-      const m = d.toLocaleString('default', { month: 'short' });
-      const total = b.total_amount ?? 0;
-      byMonth[m] = (byMonth[m] || 0) + Math.round(total * COMMISSION_RATE);
-    });
+    const raw = (b: MyBookingItem) => (b.raw_status || b.status || '').toLowerCase();
+    bookings
+      .filter((b) => raw(b) === 'confirmed' || raw(b) === 'completed')
+      .forEach((b) => {
+        const d = new Date(b.check_in_date || Date.now());
+        const m = d.toLocaleString('default', { month: 'short' });
+        const total = b.total_amount ?? 0;
+        byMonth[m] = (byMonth[m] || 0) + Math.round(total * COMMISSION_RATE);
+      });
     const data = Object.entries(byMonth).map(([month, amount]) => ({ month, amount }));
     return data.length > 0 ? data : [{ month: '—', amount: 0 }];
   }, [bookings]);
