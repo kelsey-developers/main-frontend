@@ -62,6 +62,8 @@ export function getDateRangeFromFilters(filters: SalesReportFilters): { start: s
   const period = filters.timePeriod;
   const scope = filters.timePeriodScope;
 
+  if (period === 'all') return null;
+
   if (period === 'week') {
     let ref: Date;
     if (scope === 'this') ref = now;

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import FilterSidebar from './components/FilterSidebar';
 import FinanceDashboardLinks from './components/FinanceDashboardLinks';
 import FinanceSummaryCards from './components/FinanceSummaryCards';
@@ -67,16 +68,16 @@ function getDefaultViewFilters(): SalesReportFilters {
   return {
     ...defaultSalesReportFilters,
     filterMethod: 'quick',
-    timePeriod: 'month',
+    timePeriod: 'all',
     timePeriodScope: 'this',
     searchName: '',
     propertyType: 'All',
     location: 'All',
-
   };
 }
 
 export default function SalesReportPage() {
+  const { user } = useAuth();
   const [draftFilters, setDraftFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [appliedFilters, setAppliedFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
@@ -86,13 +87,17 @@ export default function SalesReportPage() {
   const [damageIncidents, setDamageIncidents] =
     useState<Awaited<ReturnType<typeof fetchFinanceDamageIncidents>>>([]);
 
+  const currentUser = user
+    ? { userId: user.id, email: user.email, role: user.roles?.[0] }
+    : null;
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const [bookingsData, damageData] = await Promise.all([
-          fetchFinanceBookings(),
-          fetchFinanceDamageIncidents(),
+          fetchFinanceBookings(currentUser),
+          fetchFinanceDamageIncidents(currentUser),
         ]);
         if (mounted) {
           setBookings(bookingsData);
@@ -103,7 +108,7 @@ export default function SalesReportPage() {
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [currentUser?.userId ?? null, currentUser?.email ?? null, currentUser?.role ?? null]);
 
   const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
 

@@ -72,6 +72,26 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
       <div className="space-y-4">
         <div>
           <label
+            htmlFor="filter-search"
+            className="block text-sm font-medium text-gray-700 mb-1"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            Search
+          </label>
+          <input
+            id="filter-search"
+            type="text"
+            value={filterEnabled ? filters.searchName : ''}
+            onChange={(e) => update('searchName', e.target.value)}
+            disabled={!filterEnabled}
+            placeholder="Guest, unit, booking…"
+            className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+            style={{ fontFamily: 'Poppins' }}
+          />
+          <div className="border-b-2 border-gray-300 py-2"></div>
+        </div>
+        <div>
+          <label
             htmlFor="property-type"
             className="block text-sm font-medium text-gray-700 mb-1"
             style={{ fontFamily: 'Poppins' }}
@@ -233,7 +253,7 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
             <p className={`text-sm font-medium ${filterEnabled ? 'text-gray-700' : 'text-gray-400'}`} style={{ fontFamily: 'Poppins' }}>View By</p>
             <select
               value={filterEnabled ? filters.timePeriod : ''}
-              onChange={(e) => updateQuick({ timePeriod: e.target.value as 'week' | 'month' | 'year' })}
+              onChange={(e) => updateQuick({ timePeriod: e.target.value as 'week' | 'month' | 'year' | 'all' })}
               disabled={!filterEnabled}
               className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
               style={{ fontFamily: 'Poppins' }}
@@ -241,27 +261,24 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
               {!filterEnabled && <option value=""></option>}
               {filterEnabled && (
                 <>
+                  <option value="all">All (no date filter)</option>
                   <option value="week">Week</option>
                   <option value="month">Month</option>
                   <option value="year">Year</option>
                 </>
               )}
             </select>
+            {filterEnabled && filters.timePeriod !== 'all' && (
             <select
-              value={filterEnabled ? filters.timePeriodScope : ''}
+              value={filters.timePeriodScope}
               onChange={(e) => updateQuick({ timePeriodScope: e.target.value as 'this' | 'last' })}
-              disabled={!filterEnabled}
-              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
               style={{ fontFamily: 'Poppins' }}
             >
-              {!filterEnabled && <option value=""></option>}
-              {filterEnabled && (
-                <>
-                  <option value="this">This {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
-                  <option value="last">Last {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
-                </>
-              )}
+              <option value="this">This {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
+              <option value="last">Last {filters.timePeriod === 'week' ? 'week' : filters.timePeriod === 'month' ? 'month' : 'year'}</option>
             </select>
+            )}
           </div>
           )}
         </div>

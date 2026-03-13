@@ -117,8 +117,7 @@ export default function ApprovalQueuePage() {
         <AdminStatCard label="Approved" value={loading ? '—' : approvedToday} accent="teal" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
-        <AdminSection title="Review Requests">
+      <AdminSection title="Review Requests">
           <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="flex flex-col gap-1.5">
@@ -192,11 +191,21 @@ export default function ApprovalQueuePage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
+            <table className="w-full text-sm" style={{ minWidth: 960, tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '6%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
               <thead className="bg-gradient-to-r from-[#0B5858] to-[#05807e]">
                 <tr>
                   <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Request</th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Item and Qty</th>
+                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Item</th>
+                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Qty</th>
                   <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Risk</th>
                   <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Requested By</th>
                   <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Status</th>
@@ -206,19 +215,25 @@ export default function ApprovalQueuePage() {
               <tbody>
                 {filteredRequests.map((entry) => (
                   <tr key={entry.id} className="border-b border-gray-100 last:border-b-0 align-top">
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-gray-900">{entry.kind}</div>
-                      <div className="text-xs text-gray-500 mt-1">{entry.id.toUpperCase()}</div>
-                      <div className="text-xs text-gray-500 mt-1">{entry.referenceId ?? 'No reference'}</div>
+                    <td className="px-4 py-3 overflow-hidden" style={{ width: '16%' }}>
+                      <div className="overflow-hidden">
+                        <div className="font-semibold text-gray-900 truncate" title={entry.kind}>{entry.kind}</div>
+                        <div className="text-xs text-gray-500 mt-1 truncate" title={entry.id.toUpperCase()}>{entry.id.toUpperCase()}</div>
+                        <div className="text-xs text-gray-500 mt-1 truncate" title={entry.referenceId ?? 'No reference'}>{entry.referenceId ?? 'No reference'}</div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">{entry.itemName}</div>
-                      <div className="text-xs text-gray-500 mt-1">Qty: {entry.quantity}</div>
-                      <div className="text-xs text-gray-500 mt-1 max-w-[280px]">{entry.reason}</div>
+                    <td className="px-4 py-3 overflow-hidden" style={{ width: '18%' }}>
+                      <div className="overflow-hidden">
+                        <div className="font-medium text-gray-800 truncate" title={entry.itemName}>{entry.itemName}</div>
+                        <div className="text-xs text-gray-500 mt-1 truncate" title={entry.reason}>{entry.reason}</div>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 overflow-hidden" style={{ width: '6%' }}>
+                      <span className="font-medium text-gray-800 tabular-nums">{entry.quantity}</span>
+                    </td>
+                    <td className="px-4 py-3 overflow-hidden" style={{ width: '9%' }}>
                       <span
-                        className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
+                        className={`inline-flex px-2 py-1 rounded text-xs font-semibold shrink-0 ${
                           entry.risk === 'high'
                             ? 'bg-red-100 text-red-700'
                             : entry.risk === 'medium'
@@ -229,42 +244,46 @@ export default function ApprovalQueuePage() {
                         {entry.risk}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      <div>{entry.requestedBy ?? '—'}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {typeof entry.requestedAt === 'string'
-                          ? new Date(entry.requestedAt).toLocaleString()
-                          : entry.requestedAt}
+                    <td className="px-4 py-3 text-gray-600 overflow-hidden" style={{ width: '16%' }}>
+                      <div className="overflow-hidden">
+                        <div className="truncate" title={entry.requestedBy ?? '—'}>{entry.requestedBy ?? '—'}</div>
+                        <div className="text-xs text-gray-500 mt-1 truncate" title={typeof entry.requestedAt === 'string' ? new Date(entry.requestedAt).toLocaleString() : String(entry.requestedAt)}>
+                          {typeof entry.requestedAt === 'string'
+                            ? new Date(entry.requestedAt).toLocaleString()
+                            : entry.requestedAt}
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
-                          entry.status === 'approved'
-                            ? 'bg-green-100 text-green-700'
-                            : entry.status === 'rejected'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-amber-100 text-amber-700'
-                        }`}
-                      >
-                        {entry.status}
-                      </span>
-                      {entry.reviewedBy ? (
-                        <div className="text-xs text-gray-500 mt-1">
-                          {entry.reviewedBy} at{' '}
-                          {entry.reviewedAt
-                            ? new Date(entry.reviewedAt).toLocaleString()
-                            : '—'}
-                        </div>
-                      ) : null}
+                    <td className="px-4 py-3 overflow-hidden" style={{ width: '15%' }}>
+                      <div className="overflow-hidden">
+                        <span
+                          className={`inline-flex px-2 py-1 rounded text-xs font-semibold shrink-0 ${
+                            entry.status === 'approved'
+                              ? 'bg-green-100 text-green-700'
+                              : entry.status === 'rejected'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}
+                        >
+                          {entry.status}
+                        </span>
+                        {entry.reviewedBy ? (
+                          <div className="text-xs text-gray-500 mt-1 truncate" title={`${entry.reviewedBy} at ${entry.reviewedAt ? new Date(entry.reviewedAt).toLocaleString() : '—'}`}>
+                            {entry.reviewedBy} at{' '}
+                            {entry.reviewedAt
+                              ? new Date(entry.reviewedAt).toLocaleString()
+                              : '—'}
+                          </div>
+                        ) : null}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1.5">
+                    <td className="px-4 py-3" style={{ width: '20%' }}>
+                      <div className="flex justify-end gap-1.5 flex-nowrap">
                         <button
                           type="button"
                           disabled={entry.status !== 'pending' || reviewingId === entry.id}
                           onClick={() => void reviewRequest(entry.id, 'approved')}
-                          className="px-2.5 py-1.5 rounded border border-[#0B5858] text-xs text-[#0B5858] hover:bg-[#e8f4f4] disabled:opacity-40"
+                          className="shrink-0 px-2.5 py-1.5 rounded border border-[#0B5858] text-xs text-[#0B5858] hover:bg-[#e8f4f4] disabled:opacity-40"
                         >
                           {reviewingId === entry.id ? '…' : 'Approve'}
                         </button>
@@ -272,7 +291,7 @@ export default function ApprovalQueuePage() {
                           type="button"
                           disabled={entry.status !== 'pending' || reviewingId === entry.id}
                           onClick={() => void reviewRequest(entry.id, 'rejected')}
-                          className="px-2.5 py-1.5 rounded border border-red-200 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
+                          className="shrink-0 px-2.5 py-1.5 rounded border border-red-200 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
                         >
                           {reviewingId === entry.id ? '…' : 'Reject'}
                         </button>
@@ -282,7 +301,7 @@ export default function ApprovalQueuePage() {
                 ))}
                 {filteredRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
                       No approval requests match the selected filters.
                     </td>
                   </tr>
@@ -292,24 +311,25 @@ export default function ApprovalQueuePage() {
           </div>
         </AdminSection>
 
-        <section className="rounded-xl border border-gray-200 bg-white shadow-sm p-5">
-          <h3 className="text-base font-semibold text-gray-900 mb-3" style={{ fontFamily: 'Poppins' }}>Approval Policy (MVP)</h3>
-          <div className="space-y-2.5 text-sm text-gray-700">
-            <div className="rounded-lg border border-gray-200 p-3">
-              Stock-out greater than 20 units requires admin or finance approval.
-            </div>
-            <div className="rounded-lg border border-gray-200 p-3">
-              Any reusable item write-off requires finance validation and audit note.
-            </div>
-            <div className="rounded-lg border border-gray-200 p-3">
-              Negative-stock override is blocked unless approved first.
-            </div>
-            <div className="rounded-lg border border-gray-200 p-3">
-              Rejected request cannot adjust stock quantities.
-            </div>
+      <details className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50 list-none">
+          Approval Policy (MVP)
+        </summary>
+        <div className="px-5 pb-5 pt-1 space-y-2.5 text-sm text-gray-700 border-t border-gray-100">
+          <div className="rounded-lg border border-gray-200 p-3">
+            Stock-out greater than 20 units requires admin or finance approval.
           </div>
-        </section>
-      </div>
+          <div className="rounded-lg border border-gray-200 p-3">
+            Any reusable item write-off requires finance validation and audit note.
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3">
+            Negative-stock override is blocked unless approved first.
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3">
+            Rejected request cannot adjust stock quantities.
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

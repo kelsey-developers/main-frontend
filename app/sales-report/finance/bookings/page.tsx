@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import FinancePageHeader from '../components/FinancePageHeader';
 import HorizontalFilter from '../components/HorizontalFilter';
 import BookingLinkedTable from './components/BookingLinkedTable';
@@ -48,6 +49,7 @@ function getDefaultViewFilters(): SalesReportFilters {
 }
 
 export default function BookingsPage() {
+  const { user } = useAuth();
   const [draftFilters, setDraftFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [appliedFilters, setAppliedFilters] = useState<SalesReportFilters>(defaultSalesReportFilters);
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
@@ -58,6 +60,9 @@ export default function BookingsPage() {
   const [rows, setRows] = useState<BookingLinkedRow[]>([]);
   const [filterEnabled, setFilterEnabled] = useState(false);
   const exportPanelRef = useRef<HTMLDivElement>(null);
+  const currentUser = user
+    ? { userId: user.id, email: user.email, role: user.roles?.[0] }
+    : null;
 
   useEffect(() => {
     if (!exportPanelOpen) return;
@@ -78,7 +83,7 @@ export default function BookingsPage() {
     let mounted = true;
     (async () => {
       try {
-        const data = await fetchFinanceBookings();
+        const data = await fetchFinanceBookings(currentUser);
         if (mounted) setRows(data);
       } finally {
         if (mounted) setIsLoading(false);
@@ -87,7 +92,7 @@ export default function BookingsPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [currentUser?.userId ?? null, currentUser?.email ?? null, currentUser?.role ?? null]);
   const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
 
   const filteredRows = useMemo(

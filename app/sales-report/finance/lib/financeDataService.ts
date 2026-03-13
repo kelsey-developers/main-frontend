@@ -1,10 +1,18 @@
 /**
  * Fetches bookings and damage incidents from market-backend for finance dashboard.
  * Uses /api/market/* which proxies to MARKET_API_URL.
+ * Pass currentUser so the backend can scope data by role (finance = agent's bookings only).
  */
 
 import { apiClient } from '@/lib/api/client';
 import type { BookingLinkedRow, DamagePenalty } from '../types';
+
+/** Current user identity so backend can filter: admin = all, finance = bookings where agent matches. */
+export interface FinanceAuth {
+  userId?: string | number;
+  email?: string;
+  role?: string;
+}
 
 /** Raw booking from GET /api/bookings/my (market-backend) */
 interface MarketBookingCharge {
@@ -27,6 +35,19 @@ interface MarketBookingItem {
   charges?: MarketBookingCharge[];
   listing?: { title: string; location?: string; main_image_url?: string };
   client?: { first_name?: string; last_name?: string };
+}
+
+/** Extract bookings array from backend response (raw array, or { bookings }, or { data }, etc.) */
+function extractBookingsList(data: unknown): MarketBookingItem[] {
+  if (Array.isArray(data)) return data as MarketBookingItem[];
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    for (const key of ['bookings', 'data', 'items', 'results']) {
+      const val = o[key];
+      if (Array.isArray(val)) return val as MarketBookingItem[];
+    }
+  }
+  return [];
 }
 
 /** Raw damage incident from GET /api/damage-incidents (market-backend) */
@@ -113,19 +134,41 @@ function toDamagePenalty(d: MarketDamageIncident): DamagePenalty {
   };
 }
 
-export async function fetchFinanceBookings(): Promise<BookingLinkedRow[]> {
-  try {
-    const data = await apiClient.get<MarketBookingItem[] | { message?: string }>('/api/bookings/my');
-    if (Array.isArray(data)) return data.map(toBookingLinkedRow);
-    return [];
-  } catch {
-    return [];
-  }
+function authHeaders(currentUser?: FinanceAuth | null): Record<string, string> {
+  if (!currentUser) return {};
+  const h: Record<string, string> = {};
+  if (currentUser.userId != null) h['x-user-id'] = String(currentUser.userId);
+  if (currentUser.email) h['x-user-email'] = currentUser.email;
+  if (currentUser.role) h['x-user-role'] = currentUser.role;
+  return h;
 }
 
-export async function fetchFinanceDamageIncidents(): Promise<DamagePenalty[]> {
+export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Promise<BookingLinkedRow[]> {
+  const headers = authHeaders(currentUser);
+  const opts = {
+    ...(Object.keys(headers).length ? { headers } : {}),
+    credentials: 'include' as RequestCredentials,
+  };
+
+  // Try dedicated route first (server-side cookie handling), then market proxy
+  for (const endpoint of ['/api/bookings/my', '/api/market/bookings/my']) {
+    try {
+      const data = await apiClient.get<unknown>(endpoint, opts);
+      const list = extractBookingsList(data);
+      return list.map(toBookingLinkedRow);
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+export async function fetchFinanceDamageIncidents(currentUser?: FinanceAuth | null): Promise<DamagePenalty[]> {
   try {
-    const data = await apiClient.get<DamageIncidentsResponse>('/api/damage-incidents');
+    const headers = authHeaders(currentUser);
+    const data = await apiClient.get<DamageIncidentsResponse>('/api/damage-incidents', {
+      ...(Object.keys(headers).length ? { headers } : {}),
+    });
     const list = data?.damageIncidents ?? [];
     return list.map(toDamagePenalty);
   } catch {
