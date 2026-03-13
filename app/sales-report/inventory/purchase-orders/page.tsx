@@ -28,7 +28,10 @@ import type { PurchaseOrder } from '../types';
 type GoodsReceiptSubmitData = {
   warehouseId: string;
   notes?: string;
+  /** Display only — persisted name comes from backend via receivedByUserId FK */
   receivedBy?: string;
+  /** Posted to receive endpoint as FK */
+  receivedByUserId?: string;
   receiptDate?: string;
   receiptImages?: File[];
   items?: { productId: string; quantityReceived: number }[];
@@ -749,13 +752,18 @@ function PurchaseOrdersPageContent() {
         return;
       }
 
+      const receiveBody: Record<string, unknown> = {
+        warehouseId: data.warehouseId,
+        notes: data.notes || 'Goods receipt submitted from frontend',
+        items,
+      };
+      if (data.receivedByUserId) {
+        receiveBody.receivedByUserId = data.receivedByUserId;
+      }
+
       const response = await apiClient.post<{ purchaseOrder?: PurchaseOrder; goodsReceipt?: { id: string } }>(
         `/api/purchase-orders/${goodsReceiptModalPO.id}/receive`,
-        {
-          warehouseId: data.warehouseId,
-          notes: data.notes || 'Goods receipt submitted from frontend',
-          items,
-        }
+        receiveBody
       );
 
       if (!response?.purchaseOrder) {

@@ -14,3 +14,11 @@ export function getTodayInPhilippineTime(): string {
     day: '2-digit',
   }).format(new Date());
 }
+
+/**
+ * Returns the current datetime as ISO string (UTC).
+ * Use for report creation so the backend gets the actual submission time.
+ */
+export function getNowIso(): string {
+  return new Date().toISOString();
+}

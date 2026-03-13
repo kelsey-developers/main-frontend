@@ -46,6 +46,8 @@ async function forwardToUpstream(
     'x-user-email',
     'x-user-role',
     'x-user-roles',
+    /** Auth app user id for create flows — backend can persist without Prisma FK on reportedByUserId */
+    'x-reporter-user-id',
   ];
   passthroughHeaders.forEach((key) => {
     // Optionally strip role headers so backend sees full access (used for damage-incidents access by inventory role)
@@ -66,7 +68,11 @@ async function forwardToUpstream(
   // If no x-user-role but we have a logged-in user, add role from user cookie
   // so backend auth guard can enforce inventory-only access.
   // Skip when stripRoleHeaders is enabled (we want full access for that path).
-  if (!options.stripRoleHeaders && !headers.has('x-user-role') && !headers.has('x-user-roles')) {
+  if (
+    !options.stripRoleHeaders &&
+    !headers.has('x-user-role') &&
+    !headers.has('x-user-roles')
+  ) {
     const userCookie = request.cookies.get('user')?.value;
     if (userCookie) {
       try {
@@ -150,6 +156,14 @@ async function forwardToUpstream(
           data = { message: text };
         }
       }
+      if (process.env.NODE_ENV !== 'production' && res.status >= 400) {
+        console.warn(
+          `[market proxy] ${res.status} from ${upstreamUrl}:`,
+          typeof data === 'object' && data !== null && 'message' in data
+            ? (data as { message?: unknown }).message
+            : text?.slice(0, 200)
+        );
+      }
       return { status: res.status, data, isHtml, rawText: text };
     } catch (err) {
       clearTimeout(timeout);
@@ -182,6 +196,133 @@ function isNetworkError(err: unknown): boolean {
     msg.includes('fetch failed') ||
     msg.includes('network')
   );
+}
+
+/**
+ * Forward GET to upstream and return raw bytes (for attachment/image content).
+ * Uses arrayBuffer() so images are not corrupted. HTML error pages (530/404) are
+ * rejected so we don't return JSON to <img src> — client gets 502 text/plain instead.
+ */
+export async function proxyMarketApiBinary(
+  request: NextRequest,
+  upstreamPath: string
+): Promise<NextResponse> {
+  const marketBaseUrl = process.env.MARKET_API_URL;
+  const fallbackBaseUrl = process.env.API_URL;
+
+  if (!marketBaseUrl && !fallbackBaseUrl) {
+    return new NextResponse('MARKET_API_URL not configured', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
+  function upstreamUrlForLog(url: string): string {
+    try {
+      return new URL(url).origin + new URL(url).pathname;
+    } catch {
+      return url;
+    }
+  }
+
+  type BinaryResult =
+    | { ok: true; status: number; buffer: ArrayBuffer; contentType: string }
+    | { ok: false; status?: number };
+
+  async function fetchBinary(baseUrl: string): Promise<BinaryResult> {
+    const url = buildUpstreamUrl(baseUrl, upstreamPath, request);
+    const headers = new Headers();
+    for (const key of ['authorization', 'x-user-id', 'x-user-email', 'x-user-role', 'x-user-roles'] as const) {
+      if (shouldStripRoleHeadersForPath(upstreamPath) && (key === 'x-user-role' || key === 'x-user-roles')) continue;
+      const value = request.headers.get(key);
+      if (value) headers.set(key, value);
+    }
+    if (!headers.has('authorization')) {
+      const cookieToken = request.cookies.get('accessToken')?.value;
+      if (cookieToken) headers.set('authorization', `Bearer ${cookieToken}`);
+    }
+    if (!headers.has('x-user-role') && !headers.has('x-user-roles')) {
+      const userCookie = request.cookies.get('user')?.value;
+      if (userCookie) {
+        try {
+          const user = JSON.parse(userCookie) as { email?: string; roles?: string[] };
+          if (user.roles?.[0]) headers.set('x-user-role', user.roles[0]);
+          if (user.email) headers.set('x-user-email', user.email);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (isNgrokUrl(url) && !headers.has('ngrok-skip-browser-warning')) {
+      headers.set('ngrok-skip-browser-warning', 'true');
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(url, { method: 'GET', headers, signal: controller.signal });
+      clearTimeout(timeout);
+
+      const buffer = await res.arrayBuffer();
+      const ct = res.headers.get('content-type') || '';
+
+      // Error pages are often HTML even with 200/404/502
+      if (!res.ok || ct.includes('text/html') || looksLikeNgrokErrorPage(new TextDecoder().decode(buffer.slice(0, 512)))) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[market proxy binary] ${res.status} non-OK or HTML from ${upstreamUrlForLog(url)}`);
+        }
+        return { ok: false, status: res.status };
+      }
+      const snippet = new TextDecoder().decode(buffer.slice(0, Math.min(256, buffer.byteLength)));
+      if (looksLikeHtml(snippet)) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[market proxy binary] body looks like HTML from ${upstreamUrlForLog(url)}`);
+        }
+        return { ok: false, status: res.status };
+      }
+
+      return {
+        ok: true,
+        status: res.status,
+        buffer,
+        contentType: ct || 'application/octet-stream',
+      };
+    } catch (err) {
+      clearTimeout(timeout);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[market proxy binary] fetch failed ${upstreamUrlForLog(buildUpstreamUrl(baseUrl, upstreamPath, request))}`, err);
+      }
+      return { ok: false };
+    }
+  }
+
+  const bases = [marketBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
+  let lastUpstreamStatus: number | undefined;
+  for (const base of bases) {
+    const result = await fetchBinary(base);
+    if (result.ok) {
+      return new NextResponse(result.buffer, {
+        status: result.status,
+        headers: {
+          'Content-Type': result.contentType,
+          'Cache-Control': 'private, max-age=3600',
+        },
+      });
+    }
+    lastUpstreamStatus = result.status;
+  }
+
+  // Pass through 404 so client can handle "not found" (e.g. img onError) instead of 502
+  if (lastUpstreamStatus === 404) {
+    return new NextResponse('Attachment not found.', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  return new NextResponse('Attachment unavailable (upstream error or route missing).', {
+    status: 502,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
 }
 
 function shouldStripRoleHeadersForPath(path: string): boolean {

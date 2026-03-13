@@ -2,7 +2,7 @@
 
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { InventoryUnit, ReplenishmentItem } from '../types';
 import SearchUnits from './SearchUnits';
 import InventoryTable from './InventoryTable';
@@ -17,6 +17,8 @@ interface UnitPageProps {
 
 const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromAllocations = searchParams.get('from') === 'allocations';
   const { user, userProfile, userRole } = useMockAuth();
   const { warning } = useToast();
   const [refreshTick, setRefreshTick] = useState(0);
@@ -136,20 +138,44 @@ const UnitPage: React.FC<UnitPageProps> = ({ unit }) => {
           animation: inventoryReveal 560ms ease-in-out forwards;
         }
       `}</style>
-      <Link
-        href="/sales-report/inventory"
-        className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline mb-6 inventory-reveal"
-        style={{ fontFamily: 'Poppins', animationDelay: '30ms' }}
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-        Back to Inventory
-      </Link>
+      <div className="flex flex-wrap items-center gap-3 mb-6 inventory-reveal" style={{ fontFamily: 'Poppins', animationDelay: '30ms' }}>
+        {fromAllocations ? (
+          <Link
+            href="/sales-report/inventory/items?view=allocations"
+            className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline font-medium"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Item Allocation
+          </Link>
+        ) : (
+          <Link
+            href="/sales-report/inventory"
+            className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline font-medium"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Inventory
+          </Link>
+        )}
+        {fromAllocations && (
+          <span className="text-gray-400">|</span>
+        )}
+        {fromAllocations && (
+          <Link
+            href="/sales-report/inventory"
+            className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#0B5858] hover:underline"
+          >
+            Inventory Dashboard
+          </Link>
+        )}
+      </div>
 
       <div className="flex flex-col lg:flex-row gap-8 lg:items-start">
         <aside className="w-full lg:w-80 flex-shrink-0 inventory-reveal" style={{ animationDelay: '90ms' }}>
-          <SearchUnits units={unitsWithAllocations} />
+          <SearchUnits units={unitsWithAllocations} fromAllocations={fromAllocations} />
         </aside>
         <div className="flex-1 flex-col min-w-0 gap-6">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden p-6 flex flex-row gap-6 inventory-reveal" style={{ animationDelay: '140ms' }}>

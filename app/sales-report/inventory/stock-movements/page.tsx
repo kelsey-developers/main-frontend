@@ -82,6 +82,54 @@ const OptionalValueBadge = () => (
   </span>
 );
 
+/**
+ * STOCK column shows before→after from replayed running balance. Negatives happen when
+ * opening balance is wrong (partial history, or currentStock out of sync). Clamp display
+ * to ≥0 and tooltip when raw was negative.
+ */
+function StockBeforeAfter({
+  beforeQuantity,
+  afterQuantity,
+}: {
+  beforeQuantity?: number;
+  afterQuantity?: number;
+}) {
+  if (beforeQuantity === undefined && afterQuantity === undefined) {
+    return <OptionalValueBadge />;
+  }
+  const beforeRaw = beforeQuantity ?? 0;
+  const afterRaw = afterQuantity ?? 0;
+  const beforeShow = Math.max(0, beforeRaw);
+  const afterShow = Math.max(0, afterRaw);
+  const hadNegative = beforeRaw < 0 || afterRaw < 0;
+  const title = hadNegative
+    ? `Computed balance went negative (likely incomplete movement history or stock out of sync). Raw: ${beforeRaw} → ${afterRaw}`
+    : undefined;
+
+  return (
+    <span title={title} className={hadNegative ? 'cursor-help' : undefined}>
+      {beforeQuantity !== undefined ? (
+        <span className={beforeRaw < 0 ? 'text-amber-700' : 'text-gray-500'}>{beforeShow}</span>
+      ) : (
+        <OptionalValueBadge />
+      )}
+      <span className="mx-1 text-[11px] text-gray-400">→</span>
+      {afterQuantity !== undefined ? (
+        <span className={`font-semibold ${afterRaw < 0 ? 'text-amber-700' : 'text-gray-800'}`}>
+          {afterShow}
+          {hadNegative && (
+            <span className="ml-1 text-[10px] font-normal text-amber-600" aria-hidden>
+              (sync)
+            </span>
+          )}
+        </span>
+      ) : (
+        <OptionalValueBadge />
+      )}
+    </span>
+  );
+}
+
 type SortKey = 'date' | 'product' | 'location' | 'qty';
 
 export default function StockMovementsPage() {
@@ -865,17 +913,7 @@ export default function StockMovementsPage() {
                             : (row.type === 'in' ? '+' : '-') + Math.abs(row.quantity)}
                         </td>
                         <td className="px-4 py-3 text-right text-[12px] text-gray-700 whitespace-normal break-words align-top">
-                          {row.beforeQuantity !== undefined ? (
-                            <span className="text-gray-500">{row.beforeQuantity}</span>
-                          ) : (
-                            <OptionalValueBadge />
-                          )}
-                          <span className="mx-1 text-[11px] text-gray-400">→</span>
-                          {row.afterQuantity !== undefined ? (
-                            <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
-                          ) : (
-                            <OptionalValueBadge />
-                          )}
+                          <StockBeforeAfter beforeQuantity={row.beforeQuantity} afterQuantity={row.afterQuantity} />
                         </td>
                         <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
                           {row.referenceId ? (
@@ -935,17 +973,7 @@ export default function StockMovementsPage() {
                         -{row.quantity}
                       </td>
                       <td className="px-4 py-3 text-right text-[12px] text-gray-700 whitespace-normal break-words align-top">
-                        {row.beforeQuantity !== undefined ? (
-                          <span className="text-gray-500">{row.beforeQuantity}</span>
-                        ) : (
-                          <OptionalValueBadge />
-                        )}
-                        <span className="mx-1 text-[11px] text-gray-400">→</span>
-                        {row.afterQuantity !== undefined ? (
-                          <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
-                        ) : (
-                          <OptionalValueBadge />
-                        )}
+                        <StockBeforeAfter beforeQuantity={row.beforeQuantity} afterQuantity={row.afterQuantity} />
                       </td>
                       <td className="px-4 py-3 text-[12px] text-gray-600 align-top">
                         {row.referenceId ? (
@@ -1043,19 +1071,9 @@ export default function StockMovementsPage() {
                         {isNoneLike(row.unitName) ? <NoneBadge /> : row.unitName}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
                       <span className="font-semibold text-gray-500">Stock:</span>
-                      {row.beforeQuantity !== undefined ? (
-                        <span className="text-gray-500">{row.beforeQuantity}</span>
-                      ) : (
-                        <OptionalValueBadge />
-                      )}
-                      <span className="mx-1 text-[11px] text-gray-400">→</span>
-                      {row.afterQuantity !== undefined ? (
-                        <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
-                      ) : (
-                        <OptionalValueBadge />
-                      )}
+                      <StockBeforeAfter beforeQuantity={row.beforeQuantity} afterQuantity={row.afterQuantity} />
                     </div>
                   </div>
 
@@ -1121,19 +1139,9 @@ export default function StockMovementsPage() {
                       {isNoneLike(row.sourceWarehouseName) ? <NoneBadge /> : row.sourceWarehouseName}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-wrap">
                     <span className="font-semibold text-gray-500">Stock:</span>
-                    {row.beforeQuantity !== undefined ? (
-                      <span className="text-gray-500">{row.beforeQuantity}</span>
-                    ) : (
-                      <OptionalValueBadge />
-                    )}
-                    <span className="mx-1 text-[11px] text-gray-400">→</span>
-                    {row.afterQuantity !== undefined ? (
-                      <span className="font-semibold text-gray-800">{row.afterQuantity}</span>
-                    ) : (
-                      <OptionalValueBadge />
-                    )}
+                    <StockBeforeAfter beforeQuantity={row.beforeQuantity} afterQuantity={row.afterQuantity} />
                   </div>
                 </div>
 

@@ -5,9 +5,10 @@ import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import InventoryDropdown from './InventoryDropdown';
 import { useToast } from '../hooks/useToast';
+import { useAuth } from '@/contexts/AuthContext';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 import { useProductNames } from '../hooks/useProductNames';
-import { getTodayInPhilippineTime } from '@/lib/dateUtils';
+import { getTodayInPhilippineTime, getNowIso } from '@/lib/dateUtils';
 import { apiClient } from '@/lib/api/client';
 import {
   loadInventoryDataset,
@@ -23,6 +24,14 @@ import {
   type CreateDamageIncidentPayload,
   type DamageIncident,
 } from '@/lib/api/damageIncidents';
+import {
+  type DamageIncidentStatus,
+  DAMAGE_STATUS_LABELS,
+  normalizeDamageStatus,
+  canEditChargedAbsorbed,
+  isTransitioningToSettled,
+  isResolvedStatus,
+} from '../helpers/damageIncidentHelpers';
 
 const C = {
   darkTeal: '#0b5858',
@@ -53,11 +62,13 @@ function Field({
   label,
   required,
   hint,
+  hintBelow,
   children,
 }: {
   label: string;
   required?: boolean;
   hint?: string;
+  hintBelow?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -80,18 +91,22 @@ function Field({
         )}
       </label>
       {children}
+      {hintBelow && (
+        <div style={{ fontSize: 11, color: C.midGray, fontFamily: 'Poppins' }}>{hintBelow}</div>
+      )}
     </div>
   );
 }
 
 type WriteOffType = 'warehouse' | 'unit';
 
-type DamageStatus = 'open' | 'in-review' | 'resolved';
+type DamageStatus = 'open' | 'charged_to_guest' | 'absorbed' | 'settled';
 
 const STATUS_OPTIONS: { value: DamageStatus; label: string }[] = [
   { value: 'open', label: 'Open' },
-  { value: 'in-review', label: 'In review' },
-  { value: 'resolved', label: 'Resolved' },
+  { value: 'charged_to_guest', label: 'Charged to guest' },
+  { value: 'absorbed', label: 'Absorbed' },
+  { value: 'settled', label: 'Settled' },
 ];
 
 interface LineItem {
@@ -119,10 +134,10 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
   const [bookingOptions, setBookingOptions] = useState<Array<{ id: string; code: string; guestName: string; checkIn: string; checkOut: string }>>([]);
   const [isBookingLoading, setIsBookingLoading] = useState(false);
   const [reportDate, setReportDate] = useState(getTodayInPhilippineTime());
-  const [reportedBy, setReportedBy] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<DamageStatus>('open');
+  const [status, setStatus] = useState<DamageIncidentStatus>('open');
   const [notes, setNotes] = useState('');
+  const [resolutionNotes, setResolutionNotes] = useState('');
   const [absorbedAmount, setAbsorbedAmount] = useState<number>(0);
   const [chargedToGuest, setChargedToGuest] = useState<number>(0);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -131,7 +146,13 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const authState = useMockAuth();
+  const auth = useAuth();
+  const mockAuth = useMockAuth();
+  const authState = auth.user ? auth : mockAuth;
+  /** Preview only — reporter id is sent via createDamageIncident(..., { reporterUserId }); body has no reportedByUserId */
+  const reportedByDisplay = auth.user
+    ? `${auth.userProfile?.fullname ?? ([auth.user.firstName, auth.user.lastName].filter(Boolean).join(' ') || 'User')} (ID: ${auth.user.id})`
+    : '—';
   const { error, success } = useToast();
   const productIdsForNames = incident?.items?.map((i) => i.productId).filter(Boolean) ?? [];
   const productNamesFromApi = useProductNames(productIdsForNames);
@@ -146,8 +167,7 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
 
   useEffect(() => {
     setMounted(true);
-    setReportedBy(authState.userProfile?.fullname || authState.user?.id || 'Staff');
-  }, [authState.userProfile?.fullname, authState.user?.id]);
+  }, []);
 
   useEffect(() => {
     void loadInventoryDataset();
@@ -197,13 +217,19 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
 
   useEffect(() => {
     if (incident) {
-      setReportDate(incident.reportDate ?? getTodayInPhilippineTime());
-      setReportedBy(incident.reportedBy ?? '');
+      setReportDate(incident.reportDate ?? incident.reportedAt ?? getTodayInPhilippineTime());
       setDescription(incident.description ?? '');
-      setAbsorbedAmount(incident.absorbedAmount ?? 0);
-      setChargedToGuest(incident.chargedToGuest ?? 0);
-      const s = (incident.status ?? 'open').toLowerCase().replace(/\s/g, '-');
-      setStatus((s === 'in-review' || s === 'resolved' ? s : 'open') as DamageStatus);
+      setResolutionNotes(incident.resolutionNotes ?? '');
+      const s = normalizeDamageStatus(incident.status);
+      setStatus(s);
+      // Open: charged/absorbed = 0; otherwise load amounts from incident
+      if (s === 'open') {
+        setAbsorbedAmount(0);
+        setChargedToGuest(0);
+      } else {
+        setAbsorbedAmount(incident.absorbedAmount ?? 0);
+        setChargedToGuest(incident.chargedToGuest ?? 0);
+      }
       const rawItems = incident.items ?? [];
       const firstWithUnit = rawItems.find((it) => it.unitId);
       if (firstWithUnit?.unitId || incident.unitId) {
@@ -322,13 +348,16 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
     }
 
     if (isEdit && incident) {
+      const prevStatus = normalizeDamageStatus(incident.status);
+      const prevAbsorbed = incident.absorbedAmount ?? 0;
+      const prevCharged = incident.chargedToGuest ?? 0;
       const noChanges =
-        reportDate === (incident.reportDate ?? '') &&
+        reportDate === (incident.reportDate ?? incident.reportedAt ?? '') &&
         (description.trim() || '') === (incident.description ?? '') &&
-        (reportedBy.trim() || '') === (incident.reportedBy ?? '') &&
-        status === ((incident.status ?? 'open') as string).toLowerCase().replace(/\s/g, '-') &&
-        absorbedAmount === (incident.absorbedAmount ?? 0) &&
-        chargedToGuest === (incident.chargedToGuest ?? 0) &&
+        status === prevStatus &&
+        absorbedAmount === prevAbsorbed &&
+        chargedToGuest === prevCharged &&
+        (resolutionNotes.trim() || '') === (incident.resolutionNotes ?? '') &&
         (writeOffType === 'warehouse' ? warehouseId === (incident.warehouseId ?? '') : true) &&
         (writeOffType === 'unit'
           ? unitId === (incident.unitId ?? '') && bookingId === (incident.bookingId ?? '')
@@ -344,16 +373,21 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
     try {
       if (isEdit && incident?.id) {
         const isWarehouseEdit = writeOffType === 'warehouse';
-        await updateDamageIncident(incident.id, {
-            reportDate,
-            description: description.trim() || undefined,
-            reportedBy: reportedBy.trim() || undefined,
-            status,
-            absorbedAmount: Math.max(0, absorbedAmount),
-            chargedToGuest: Math.max(0, chargedToGuest),
-            ...(isWarehouseEdit && warehouseId ? { warehouseId } : {}),
-            ...(!isWarehouseEdit && unitId ? { unitId, bookingId: bookingId || undefined } : {}),
-          });
+        const isSettling = isTransitioningToSettled(status, incident.status);
+        const canEdit = canEditChargedAbsorbed(status);
+        const updatePayload = {
+          reportDate,
+          description: description.trim() || undefined,
+          status,
+          absorbedAmount: canEdit ? Math.max(0, absorbedAmount) : 0,
+          chargedToGuest: canEdit ? Math.max(0, chargedToGuest) : 0,
+          resolutionNotes: resolutionNotes.trim() || undefined,
+          // Omit resolvedByUserId — same FK constraint as reportedByUserId if auth user not in DB
+          ...(isSettling && { resolvedAt: getNowIso() }),
+          ...(isWarehouseEdit && warehouseId ? { warehouseId } : {}),
+          ...(!isWarehouseEdit && unitId ? { unitId, bookingId: bookingId || undefined } : {}),
+        };
+        await updateDamageIncident(incident.id, updatePayload);
           if (receiptImages.length > 0) {
             try {
               await uploadDamageIncidentAttachments(incident.id, receiptImages);
@@ -367,21 +401,23 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
         success('Damage report updated.');
       } else {
         const isUnitWriteOff = writeOffType === 'unit' && unitId;
-        const reportedAtIso = new Date(`${reportDate}T12:00:00.000Z`).toISOString();
+        const reportedAtIso = getNowIso();
+        // No reportedByUserId in payload — createDamageIncident drops it and sends X-Reporter-User-Id when set.
+        const reporterUserId =
+          auth.user?.id != null ? String(auth.user.id) : undefined;
         const payload: CreateDamageIncidentPayload = {
           description: description.trim(),
           reportedAt: reportedAtIso,
-          reportedByUserId: authState.user?.id ?? undefined,
           status,
           cost: 0,
-          absorbedAmount: Math.max(0, absorbedAmount),
-          chargedToGuest: Math.max(0, chargedToGuest),
+          absorbedAmount: 0,
+          chargedToGuest: 0,
           ...(isUnitWriteOff
             ? { unitId, bookingId: bookingId || undefined }
             : { warehouseId }),
         };
 
-        const created = await createDamageIncident(payload);
+        const created = await createDamageIncident(payload, { reporterUserId });
 
         if (created.id && receiptImages.length > 0) {
           try {
@@ -614,13 +650,16 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
               }}
             >
               <Field label="Reported By">
-                <input
-                  type="text"
-                  value={reportedBy}
-                  onChange={(e) => setReportedBy(e.target.value)}
-                  placeholder="e.g. Staff or your name"
-                  style={inputStyle}
-                />
+                <div
+                  style={{
+                    ...inputStyle,
+                    background: '#f8fbfb',
+                    color: C.darkGray,
+                    cursor: 'default',
+                  }}
+                >
+                  {reportedByDisplay}
+                </div>
               </Field>
               <Field label="Report Date" required>
                 <SingleDatePicker
@@ -634,15 +673,11 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <Field
-                label="Description"
-                required
-                hint="Be as specific as possible. List out all items involved in the damage."
-              >
+              <Field label="Description" required>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Be as specific as possible about the damage. List out all items involved."
+                  placeholder="Describe the damage and list items involved."
                   rows={4}
                   style={{
                     ...inputStyle,
@@ -663,7 +698,7 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
             >
               <Field
                 label="Absorbed amount (PHP)"
-                hint="Amount not paid by guest; absorbed by property"
+                hint={status === 'open' ? 'Set to 0 for open reports; populated from stock-out in review' : 'Amount not paid by guest; absorbed by property'}
               >
                 <input
                   type="number"
@@ -671,16 +706,21 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
                   step={0.01}
                   value={absorbedAmount}
                   onChange={(e) => {
+                    if (status === 'open') return;
                     const v = parseFloat(e.target.value);
                     setAbsorbedAmount(Number.isNaN(v) ? 0 : Math.max(0, v));
                   }}
                   placeholder="0"
-                  style={inputStyle}
+                  disabled={status === 'open'}
+                  style={{
+                    ...inputStyle,
+                    ...(status === 'open' ? { background: '#f8fbfb', cursor: 'not-allowed' } : {}),
+                  }}
                 />
               </Field>
               <Field
                 label="Charged to guest (PHP)"
-                hint="Based on cost from stock-out when resolved"
+                hint={status === 'open' ? 'Set to 0 for open reports; populated from stock-out in review' : 'Based on cost from stock-out when resolved'}
               >
                 <input
                   type="number"
@@ -688,24 +728,39 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
                   step={0.01}
                   value={chargedToGuest}
                   onChange={(e) => {
+                    if (status === 'open') return;
                     const v = parseFloat(e.target.value);
                     setChargedToGuest(Number.isNaN(v) ? 0 : Math.max(0, v));
                   }}
                   placeholder="0"
-                  style={inputStyle}
+                  disabled={status === 'open'}
+                  style={{
+                    ...inputStyle,
+                    ...(status === 'open' ? { background: '#f8fbfb', cursor: 'not-allowed' } : {}),
+                  }}
                 />
               </Field>
             </div>
 
             {isEdit && (
               <div style={{ marginBottom: 20 }}>
-                <Field label="Status">
+                <Field label="Status" hint="Open → Charged to guest / Absorbed → Settled.">
                   <div className="inline-flex gap-1 bg-white border-[1.5px] border-gray-200 rounded-lg p-1 w-full">
                     {STATUS_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => setStatus(opt.value)}
+                        onClick={() => {
+                          setStatus(opt.value);
+                          if (opt.value === 'open') {
+                            setAbsorbedAmount(0);
+                            setChargedToGuest(0);
+                          } else if (opt.value === 'charged_to_guest') {
+                            setAbsorbedAmount(0);
+                          } else if (opt.value === 'absorbed') {
+                            setChargedToGuest(0);
+                          }
+                        }}
                         className={`flex-1 px-3 py-2 rounded-md text-[12px] font-medium transition-all ${
                           status === opt.value
                             ? 'bg-[#05807e] text-white'
@@ -902,22 +957,43 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
               </Field>
             </div>
 
-            {/* Notes */}
-            <div style={{ marginBottom: 20 }}>
-              <Field label="Notes" hint="Optional">
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Any additional notes..."
-                  rows={3}
-                  style={{
-                    ...inputStyle,
-                    resize: 'vertical',
-                    minHeight: 80,
-                  }}
-                />
-              </Field>
-            </div>
+            {/* Resolution notes (edit mode, when charged/absorbed/settled) */}
+            {isEdit && isResolvedStatus(status) && (
+              <div style={{ marginBottom: 20 }}>
+                <Field label="Resolution notes" hint="From stock-out when resolving.">
+                  <textarea
+                    value={resolutionNotes}
+                    onChange={(e) => setResolutionNotes(e.target.value)}
+                    placeholder="e.g. Items written off via stock-out; cost split 50/50 guest/property"
+                    rows={3}
+                    style={{
+                      ...inputStyle,
+                      resize: 'vertical',
+                      minHeight: 80,
+                    }}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {/* Notes (create mode) */}
+            {!isEdit && (
+              <div style={{ marginBottom: 20 }}>
+                <Field label="Notes">
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Any additional notes..."
+                    rows={3}
+                    style={{
+                      ...inputStyle,
+                      resize: 'vertical',
+                      minHeight: 80,
+                    }}
+                  />
+                </Field>
+              </div>
+            )}
 
             {/* Review */}
             <div
