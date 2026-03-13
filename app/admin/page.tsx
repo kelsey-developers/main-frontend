@@ -19,7 +19,7 @@ const CARD = {
   innerRow: 'p-4 rounded-2xl border border-gray-100',
 } as const;
 
-/** Stat card: same hover as agent hub — shadow only, no border change */
+/** Stat card */
 function StatCard({
   label,
   value,
@@ -67,7 +67,7 @@ const AdminPage: React.FC = React.memo(() => {
   return (
     <div className="space-y-6">
 
-      {/* Page header — title left, buttons right-aligned */}
+      {/* Page header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Overview</h1>
@@ -97,7 +97,7 @@ const AdminPage: React.FC = React.memo(() => {
         </div>
       </div>
 
-      {/* Stats strip — same grid and StatCard style as agent hub */}
+      {/* Stats strip */}
       {agentAnalytics && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <StatCard label="Total Agents" value={agentAnalytics.totalAgents} sub="Registered on platform" />
@@ -116,7 +116,7 @@ const AdminPage: React.FC = React.memo(() => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Agent Analytics — generous spacing, clear hierarchy */}
+        {/* Agent Analytics */}
         <div className={`lg:col-span-2 ${CARD.base} flex flex-col`}>
           <div className={`${CARD.header} px-7 py-6`}>
             <h2 className="text-lg font-bold text-gray-900 tracking-tight">Agent Analytics</h2>
@@ -129,7 +129,7 @@ const AdminPage: React.FC = React.memo(() => {
                 {agentAnalytics.topAgents.map((agent, idx) => (
                   <div
                     key={agent.agentId}
-                    className={`flex items-center gap-5 p-5 rounded-2xl border border-gray-100 hover:border-[#0B5858]/20 hover:bg-gray-50/50 transition-all group`}
+                    className="flex items-center gap-5 p-5 rounded-2xl border border-gray-100 hover:border-[#0B5858]/20 hover:bg-gray-50/50 transition-all group"
                   >
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
@@ -168,7 +168,7 @@ const AdminPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        {/* Quick Actions — uses CARD tokens and header strip */}
+        {/* Quick Actions */}
         <div className={`${CARD.base} flex flex-col`}>
           <div className={CARD.header}>
             <h2 className="text-lg font-bold text-gray-900 tracking-tight">Quick Actions</h2>
@@ -221,6 +221,24 @@ const AdminPage: React.FC = React.memo(() => {
                 ),
                 color: 'bg-[#0B5858]/10 text-[#0B5858]',
               },
+              {
+                href: '/dtr',
+                title: 'DTR',
+                desc: 'Daily time records',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                ),
+                color: 'bg-[#FACC15]/20 text-[#0B5858]',
+              },
+              {
+                href: '/payroll',
+                title: 'Payroll',
+                desc: 'Manage pay records',
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                ),
+                color: 'bg-[#0B5858]/10 text-[#0B5858]',
+              },
             ].map((action, i) => (
               <Link
                 key={i}
@@ -243,7 +261,7 @@ const AdminPage: React.FC = React.memo(() => {
         </div>
       </div>
 
-      {/* Calendar — uses CARD tokens */}
+      {/* Calendar */}
       <div className={`${CARD.base} flex flex-col`}>
         <div className={CARD.header}>
           <h2 className="text-lg font-bold text-gray-900 tracking-tight">Upcoming Bookings Calendar</h2>

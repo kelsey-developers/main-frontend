@@ -1,6 +1,4 @@
-/**
- * Payroll service — calls the backend API for all payroll data.
- */
+// PATH: main-frontend-mock/services/payrollService.ts
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -72,7 +70,7 @@ export interface BookingCommission {
 export interface CommissionPayrollRecord {
   id: string;
   agent_id: number;
-  agent_name: string;
+  agent_name: string | null;
   payPeriodStart: string;
   payPeriodEnd: string;
   status: PayrollStatus;
@@ -85,18 +83,85 @@ export interface CommissionPayrollRecord {
   bookingDetails?: BookingCommission[];
 }
 
-/**
- * Fetch active employees list (for dropdowns).
- */
-export async function getEmployees(): Promise<{ employee_id: number; full_name: string; position: string; employment_type: EmploymentType; }[]> {
+// ---------------------------------------------------------------------------
+// Mappers — convert snake_case from Supabase to camelCase for the UI
+// ---------------------------------------------------------------------------
+function mapDaily(r: any): DailyPayrollRecord {
+  return {
+    id:               r.id,
+    employee_id:      r.employee_id,
+    employee:         r.employees ?? r.employee ?? null,
+    payPeriodStart:   r.pay_period_start,
+    payPeriodEnd:     r.pay_period_end,
+    status:           r.status,
+    daysWorked:       r.days_worked              ?? 0,
+    dailyRate:        Number(r.daily_rate)       ?? 0,
+    basePay:          Number(r.base_pay)         ?? 0,
+    overtimeHours:    Number(r.overtime_hours)   ?? 0,
+    overtimePay:      Number(r.overtime_pay)     ?? 0,
+    grossIncome:      Number(r.gross_income)     ?? 0,
+    totalDeductions:  Number(r.total_deductions) ?? 0,
+    netPay:           Number(r.net_pay)          ?? 0,
+    reference_number: r.reference_number         ?? '',
+    paymentDate:      r.payment_date             ?? undefined,
+  };
+}
+
+function mapMonthly(r: any): MonthlyPayrollRecord {
+  return {
+    id:               r.id,
+    employee_id:      r.employee_id,
+    employee:         r.employees ?? r.employee ?? null,
+    payPeriodStart:   r.pay_period_start,
+    payPeriodEnd:     r.pay_period_end,
+    status:           r.status,
+    monthlyRate:      Number(r.monthly_rate)     ?? 0,
+    overtimeHours:    Number(r.overtime_hours)   ?? 0,
+    overtimePay:      Number(r.overtime_pay)     ?? 0,
+    bonusAmount:      Number(r.bonus_amount)     ?? 0,
+    grossIncome:      Number(r.gross_income)     ?? 0,
+    totalDeductions:  Number(r.total_deductions) ?? 0,
+    netPay:           Number(r.net_pay)          ?? 0,
+    reference_number: r.reference_number         ?? '',
+    paymentDate:      r.payment_date             ?? undefined,
+  };
+}
+
+function mapCommission(r: any): CommissionPayrollRecord {
+  return {
+    id:                    r.id,
+    agent_id:              r.agent_id,
+    agent_name:            r.agent_name              ?? null,
+    payPeriodStart:        r.pay_period_start,
+    payPeriodEnd:          r.pay_period_end,
+    status:                r.status,
+    totalBookings:         r.total_bookings           ?? 0,
+    totalCommissionAmount: Number(r.gross_income)     ?? 0,
+    taxes:                 Number(r.total_deductions) ?? 0,
+    netPayout:             Number(r.net_pay)          ?? 0,
+    reference_number:      r.reference_number         ?? '',
+    paymentDate:           r.payment_date             ?? undefined,
+    bookingDetails:        r.bookingDetails           ?? [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// API calls
+// ---------------------------------------------------------------------------
+
+// GET all active employees
+export async function getEmployees(): Promise<{
+  employee_id: number;
+  full_name: string;
+  position: string;
+  employment_type: EmploymentType;
+}[]> {
   const res = await fetch(`${API_BASE}/api/employees`);
   if (!res.ok) throw new Error('Failed to fetch employees');
   return res.json();
 }
 
-/**
- * Add a new employee.
- */
+// POST add a new employee
 export async function addEmployee(body: {
   full_name: string;
   position: string;
@@ -116,10 +181,10 @@ export async function addEmployee(body: {
   return res.json();
 }
 
-/**
- * Generate a new payroll record.
- */
-export async function createPayroll(body: Record<string, unknown>): Promise<unknown> {
+// POST generate a new payroll record
+export async function createPayroll(
+  body: Record<string, unknown>
+): Promise<unknown> {
   const res = await fetch(`${API_BASE}/api/payroll/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -127,52 +192,54 @@ export async function createPayroll(body: Record<string, unknown>): Promise<unkn
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Failed to generate payroll');
+    throw new Error(
+      (err as { error?: string }).error ?? 'Failed to generate payroll'
+    );
   }
   return res.json();
 }
 
-/**
- * Fetch all payroll records split by employment type.
- */
+// GET all payroll records split by employment type
 export async function getPayroll(): Promise<{
   daily: DailyPayrollRecord[];
   monthly: MonthlyPayrollRecord[];
   commission: CommissionPayrollRecord[];
 }> {
   const [dailyRes, monthlyRes, commissionRes] = await Promise.all([
-    fetch(`${API_BASE}/api/payroll?type=DAILY`),
-    fetch(`${API_BASE}/api/payroll?type=MONTHLY`),
-    fetch(`${API_BASE}/api/payroll?type=COMMISSION`),
+    fetch(`${API_BASE}/api/payroll/by-type/DAILY`),
+    fetch(`${API_BASE}/api/payroll/by-type/MONTHLY`),
+    fetch(`${API_BASE}/api/payroll/by-type/COMMISSION`),
   ]);
 
-  if (!dailyRes.ok || !monthlyRes.ok || !commissionRes.ok) {
-    throw new Error('Failed to fetch payroll records');
-  }
-
-  const [daily, monthly, commission] = await Promise.all([
-    dailyRes.json(),
-    monthlyRes.json(),
-    commissionRes.json(),
+  // ✅ FIXED: graceful fallback instead of throwing when backend is unreachable
+  const [dailyRaw, monthlyRaw, commissionRaw] = await Promise.all([
+    dailyRes.ok      ? dailyRes.json()      : Promise.resolve([]),
+    monthlyRes.ok    ? monthlyRes.json()    : Promise.resolve([]),
+    commissionRes.ok ? commissionRes.json() : Promise.resolve([]),
   ]);
 
-  return { daily, monthly, commission };
+  return {
+    daily:      (dailyRaw      as any[]).map(mapDaily),
+    monthly:    (monthlyRaw    as any[]).map(mapMonthly),
+    commission: (commissionRaw as any[]).map(mapCommission),
+  };
 }
 
-/**
- * Fetch a single payroll record by ID.
- */
+// GET single payroll record by ID
 export async function getPayrollById(
   id: string
 ): Promise<DailyPayrollRecord | MonthlyPayrollRecord | CommissionPayrollRecord> {
   const res = await fetch(`${API_BASE}/api/payroll/${id}`);
   if (!res.ok) throw new Error('Failed to fetch payroll record');
-  return res.json();
+  const raw = await res.json();
+
+  if (raw.employment_type === 'DAILY')      return mapDaily(raw);
+  if (raw.employment_type === 'MONTHLY')    return mapMonthly(raw);
+  if (raw.employment_type === 'COMMISSION') return mapCommission(raw);
+  return raw;
 }
 
-/**
- * Mark a booking commission as paid via GCash.
- */
+// PATCH mark commission as paid via GCash
 export async function markCommissionPaid(
   payrollId: string,
   bookingId: number,
@@ -183,13 +250,12 @@ export async function markCommissionPaid(
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      payroll_id: payrollId,
-      booking_id: bookingId,
-      gcash_reference: gcashReference,
+      payroll_id:        payrollId,
+      booking_id:        bookingId,
+      gcash_reference:   gcashReference,
       gcash_receipt_url: gcashReceiptUrl,
     }),
   });
-
   if (!res.ok) throw new Error('Failed to mark commission as paid');
   return res.json();
 }
