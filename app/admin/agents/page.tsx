@@ -6,33 +6,10 @@ import Link from 'next/link';
 import { getAgentAnalytics } from '@/services/agentDashboardService';
 import type { TopAgent } from '@/services/agentDashboardService';
 import SingleDatePicker from '@/components/SingleDatePicker';
-import { getPendingRegistrations, approveRegistration, rejectRegistration } from '@/services/referralTreeService';
-import { updateAgentStatus } from '@/services/agentRegistrationService';
-import type { PendingRegistration } from '@/types/referralTree';
+import { getAdminRegistrations, approveAdminRegistration, rejectAdminRegistration } from '@/lib/api/adminRegistrations';
+import { listUsers, updateUser } from '@/lib/api/users';
+import type { PendingRegistration } from '@/lib/api/adminRegistrations';
 import AgentSettingsModal from './components/AgentSettingsModal';
-
-const FULL_MOCK_AGENTS: (TopAgent & { level: 1 | 2 | 3; status: 'active' | 'inactive'; email: string; joinedAt: string })[] = [
-  { agentId: 'agent-001', agentName: 'Juan Dela Cruz', referralCode: 'JUAN2025', totalCommissions: 18940, totalBookings: 24, activeSubAgents: 5, level: 1, status: 'active', email: 'juan@example.com', joinedAt: '2024-01-10' },
-  { agentId: 'agent-002', agentName: 'Maria Santos', referralCode: 'MARIA2025', totalCommissions: 5420, totalBookings: 11, activeSubAgents: 2, level: 2, status: 'active', email: 'maria@example.com', joinedAt: '2024-03-05' },
-  { agentId: 'agent-003', agentName: 'Roberto Cruz', referralCode: 'ROBERTO2025', totalCommissions: 3870, totalBookings: 8, activeSubAgents: 1, level: 2, status: 'active', email: 'roberto@example.com', joinedAt: '2024-03-22' },
-  { agentId: 'agent-004', agentName: 'Pedro Flores', referralCode: 'PEDRO2025', totalCommissions: 2180, totalBookings: 6, activeSubAgents: 1, level: 2, status: 'active', email: 'pedro@example.com', joinedAt: '2024-04-18' },
-  { agentId: 'agent-005', agentName: 'Ana Reyes', referralCode: 'ANA2025', totalCommissions: 1240, totalBookings: 4, activeSubAgents: 0, level: 3, status: 'active', email: 'ana@example.com', joinedAt: '2024-06-01' },
-  { agentId: 'agent-006', agentName: 'Luz Garcia', referralCode: 'LUZ2025', totalCommissions: 980, totalBookings: 3, activeSubAgents: 0, level: 3, status: 'active', email: 'luz@example.com', joinedAt: '2024-06-15' },
-  { agentId: 'agent-007', agentName: 'Carlos Mendoza', referralCode: 'CARLOS2025', totalCommissions: 620, totalBookings: 2, activeSubAgents: 0, level: 3, status: 'inactive', email: 'carlos@example.com', joinedAt: '2024-07-02' },
-  { agentId: 'agent-008', agentName: 'Grace Villanueva', referralCode: 'GRACE2025', totalCommissions: 750, totalBookings: 3, activeSubAgents: 0, level: 3, status: 'active', email: 'grace@example.com', joinedAt: '2024-07-20' },
-  { agentId: 'agent-009', agentName: 'Elena Bautista', referralCode: 'ELENA2025', totalCommissions: 2100, totalBookings: 7, activeSubAgents: 0, level: 2, status: 'active', email: 'elena@example.com', joinedAt: '2024-05-12' },
-  { agentId: 'agent-010', agentName: 'Miguel Torres', referralCode: 'MIGUEL2025', totalCommissions: 1650, totalBookings: 5, activeSubAgents: 1, level: 2, status: 'active', email: 'miguel@example.com', joinedAt: '2024-05-28' },
-  { agentId: 'agent-011', agentName: 'Sofia Ramos', referralCode: 'SOFIA2025', totalCommissions: 890, totalBookings: 3, activeSubAgents: 0, level: 3, status: 'active', email: 'sofia@example.com', joinedAt: '2024-08-01' },
-  { agentId: 'agent-012', agentName: 'Antonio Lim', referralCode: 'ANTONIO2025', totalCommissions: 3200, totalBookings: 9, activeSubAgents: 2, level: 2, status: 'active', email: 'antonio@example.com', joinedAt: '2024-04-02' },
-  { agentId: 'agent-013', agentName: 'Carmen Ong', referralCode: 'CARMEN2025', totalCommissions: 1100, totalBookings: 4, activeSubAgents: 0, level: 3, status: 'inactive', email: 'carmen@example.com', joinedAt: '2024-06-20' },
-  { agentId: 'agent-014', agentName: 'Ramon Castillo', referralCode: 'RAMON2025', totalCommissions: 4500, totalBookings: 12, activeSubAgents: 3, level: 1, status: 'active', email: 'ramon@example.com', joinedAt: '2024-02-14' },
-  { agentId: 'agent-015', agentName: 'Teresa Navarro', referralCode: 'TERESA2025', totalCommissions: 780, totalBookings: 3, activeSubAgents: 0, level: 3, status: 'active', email: 'teresa@example.com', joinedAt: '2024-08-10' },
-  { agentId: 'agent-016', agentName: 'Fernando Reyes', referralCode: 'FERNANDO2025', totalCommissions: 1560, totalBookings: 5, activeSubAgents: 0, level: 3, status: 'active', email: 'fernando@example.com', joinedAt: '2024-07-15' },
-  { agentId: 'agent-017', agentName: 'Isabel Morales', referralCode: 'ISABEL2025', totalCommissions: 2900, totalBookings: 8, activeSubAgents: 1, level: 2, status: 'active', email: 'isabel@example.com', joinedAt: '2024-03-18' },
-  { agentId: 'agent-018', agentName: 'Ricardo Dizon', referralCode: 'RICARDO2025', totalCommissions: 410, totalBookings: 2, activeSubAgents: 0, level: 3, status: 'inactive', email: 'ricardo@example.com', joinedAt: '2024-09-01' },
-  { agentId: 'agent-019', agentName: 'Patricia Chua', referralCode: 'PATRICIA2025', totalCommissions: 1980, totalBookings: 6, activeSubAgents: 0, level: 2, status: 'active', email: 'patricia@example.com', joinedAt: '2024-05-05' },
-  { agentId: 'agent-020', agentName: 'Daniel Tan', referralCode: 'DANIEL2025', totalCommissions: 3340, totalBookings: 10, activeSubAgents: 2, level: 2, status: 'active', email: 'daniel@example.com', joinedAt: '2024-04-25' },
-];
 
 /** Chip style — same shape as cleaning/booking-requests (backgroundColor, color, boxShadow) */
 type ChipStyle = { backgroundColor: string; color: string; boxShadow: string };
@@ -211,7 +188,7 @@ type AgentRow = TopAgent & { level: 1 | 2 | 3; status: 'active' | 'inactive'; em
 export default function AdminAgentsPage() {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState({ total: 0, active: 0, totalPaid: 0, totalPending: 0 });
-  const [agents, setAgents] = useState<AgentRow[]>(() => [...FULL_MOCK_AGENTS]);
+  const [agents, setAgents] = useState<AgentRow[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [filterLevel, setFilterLevel] = useState<FilterLevel>('all');
@@ -227,6 +204,7 @@ export default function AdminAgentsPage() {
   const [currentRegPage, setCurrentRegPage] = useState(1);
   const itemsPerRegPage = 10;
   const [processingRegId, setProcessingRegId] = useState<string | null>(null);
+  const [approveRegTarget, setApproveRegTarget] = useState<PendingRegistration | null>(null);
   const [rejectRegTarget, setRejectRegTarget] = useState<PendingRegistration | null>(null);
   const [rejectRegReason, setRejectRegReason] = useState('');
   const [proofModalReg, setProofModalReg] = useState<PendingRegistration | null>(null);
@@ -242,15 +220,39 @@ export default function AdminAgentsPage() {
 
   useEffect(() => {
     (async () => {
-      const [analytics, pending] = await Promise.all([getAgentAnalytics(), getPendingRegistrations()]);
-      setSummary({
-        total: analytics.totalAgents,
-        active: analytics.activeAgents,
-        totalPaid: analytics.totalCommissionsPaid,
-        totalPending: analytics.totalCommissionsPending,
-      });
-      setPendingRegistrations(pending);
-      setLoading(false);
+      try {
+        const [usersRes, analyticsRes, pending] = await Promise.all([
+          listUsers({ role: 'Agent', limit: 500 }),
+          getAgentAnalytics().catch(() => ({ totalCommissionsPaid: 0, totalCommissionsPending: 0 })),
+          getAdminRegistrations(),
+        ]);
+        const analytics = analyticsRes && typeof analyticsRes === 'object' ? analyticsRes : { totalCommissionsPaid: 0, totalCommissionsPending: 0 };
+        const mapped: AgentRow[] = (usersRes.users || []).map((u) => ({
+          agentId: String(u.id),
+          agentName: u.fullname,
+          referralCode: `AGENT-${u.id}`,
+          totalCommissions: u.totalCommissions ?? 0,
+          totalBookings: u.bookingCount ?? 0,
+          activeSubAgents: u.subAgentCount ?? 0,
+          level: Math.min(3, Math.max(1, u.agentLevel ?? 1)) as 1 | 2 | 3,
+          status: (u.status === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
+          email: u.email,
+          joinedAt: u.createdAt ? new Date(u.createdAt).toISOString().slice(0, 10) : '',
+        }));
+        setAgents(mapped);
+        setSummary({
+          total: usersRes.total ?? mapped.length,
+          active: mapped.filter((a) => a.status === 'active').length,
+          totalPaid: analytics.totalCommissionsPaid ?? 0,
+          totalPending: analytics.totalCommissionsPending ?? 0,
+        });
+        setPendingRegistrations(pending);
+      } catch {
+        setAgents([]);
+        setPendingRegistrations([]);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -258,7 +260,7 @@ export default function AdminAgentsPage() {
     const nextStatus = agent.status === 'active' ? 'inactive' : 'active';
     setTogglingAgentId(agent.agentId);
     try {
-      await updateAgentStatus(agent.agentId, nextStatus);
+      await updateUser(agent.agentId, { status: nextStatus });
       setAgents((prev) => prev.map((a) => (a.agentId === agent.agentId ? { ...a, status: nextStatus } : a)));
     } finally {
       setTogglingAgentId(null);
@@ -698,16 +700,11 @@ export default function AdminAgentsPage() {
                           {reg.status === 'pending' && (
                             <div className="flex gap-2">
                               <button
-                                onClick={async () => {
-                                  setProcessingRegId(reg.id);
-                                  await approveRegistration(reg.id);
-                                  setPendingRegistrations((prev) => prev.map((r) => r.id === reg.id ? { ...r, status: 'approved' as const } : r));
-                                  setProcessingRegId(null);
-                                }}
+                                onClick={() => setApproveRegTarget(reg)}
                                 disabled={processingRegId === reg.id}
                                 className="px-3 py-1.5 text-xs font-semibold text-white bg-[#0B5858] hover:bg-[#094848] rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                               >
-                                {processingRegId === reg.id ? '...' : 'Approve'}
+                                Approve
                               </button>
                               <button
                                 onClick={() => { setRejectRegTarget(reg); setRejectRegReason(''); }}
@@ -816,13 +813,50 @@ export default function AdminAgentsPage() {
         document.body
       )}
 
+      {/* Approve Registration Confirmation Modal */}
+      {approveRegTarget && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setApproveRegTarget(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-1">Approve Registration</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Are you sure you want to approve <strong>{approveRegTarget.fullname}</strong>? They will be granted Agent access.
+            </p>
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setApproveRegTarget(null)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setProcessingRegId(approveRegTarget.id);
+                  await approveAdminRegistration(approveRegTarget.id);
+                  setPendingRegistrations((prev) => prev.map((r) => r.id === approveRegTarget.id ? { ...r, status: 'approved' as const } : r));
+                  setProcessingRegId(null);
+                  setApproveRegTarget(null);
+                }}
+                disabled={processingRegId === approveRegTarget.id}
+                className="flex-1 py-2.5 text-sm font-semibold text-white bg-[#0B5858] hover:bg-[#094848] rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {processingRegId === approveRegTarget.id ? 'Approving...' : 'Confirm Approve'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Reject Registration Modal */}
       {rejectRegTarget && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setRejectRegTarget(null)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <h3 className="text-base font-bold text-gray-900 mb-1">Reject Registration</h3>
-            <p className="text-sm text-gray-500 mb-4">Applicant: <strong>{rejectRegTarget.fullname}</strong></p>
+            <p className="text-sm text-gray-500 mb-4">
+              Are you sure you want to reject <strong>{rejectRegTarget.fullname}</strong>? Please provide a reason below.
+            </p>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Reason for rejection</label>
             <textarea
               rows={3}
@@ -837,7 +871,7 @@ export default function AdminAgentsPage() {
                 onClick={async () => {
                   if (!rejectRegReason.trim()) return;
                   setProcessingRegId(rejectRegTarget.id);
-                  await rejectRegistration(rejectRegTarget.id, rejectRegReason);
+                  await rejectAdminRegistration(rejectRegTarget.id, rejectRegReason);
                   setPendingRegistrations((prev) => prev.map((r) => r.id === rejectRegTarget.id ? { ...r, status: 'rejected' as const } : r));
                   setProcessingRegId(null);
                   setRejectRegTarget(null);

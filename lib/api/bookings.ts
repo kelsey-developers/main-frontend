@@ -89,3 +89,27 @@ export async function getBookingById(id: string): Promise<Record<string, unknown
     throw err;
   }
 }
+
+/** Admin only. Get all bookings with optional status filter. Penciled bookings are sorted by penciled_at ASC. */
+export async function getAllBookings(params?: {
+  status?: 'penciled' | 'confirmed' | 'cancelled' | 'completed';
+  page?: number;
+  limit?: number;
+}): Promise<{ data: Record<string, unknown>[]; pagination: { page: number; limit: number; total: number; total_pages: number } }> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.page != null) qs.set('page', String(params.page));
+  if (params?.limit != null) qs.set('limit', String(params.limit));
+  const url = `/api/bookings/all${qs.toString() ? `?${qs}` : ''}`;
+  return apiClient.get(url);
+}
+
+/** Admin only. Confirm a penciled booking (penciled -> confirmed). */
+export async function confirmBooking(bookingId: string): Promise<{ id: string; status: string; confirmed_at: string; confirmed_by_user_id: number }> {
+  return apiClient.patch(`/api/bookings/${bookingId}/confirm`, {});
+}
+
+/** Admin only. Decline a penciled booking (penciled -> cancelled). */
+export async function declineBooking(bookingId: string): Promise<{ id: string; status: string }> {
+  return apiClient.patch(`/api/bookings/${bookingId}/decline`, {});
+}

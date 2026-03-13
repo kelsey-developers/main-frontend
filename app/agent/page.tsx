@@ -14,10 +14,10 @@ function fmt(n: number) {
   return `₱${n.toLocaleString()}`;
 }
 
-function mapStatus(raw: string): 'pending' | 'available' | 'paid' {
+function mapStatus(raw: string): 'pending' | 'approved' | 'available' {
   if (raw === 'penciled') return 'pending';
-  if (raw === 'confirmed') return 'available';
-  if (raw === 'completed') return 'paid';
+  if (raw === 'confirmed') return 'approved';
+  if (raw === 'completed') return 'available';
   return 'pending';
 }
 

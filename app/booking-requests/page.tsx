@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { CalendarRange, Banknote, Users, Mail, Phone, User } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { getAllBookings, confirmBooking, declineBooking } from '@/lib/api/bookings';
 
 interface Client {
   first_name: string;
@@ -18,6 +19,7 @@ interface Client {
 interface Listing {
   title: string;
   location: string;
+  main_image_url?: string;
 }
 
 interface Agent {
@@ -42,14 +44,55 @@ interface Booking {
   status: 'pending' | 'pending-payment' | 'booked' | 'ongoing' | 'completed' | 'declined' | 'cancelled';
   created_at: string;
   billing_document_url?: string;
+  payment?: { payment_method?: string; reference_number?: string; status?: string; deposit_amount?: number };
+  reference_code?: string;
+  penciled_at?: string;
 }
 
-// Mock agents data
+// Mock agents data (used when no agent from API)
 const mockAgents: Agent[] = [
   { id: '1', fullname: 'John Doe', email: 'john@example.com', contact_number: '+63 912 345 6789' },
   { id: '2', fullname: 'Jane Smith', email: 'jane@example.com', contact_number: '+63 923 456 7890' },
   { id: '3', fullname: 'Robert Crown', email: 'robert@example.com', contact_number: '+63 934 567 8901' }
 ];
+
+/** Map API booking item to Booking interface. raw_status: penciled->pending, confirmed->booked */
+function apiToBooking(item: Record<string, unknown>): Booking {
+  const agent = item.agent as Record<string, unknown> | null;
+  const agentFullname = agent
+    ? [agent.first_name, agent.last_name].filter(Boolean).join(' ').trim() || 'Unknown'
+    : '';
+  const rawStatus = (item.raw_status as string) || 'penciled';
+  const statusMap: Record<string, Booking['status']> = {
+    penciled: 'pending',
+    confirmed: 'booked',
+    cancelled: 'cancelled',
+    completed: 'completed',
+  };
+  const status = statusMap[rawStatus] || 'pending';
+  const client = (item.client || {}) as Record<string, unknown>;
+  const listing = (item.listing || {}) as Record<string, unknown>;
+  return {
+    id: String(item.id),
+    client: {
+      first_name: String(client.first_name || ''),
+      last_name: String(client.last_name || ''),
+      email: String(client.email || ''),
+      contact_number: String(client.contact_number || ''),
+    },
+    listing: { title: String(listing.title || ''), location: String(listing.location || ''), main_image_url: listing.main_image_url as string | undefined },
+    agent: agent ? { id: String(agent.id || ''), fullname: agentFullname, email: String(agent.email || '') } : undefined,
+    check_in_date: String(item.check_in_date || ''),
+    check_out_date: String(item.check_out_date || ''),
+    total_guests: Number(item.total_guests) || 0,
+    total_amount: Number(item.total_amount) || 0,
+    status,
+    created_at: String(item.created_at || item.penciled_at || ''),
+    payment: (item.payment as Record<string, unknown> | null) || undefined,
+    reference_code: item.reference_code as string | undefined,
+    penciled_at: item.penciled_at as string | undefined,
+  };
+}
 
 // Mock bookings data
 const mockBookings: Booking[] = [
@@ -249,24 +292,24 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({ visible: false, message: '', type: 'success' });
   const toastRef = useRef<HTMLDivElement | null>(null);
   
-  // Confirmation modal state
+  // Decline confirmation modal state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmModalActive, setConfirmModalActive] = useState(false);
   const [pendingBooking, setPendingBooking] = useState<Booking | null>(null);
-  // Approve modal state
-  const [showApproveModal, setShowApproveModal] = useState(false);
-  const [approveModalActive, setApproveModalActive] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  // Confirm booking modal (full screen, penciled -> confirmed)
+  const [showConfirmBookingModal, setShowConfirmBookingModal] = useState(false);
+  const [confirmBookingModalActive, setConfirmBookingModalActive] = useState(false);
+  const [pendingConfirmBooking, setPendingConfirmBooking] = useState<Booking | null>(null);
   
   // Payment confirmation modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentModalActive, setPaymentModalActive] = useState(false);
   const [pendingPaymentBooking, setPendingPaymentBooking] = useState<Booking | null>(null);
   
-  /** Initial data so first paint has full layout (header, stats, filter, list) — no conditional mount, everything fades in together */
-  const [allBookings, setAllBookings] = useState<Booking[]>(mockBookings);
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [sortBy, setSortBy] = useState('Newest first');
+  /** When embedded: start empty + loading (fetch from API). When not: use mock data. */
+  const [allBookings, setAllBookings] = useState<Booking[]>(() => (embedded ? [] : mockBookings));
+  const [summaryLoading, setSummaryLoading] = useState(embedded);
+  const [sortBy, setSortBy] = useState(embedded ? 'Penciled (earliest first)' : 'Newest first');
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
@@ -299,10 +342,25 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
     return /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(url.trim());
   };
 
-  // Optional: refetch/sync bookings from API here; initial state already has mockBookings so first paint is complete
+  // When embedded (admin), fetch penciled bookings from auth-service-backend (sorted by penciled_at ASC)
   useEffect(() => {
-    // setAllBookings(mockBookings); // use when switching to real API
-  }, []);
+    if (!embedded) return;
+    let cancelled = false;
+    setSummaryLoading(true);
+    getAllBookings({ status: 'penciled', limit: 100 })
+      .then((res) => {
+        if (cancelled) return;
+        const mapped = (res.data || []).map((item) => apiToBooking(item));
+        setAllBookings(mapped);
+      })
+      .catch(() => {
+        if (!cancelled) setAllBookings([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [embedded]);
 
   // Show toast notification
   const showToast = (message: string, type: 'success' | 'error') => {
@@ -352,83 +410,59 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
     }, 250);
   };
 
-  const openApproveModal = (booking: Booking) => {
-    setPendingBooking(booking);
-    setSelectedAgentId(booking.assigned_agent || (mockAgents[0]?.id ?? null));
-    setShowApproveModal(true);
-    requestAnimationFrame(() => setApproveModalActive(true));
+  const openConfirmBookingModal = (booking: Booking) => {
+    setPendingConfirmBooking(booking);
+    setShowConfirmBookingModal(true);
+    requestAnimationFrame(() => setConfirmBookingModalActive(true));
   };
 
-  const closeApproveModal = () => {
-    setApproveModalActive(false);
+  const closeConfirmBookingModal = () => {
+    setConfirmBookingModalActive(false);
     setTimeout(() => {
-      setShowApproveModal(false);
-      setPendingBooking(null);
-      setSelectedAgentId(null);
+      setShowConfirmBookingModal(false);
+      setPendingConfirmBooking(null);
     }, 250);
   };
 
-  // Handle approve action
-  const handleApprove = async (booking: Booking, agentId?: string | null) => {
+  // Handle confirm booking (penciled -> confirmed)
+  const handleConfirmBooking = async (booking: Booking) => {
     try {
       setIsProcessing(true);
-      console.log('Approving booking', { bookingId: booking.id });
-      
-      showToast('Booking request approved', 'success');
-      
-      const updatedBooking = { ...booking, status: 'pending-payment' as const };
-      setAllBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      // Decline overlapping bookings
-      const overlapping = allBookings.filter(b => 
-        b.id !== booking.id &&
-        b.listing.title === booking.listing.title &&
-        b.status === 'pending' &&
-        new Date(b.check_in_date) < new Date(booking.check_out_date) &&
-        new Date(b.check_out_date) > new Date(booking.check_in_date)
-      );
-      
-      if (overlapping.length > 0) {
-        setAllBookings(prev => prev.map(b => 
-          overlapping.some(ob => ob.id === b.id) 
-            ? { ...b, status: 'declined' as const }
-            : b
-        ));
+      await confirmBooking(booking.id);
+      showToast('Booking confirmed', 'success');
+      closeConfirmBookingModal();
+      // Refetch penciled bookings when embedded
+      if (embedded) {
+        const res = await getAllBookings({ status: 'penciled', limit: 100 });
+        setAllBookings((res.data || []).map((item) => apiToBooking(item)));
+      } else {
+        setAllBookings((prev) => prev.map((b) => (b.id === booking.id ? { ...booking, status: 'booked' as const } : b)));
       }
-      
-      closeApproveModal();
-      
-      console.log('Booking approved successfully');
     } catch (error) {
-      console.error('Error approving booking:', error);
-      showToast('Unable to approve booking. Please try again.', 'error');
+      console.error('Error confirming booking:', error);
+      showToast('Unable to confirm booking. Please try again.', 'error');
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle decline action
+  // Handle decline action (penciled -> cancelled)
   const handleDecline = async () => {
     if (!pendingBooking) return;
 
     try {
       setIsProcessing(true);
-      console.log('Declining booking', { bookingId: pendingBooking.id });
-      
+      await declineBooking(pendingBooking.id);
       showToast('Booking request declined', 'success');
-      
-      const updatedBooking = { ...pendingBooking, status: 'declined' as const };
-      setAllBookings(prev => prev.map(b => b.id === pendingBooking.id ? updatedBooking : b));
-      
       closeConfirmModal();
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      console.log('Booking declined successfully');
+      // Refetch penciled bookings when embedded
+      if (embedded) {
+        const res = await getAllBookings({ status: 'penciled', limit: 100 });
+        setAllBookings((res.data || []).map((item) => apiToBooking(item)));
+      } else {
+        const updatedBooking = { ...pendingBooking, status: 'cancelled' as const };
+        setAllBookings((prev) => prev.map((b) => (b.id === pendingBooking.id ? updatedBooking : b)));
+      }
     } catch (error) {
       console.error('Error declining booking:', error);
       showToast('Unable to decline booking. Please try again.', 'error');
@@ -613,7 +647,7 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
           )}
           <span className="inline-flex items-center gap-1.5 font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
             <Banknote className="w-3.5 h-3.5 text-[#0B5858] shrink-0" aria-hidden />
-            ₱{booking.total_amount?.toLocaleString() ?? '0'}
+            ₱{(booking.payment?.deposit_amount ?? booking.total_amount ?? 0).toLocaleString()}
           </span>
         </div>
 
@@ -642,10 +676,10 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
               Decline
             </button>
             <button
-              onClick={() => openApproveModal(booking)}
+              onClick={() => openConfirmBookingModal(booking)}
               className="min-w-[120px] flex-1 max-w-[180px] px-5 py-2.5 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
             >
-              Approve
+              Confirm
             </button>
           </div>
         )}
@@ -859,7 +893,7 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
                         )}
                         <div className="flex justify-between items-start gap-2 pt-1 border-t border-gray-100">
                           <span className="text-xs font-medium text-gray-600 shrink-0">Total</span>
-                          <span className="text-sm font-bold text-gray-900">₱{b.total_amount?.toLocaleString() ?? '0'}</span>
+                          <span className="text-sm font-bold text-gray-900">₱{(b.payment?.deposit_amount ?? b.total_amount ?? 0).toLocaleString()}</span>
                         </div>
                       </div>
                     </div>
@@ -917,10 +951,10 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
                         </button>
                         <button
                           type="button"
-                          onClick={() => { closeDetailModal(); openApproveModal(b); }}
+                          onClick={() => { closeDetailModal(); openConfirmBookingModal(b); }}
                           className="w-full sm:w-auto min-w-0 sm:min-w-[140px] px-5 py-2.5 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
                         >
-                          Approve
+                          Confirm
                         </button>
                       </>
                     )}
@@ -933,74 +967,199 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
         document.body
       )}
 
-      {/* Approve Modal */}
-      {showApproveModal && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center z-[10000]"
-          style={{
-            backgroundColor: 'rgba(17, 24, 39, 0.38)'
-          }}
-          onClick={closeApproveModal}
+      {/* Confirm Booking Modal — full screen, booking + payment details */}
+      {showConfirmBookingModal && pendingConfirmBooking && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-gray-900/50 backdrop-blur-sm overflow-y-auto"
+          onClick={closeConfirmBookingModal}
         >
-          <div 
-            className="max-w-md w-full mx-4"
+          <div
+            className="w-full max-w-4xl max-h-[90vh] sm:max-h-[85vh] bg-white rounded-2xl border border-gray-100 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.25)] flex flex-col transition-all duration-250 shrink-0 overflow-hidden"
             style={{
-              background: '#FFFFFF',
-              borderRadius: 16,
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25)',
-              transform: approveModalActive ? 'scale(1)' : 'scale(0.95)',
-              opacity: approveModalActive ? 1 : 0,
-              transition: 'all 0.25s ease'
+              transform: confirmBookingModalActive ? 'scale(1)' : 'scale(0.95)',
+              opacity: confirmBookingModalActive ? 1 : 0,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6">
-              <h3 className="text-lg font-semibold mb-2" style={{fontFamily: 'Poppins'}}>
-                Approve Booking Request
-              </h3>
-              <p className="text-gray-700 mb-4" style={{fontFamily: 'Poppins'}}>
-                Assign an agent to handle this booking (optional). The guest will have 24 hours to complete payment.
-              </p>
+            {(() => {
+              const b = pendingConfirmBooking;
+              const guestName = `${b.client.first_name} ${b.client.last_name}`;
+              const assignedAgent = b.agent ?? (b.assigned_agent ? mockAgents.find((a) => a.id === b.assigned_agent) : null);
 
-              <div className="mb-4">
-                <label className="block text-sm text-gray-700 mb-2" style={{fontFamily: 'Poppins'}}>Assign agent</label>
-                <select
-                  value={selectedAgentId ?? ''}
-                  onChange={(e) => setSelectedAgentId(e.target.value || null)}
-                  className="w-full border rounded p-2"
-                  style={{fontFamily: 'Poppins'}}
-                >
-                  <option value="">(No assignment)</option>
-                  {mockAgents.map(a => (
-                    <option key={a.id} value={a.id}>{a.fullname}</option>
-                  ))}
-                </select>
-              </div>
+              return (
+                <>
+                  <div className="flex items-center justify-between px-4 py-4 sm:px-6 sm:py-5 border-b border-gray-100 bg-gray-50/30 shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight truncate" style={{ fontFamily: 'Poppins' }}>
+                        Confirm Booking
+                      </h3>
+                      {b.reference_code && (
+                        <span className="text-xs font-medium text-gray-500 truncate">{b.reference_code}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeConfirmBookingModal}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                      aria-label="Close"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
 
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={closeApproveModal}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
-                  style={{fontFamily: 'Poppins'}}
-                  disabled={isProcessing}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => pendingBooking && handleApprove(pendingBooking, selectedAgentId)}
-                  disabled={isProcessing}
-                  className="px-4 py-2 text-white rounded-lg transition-all duration-200 hover:opacity-90 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
-                  style={{
-                    backgroundColor: '#05807E',
-                    fontFamily: 'Poppins'
-                  }}
-                >
-                  {isProcessing ? 'Processing...' : 'Approve & Assign'}
-                </button>
-              </div>
-            </div>
+                  <div className="p-4 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-5 sm:space-y-6" style={{ fontFamily: 'Poppins' }}>
+                    {/* Client Information */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Client information</h4>
+                      <div className="flex items-start gap-3 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shrink-0 bg-gradient-to-br from-teal-600 to-teal-700">
+                          <span className="text-white text-sm font-bold">
+                            {getInitials(b.client.first_name, b.client.last_name)}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span className="text-sm font-medium text-gray-900">{guestName}</span>
+                          </div>
+                          {b.client.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              <a href={`mailto:${b.client.email}`} className="text-xs text-gray-700 truncate hover:text-[#0B5858]">{b.client.email}</a>
+                            </div>
+                          )}
+                          {b.client.contact_number && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              <span className="text-xs text-gray-700">{b.client.contact_number}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Assigned Agent */}
+                    {assignedAgent && (
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Assigned agent</h4>
+                        <div className="flex items-start gap-3 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shrink-0 bg-gradient-to-br from-teal-600 to-teal-700">
+                            <span className="text-white text-sm font-bold">
+                              {assignedAgent.fullname ? assignedAgent.fullname.trim().split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase() : 'A'}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <span className="text-sm font-medium text-gray-900">{assignedAgent.fullname || 'Unknown'}</span>
+                            {assignedAgent.email && <span className="text-xs text-gray-700 block">{assignedAgent.email}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Booking details */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Booking details</h4>
+                      <div className="flex gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        {b.listing?.main_image_url && (
+                          <div className="shrink-0 w-24 sm:w-32 h-24 sm:h-32">
+                            <img
+                              src={b.listing.main_image_url}
+                              alt={b.listing?.title || 'Unit'}
+                              className="w-full h-full object-cover rounded-lg border border-gray-200"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-xs font-medium text-gray-600 shrink-0">Unit</span>
+                            <span className="text-xs text-gray-900 text-right">{b.listing?.title || '—'}</span>
+                          </div>
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-xs font-medium text-gray-600 shrink-0">Location</span>
+                            <span className="text-xs text-gray-900 text-right">{b.listing?.location || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-xs font-medium text-gray-600 shrink-0">Check-in</span>
+                            <span className="text-xs text-gray-900">{new Date(b.check_in_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-xs font-medium text-gray-600 shrink-0">Check-out</span>
+                            <span className="text-xs text-gray-900">{new Date(b.check_out_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          </div>
+                          {b.total_guests != null && b.total_guests > 0 && (
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-xs font-medium text-gray-600 shrink-0">Guests</span>
+                              <span className="text-xs text-gray-900">{b.total_guests} guest{b.total_guests !== 1 ? 's' : ''}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between items-start gap-2 pt-1 border-t border-gray-100">
+                            <span className="text-xs font-medium text-gray-600 shrink-0">Total</span>
+                            <span className="text-sm font-bold text-gray-900">₱{(b.payment?.deposit_amount ?? b.total_amount ?? 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Payment information */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Payment</h4>
+                      <div className="space-y-2 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        {b.payment ? (
+                          <>
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-xs font-medium text-gray-600 shrink-0">Method</span>
+                              <span className="text-xs text-gray-900 capitalize">{b.payment.payment_method || '—'}</span>
+                            </div>
+                            {b.payment.reference_number && (
+                              <div className="flex justify-between items-start gap-2">
+                                <span className="text-xs font-medium text-gray-600 shrink-0">Reference</span>
+                                <span className="text-xs text-gray-900">{b.payment.reference_number}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-start gap-2">
+                              <span className="text-xs font-medium text-gray-600 shrink-0">Status</span>
+                              <span className="text-xs font-medium capitalize">{b.payment.status || 'pending'}</span>
+                            </div>
+                            {b.payment.deposit_amount != null && (
+                              <div className="flex justify-between items-start gap-2 pt-1 border-t border-gray-100">
+                                <span className="text-xs font-medium text-gray-600 shrink-0">Deposit</span>
+                                <span className="text-sm font-bold text-gray-900">₱{Number(b.payment.deposit_amount).toLocaleString()}</span>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs text-gray-500">No payment record</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-gray-100 bg-gray-50/30 flex flex-wrap gap-3 justify-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={closeConfirmBookingModal}
+                      className="min-w-[120px] px-5 py-2.5 border border-gray-300 text-gray-700 bg-white text-sm font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                      disabled={isProcessing}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmBooking(b)}
+                      disabled={isProcessing}
+                      className="min-w-[120px] px-5 py-2.5 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] hover:shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                    >
+                      {isProcessing ? 'Processing...' : 'Confirm'}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
@@ -1062,6 +1221,7 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
                 value={sortBy}
                 onChange={setSortBy}
                 options={[
+                  { value: 'Penciled (earliest first)', label: 'Penciled (earliest first)' },
                   { value: 'Newest first', label: 'Newest first' },
                   { value: 'Oldest first', label: 'Oldest first' },
                   { value: 'Check-in (soonest)', label: 'Check-in (soonest)' },
@@ -1072,9 +1232,12 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
               />
             </div>
 
-            {/* List area — always in DOM; placeholder when loading so nothing pops in after data loads */}
+            {/* List area — show loading state when fetching, not mock data */}
             {summaryLoading ? (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm min-h-[280px]" aria-hidden />
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm min-h-[280px] flex flex-col items-center justify-center gap-4 p-12">
+                <div className="w-10 h-10 border-2 border-[#0B5858]/30 border-t-[#0B5858] rounded-full animate-spin" aria-hidden />
+                <p className="text-sm font-medium text-gray-500">Loading bookings...</p>
+              </div>
             ) : getFilteredBookings(allBookings).length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {(() => {
@@ -1107,58 +1270,116 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
         );
       })()}
 
-      {/* Decline Confirmation Modal */}
-      {showConfirmModal && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center z-[10000]"
-          style={{
-            backgroundColor: 'rgba(17, 24, 39, 0.38)'
-          }}
+      {/* Decline Confirmation Modal — full screen like Confirm */}
+      {showConfirmModal && pendingBooking && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-gray-900/50 backdrop-blur-sm overflow-y-auto"
           onClick={closeConfirmModal}
         >
-          <div 
-            className="max-w-md w-full mx-4"
+          <div
+            className="w-full max-w-4xl max-h-[90vh] sm:max-h-[85vh] bg-white rounded-2xl border border-gray-100 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.25)] flex flex-col transition-all duration-250 shrink-0 overflow-hidden"
             style={{
-              background: '#FFFFFF',
-              borderRadius: 16,
-              boxShadow: '0 10px 40px rgba(0, 0, 0, 0.25)',
               transform: confirmModalActive ? 'scale(1)' : 'scale(0.95)',
               opacity: confirmModalActive ? 1 : 0,
-              transition: 'all 0.25s ease'
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6">
-              <h3 className="text-lg font-semibold mb-2" style={{fontFamily: 'Poppins'}}>
-                Decline Booking Request
-              </h3>
-              <p className="text-gray-700 mb-5" style={{fontFamily: 'Poppins'}}>
-                Are you sure you want to decline this booking request? This action cannot be undone.
-              </p>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={closeConfirmModal}
-                  className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 active:scale-95 cursor-pointer disabled:opacity-50"
-                  style={{fontFamily: 'Poppins'}}
-                  disabled={isProcessing}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDecline}
-                  disabled={isProcessing}
-                  className="px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-all duration-200 hover:opacity-95 active:scale-[0.98] cursor-pointer disabled:opacity-50"
-                  style={{
-                    backgroundColor: '#B84C4C',
-                    fontFamily: 'Poppins'
-                  }}
-                >
-                  {isProcessing ? 'Processing...' : 'Decline'}
-                </button>
-              </div>
-            </div>
+            {(() => {
+              const b = pendingBooking;
+              const guestName = `${b.client.first_name} ${b.client.last_name}`;
+
+              return (
+                <>
+                  <div className="flex items-center justify-between px-4 py-4 sm:px-6 sm:py-5 border-b border-gray-100 bg-gray-50/30 shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight truncate" style={{ fontFamily: 'Poppins' }}>
+                        Decline Booking Request
+                      </h3>
+                      {b.reference_code && (
+                        <span className="text-xs font-medium text-gray-500 truncate">{b.reference_code}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeConfirmModal}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                      aria-label="Close"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="p-4 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-5 sm:space-y-6" style={{ fontFamily: 'Poppins' }}>
+                    <p className="text-gray-700">
+                      Are you sure you want to decline this booking request? This action cannot be undone.
+                    </p>
+
+                    {/* Client */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Client</h4>
+                      <div className="flex items-start gap-3 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 bg-gradient-to-br from-teal-600 to-teal-700">
+                          <span className="text-white text-sm font-bold">{getInitials(b.client.first_name, b.client.last_name)}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-900">{guestName}</span>
+                          {b.client.email && <p className="text-xs text-gray-600 mt-0.5">{b.client.email}</p>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Booking summary */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Booking</h4>
+                      <div className="flex gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        {b.listing?.main_image_url && (
+                          <div className="shrink-0 w-24 sm:w-32 h-24 sm:h-32">
+                            <img
+                              src={b.listing.main_image_url}
+                              alt={b.listing?.title || 'Unit'}
+                              className="w-full h-full object-cover rounded-lg border border-gray-200"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-sm font-medium text-gray-900">{b.listing?.title || '—'}</p>
+                          <p className="text-xs text-gray-600">{b.listing?.location || 'N/A'}</p>
+                          <p className="text-xs text-gray-600">
+                            {new Date(b.check_in_date).toLocaleDateString('en-US')} — {new Date(b.check_out_date).toLocaleDateString('en-US')}
+                          </p>
+                          <p className="text-sm font-bold text-gray-900">₱{(b.payment?.deposit_amount ?? b.total_amount ?? 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-gray-100 bg-gray-50/30 flex flex-wrap gap-3 justify-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={closeConfirmModal}
+                      className="min-w-[120px] px-5 py-2.5 border border-gray-300 text-gray-700 bg-white text-sm font-bold rounded-xl hover:bg-gray-50 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                      disabled={isProcessing}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDecline}
+                      disabled={isProcessing}
+                      className="min-w-[120px] px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+                      style={{ backgroundColor: '#B84C4C' }}
+                    >
+                      {isProcessing ? 'Processing...' : 'Decline'}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {!embedded && <Footer />}

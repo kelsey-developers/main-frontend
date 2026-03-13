@@ -34,13 +34,13 @@ const STATUS_COLORS: Record<CommissionStatus, string> = {
   approved: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20',
   available: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20',
   paid: 'bg-gray-100 text-gray-600 border border-gray-200',
+  cancelled: 'bg-gray-100 text-gray-500 border border-gray-200',
 };
 
 const PAYOUT_STATUS_COLORS: Record<PayoutStatus, string> = {
   pending: 'bg-amber-100 text-amber-800 border border-amber-200',
-  processing: 'bg-blue-100 text-blue-800 border border-blue-200',
   paid: 'bg-green-100 text-green-800 border border-green-200',
-  failed: 'bg-red-100 text-red-700 border border-red-200',
+  declined: 'bg-gray-100 text-gray-500 border border-gray-200',
 };
 
 const LEVEL_STYLES: Record<number, string> = {

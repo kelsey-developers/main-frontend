@@ -3,7 +3,7 @@
  * Kelsey's Homestay — Integrated Information Management System
  */
 
-export type PayoutStatus = 'pending' | 'processing' | 'paid' | 'failed';
+export type PayoutStatus = 'pending' | 'paid' | 'declined';
 export type PayoutMethod = 'gcash' | 'maya' | 'bank_transfer';
 
 export interface Payout {

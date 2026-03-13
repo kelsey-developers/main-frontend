@@ -13,6 +13,10 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/inventory-settings',
   '/api/approval-requests',
   '/api/market', // market-backend routes (finance dashboard, bookings, etc.)
+  '/api/users',
+  '/api/admin',
+  '/api/agents',
+  '/api/upload',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -26,6 +30,8 @@ function shouldUseBackendFallback(endpoint: string): boolean {
 function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'GET' && endpoint.startsWith('/api/units/manage')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/bookings/my')) return true;
+  if (method === 'GET' && endpoint.startsWith('/api/bookings/all')) return true;
+  if (method === 'PATCH' && endpoint.includes('/api/bookings/') && (endpoint.endsWith('/confirm') || endpoint.endsWith('/decline'))) return true;
   if (method === 'GET' && endpoint.startsWith('/api/agents/me/')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/agents/list')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/market/bookings/my')) return true;
@@ -34,6 +40,14 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (endpoint.startsWith('/api/charge-types') || endpoint.startsWith('/api/market/charge-types')) return true;
   if (method === 'DELETE' && endpoint.startsWith('/api/units/')) return true;
   if (method === 'PUT' && endpoint.startsWith('/api/units/')) return true;
+  if (method === 'GET' && endpoint.startsWith('/api/users')) return true;
+  if (method === 'PATCH' && endpoint.startsWith('/api/users/') && !endpoint.endsWith('/')) return true;
+  if (endpoint.startsWith('/api/agents/register/')) return true;
+  if (endpoint.startsWith('/api/admin/agents/')) return true;
+  if (endpoint.startsWith('/api/admin/analytics')) return true;
+  if (endpoint.startsWith('/api/agents/payouts')) return true;
+  if (endpoint.startsWith('/api/admin/payouts')) return true;
+  if (endpoint.startsWith('/api/upload')) return true;
   return false;
 }
 

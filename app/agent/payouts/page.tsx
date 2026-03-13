@@ -3,9 +3,8 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getAgentPayouts } from '@/services/payoutService';
-import { getCommissionWallet } from '@/services/commissionService';
+import { getAgentBalance } from '@/lib/api/agents';
 import type { Payout, PayoutStatus } from '@/types/payout';
-import type { CommissionWallet } from '@/types/commission';
 import { PAYOUT_METHOD_LABELS } from '@/types/payout';
 import PayoutRequestModal from './components/PayoutRequestModal';
 
@@ -16,10 +15,9 @@ function fmt(n: number) {
 }
 
 const STATUS_CONFIG: Record<PayoutStatus, { label: string; classes: string; dot: string }> = {
-  pending:    { label: 'Pending',    classes: 'bg-[#FACC15]/10 text-[#0B5858] border border-[#FACC15]/30', dot: 'bg-[#FACC15]' },
-  processing: { label: 'Processing', classes: 'bg-[#0B5858]/10 text-[#0B5858] border border-[#0B5858]/20', dot: 'bg-[#0B5858]/50' },
-  paid:       { label: 'Paid',       classes: 'bg-[#0B5858] text-white border border-[#0B5858]', dot: 'bg-white' },
-  failed:     { label: 'Failed',     classes: 'bg-white text-gray-500 border border-gray-200', dot: 'bg-gray-400' },
+  pending:  { label: 'Pending',  classes: 'bg-[#FACC15]/10 text-[#0B5858] border border-[#FACC15]/30', dot: 'bg-[#FACC15]' },
+  paid:     { label: 'Paid',     classes: 'bg-[#0B5858] text-white border border-[#0B5858]', dot: 'bg-white' },
+  declined: { label: 'Declined', classes: 'bg-white text-gray-500 border border-gray-200', dot: 'bg-gray-400' },
 };
 
 function StatusBadge({ status }: { status: PayoutStatus }) {
@@ -160,7 +158,7 @@ function CustomDropdown({
 
 export default function AgentPayoutsPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [wallet, setWallet] = useState<CommissionWallet | null>(null);
+  const [balance, setBalance] = useState<{ current_amount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PayoutStatus | 'all'>('all');
@@ -170,13 +168,19 @@ export default function AgentPayoutsPage() {
 
   useEffect(() => {
     (async () => {
-      const [p, w] = await Promise.all([
-        getAgentPayouts(AGENT_ID),
-        getCommissionWallet(AGENT_ID),
-      ]);
-      setPayouts(p);
-      setWallet(w);
-      setLoading(false);
+      try {
+        const [p, bal] = await Promise.all([
+          getAgentPayouts(AGENT_ID),
+          getAgentBalance().catch(() => ({ current_amount: 0 })),
+        ]);
+        setPayouts(p);
+        setBalance(bal);
+      } catch {
+        setPayouts([]);
+        setBalance(null);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
@@ -198,9 +202,15 @@ export default function AgentPayoutsPage() {
     return filtered.slice(start, start + itemsPerPage);
   }, [filtered, currentPage, itemsPerPage]);
 
-  const handleRequested = (payout: Payout) => {
+  const handleRequested = async (payout: Payout) => {
     setPayouts((prev) => [payout, ...prev]);
     setModalOpen(false);
+    try {
+      const bal = await getAgentBalance();
+      setBalance(bal);
+    } catch {
+      // Keep existing balance on refresh failure
+    }
   };
 
   if (loading) {
@@ -222,31 +232,31 @@ export default function AgentPayoutsPage() {
         </div>
       </div>
 
-      {/* Wallet Summary */}
-      {wallet && (
+      {/* Wallet Summary — same balance as /agent overview */}
+      {balance != null && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2.5 mb-4">
               <span className="w-2.5 h-2.5 rounded-full bg-[#0B5858]" />
               <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Available</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmt(wallet.available)}</p>
+            <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmt(balance.current_amount)}</p>
             <p className="text-xs font-medium text-gray-400 mt-1">Ready to withdraw</p>
           </div>
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2.5 mb-4">
               <span className="w-2.5 h-2.5 rounded-full bg-[#0B5858]/50" />
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Approved</p>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Pending</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmt(wallet.approved)}</p>
-            <p className="text-xs font-medium text-gray-400 mt-1">Cleared, awaiting payout</p>
+            <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmt(payouts.filter((x) => x.status === 'pending').reduce((s, x) => s + x.amount, 0))}</p>
+            <p className="text-xs font-medium text-gray-400 mt-1">Awaiting processing</p>
           </div>
           <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2.5 mb-4">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-300" />
               <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Total Paid</p>
             </div>
-            <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmt(wallet.paid)}</p>
+            <p className="text-3xl font-bold text-gray-900 tracking-tight">{fmt(payouts.filter((x) => x.status === 'paid').reduce((s, x) => s + x.amount, 0))}</p>
             <p className="text-xs font-medium text-gray-400 mt-1">Lifetime paid out</p>
           </div>
         </div>
@@ -261,9 +271,8 @@ export default function AgentPayoutsPage() {
             options={[
               { value: 'all', label: 'All Statuses' },
               { value: 'pending', label: 'Pending' },
-              { value: 'processing', label: 'Processing' },
               { value: 'paid', label: 'Paid' },
-              { value: 'failed', label: 'Failed' },
+              { value: 'declined', label: 'Declined' },
             ]}
             className="min-w-[140px] capitalize"
           />
@@ -421,7 +430,7 @@ export default function AgentPayoutsPage() {
 
       {modalOpen && (
         <PayoutRequestModal
-          available={wallet?.available ?? 0}
+          available={balance?.current_amount ?? 0}
           agentId={AGENT_ID}
           onClose={() => setModalOpen(false)}
           onSubmit={handleRequested}

@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useMockAuth } from '@/contexts/MockAuthContext';
-import { getAllPayouts, updatePayoutStatus } from '@/services/payoutService';
+import { getAllPayouts, markPayoutPaid, markPayoutDeclined } from '@/services/payoutService';
 import type { Payout, PayoutStatus } from '@/types/payout';
 import { PAYOUT_METHOD_LABELS } from '@/types/payout';
 import SingleDatePicker from '@/components/SingleDatePicker';
@@ -18,10 +18,9 @@ const chipShadow = (r: number, g: number, b: number, a = 0.35) => `0 1px 0 rgba(
 
 /** Payout status chips — same visual pattern as commissions status chips */
 const PAYOUT_STATUS_CHIP_STYLES: Record<PayoutStatus, { label: string; chipStyle: ChipStyle }> = {
-  pending:    { label: 'Pending',    chipStyle: { backgroundColor: '#fef3c7', color: '#92400e', boxShadow: chipShadow(245, 158, 11) } },
-  processing: { label: 'Processing',  chipStyle: { backgroundColor: '#dbeafe', color: '#1e40af', boxShadow: chipShadow(59, 130, 246) } },
-  paid:       { label: 'Paid',       chipStyle: { backgroundColor: '#f5f5f4', color: '#57534e', boxShadow: chipShadow(168, 162, 158, 0.22) } },
-  failed:     { label: 'Failed',      chipStyle: { backgroundColor: '#fee2e2', color: '#b91c1c', boxShadow: chipShadow(239, 68, 68) } },
+  pending:  { label: 'Pending',  chipStyle: { backgroundColor: '#fef3c7', color: '#92400e', boxShadow: chipShadow(245, 158, 11) } },
+  paid:     { label: 'Paid',     chipStyle: { backgroundColor: '#f5f5f4', color: '#57534e', boxShadow: chipShadow(168, 162, 158, 0.22) } },
+  declined: { label: 'Declined', chipStyle: { backgroundColor: '#fee2e2', color: '#b91c1c', boxShadow: chipShadow(239, 68, 68) } },
 };
 
 type FilterStatus = 'all' | PayoutStatus;
@@ -178,17 +177,17 @@ function ExportModal({
   return createPortal(modal, document.body);
 }
 
-// ─── Action Modal ────────────────────────────────────────────────────────────
+// ─── Action Modal (Mark as Paid) ──────────────────────────────────────────────
 interface ActionModalProps {
   payout: Payout;
-  action: 'paid' | 'failed';
   onClose: () => void;
-  onConfirm: (id: string, status: PayoutStatus, proof?: string, notes?: string) => void;
+  onConfirm: (id: string, proofFile?: File, notes?: string) => void;
 }
 
-function ActionModal({ payout, action, onClose, onConfirm }: ActionModalProps) {
+function MarkPaidModal({ payout, onClose, onConfirm }: ActionModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [notes, setNotes] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -200,15 +199,19 @@ function ActionModal({ payout, action, onClose, onConfirm }: ActionModalProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setProofFile(file);
       const reader = new FileReader();
       reader.onload = () => setProofPreview(reader.result as string);
       reader.readAsDataURL(file);
+    } else {
+      setProofFile(null);
+      setProofPreview('');
     }
   };
 
   const handleConfirm = async () => {
     setSubmitting(true);
-    await onConfirm(payout.id, action as PayoutStatus, proofPreview || undefined, notes || undefined);
+    await onConfirm(payout.id, proofFile ?? undefined, notes || undefined);
     setSubmitting(false);
   };
 
@@ -221,7 +224,7 @@ function ActionModal({ payout, action, onClose, onConfirm }: ActionModalProps) {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
-            {action === 'paid' ? 'Mark as Paid' : 'Mark as Failed'}
+            Mark as Paid
           </h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 cursor-pointer">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -235,26 +238,24 @@ function ActionModal({ payout, action, onClose, onConfirm }: ActionModalProps) {
             <p><span className="font-medium">Amount:</span> {fmt(payout.amount)}</p>
             <p><span className="font-medium">Method:</span> {PAYOUT_METHOD_LABELS[payout.method]}</p>
           </div>
-          {action === 'paid' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5" style={{ fontFamily: 'Poppins' }}>
-                Proof of Payment (optional)
-              </label>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={handleFileChange}
-                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#0B5858]/10 file:text-[#0B5858] hover:file:bg-[#0B5858]/20 cursor-pointer"
-                style={{ fontFamily: 'Poppins' }}
-              />
-              {proofPreview && proofPreview.startsWith('data:image') && (
-                <img src={proofPreview} alt="proof" className="mt-2 rounded-lg max-h-32 object-contain border border-gray-200" />
-              )}
-            </div>
-          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5" style={{ fontFamily: 'Poppins' }}>
-              Notes {action === 'failed' ? '(required — reason for failure)' : '(optional)'}
+              Proof of Payment (optional)
+            </label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={handleFileChange}
+              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#0B5858]/10 file:text-[#0B5858] hover:file:bg-[#0B5858]/20 cursor-pointer"
+              style={{ fontFamily: 'Poppins' }}
+            />
+            {proofPreview && proofPreview.startsWith('data:image') && (
+              <img src={proofPreview} alt="proof" className="mt-2 rounded-lg max-h-32 object-contain border border-gray-200" />
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5" style={{ fontFamily: 'Poppins' }}>
+              Notes (optional)
             </label>
             <textarea
               value={notes}
@@ -262,7 +263,7 @@ function ActionModal({ payout, action, onClose, onConfirm }: ActionModalProps) {
               rows={3}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] bg-white resize-none"
               style={{ fontFamily: 'Poppins' }}
-              placeholder={action === 'failed' ? 'Explain why payout failed...' : 'Optional note to agent...'}
+              placeholder="Optional note to agent..."
             />
           </div>
         </div>
@@ -275,12 +276,92 @@ function ActionModal({ payout, action, onClose, onConfirm }: ActionModalProps) {
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={submitting || (action === 'failed' && !notes.trim())}
-            className={`px-6 py-2.5 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 cursor-pointer ${
-              action === 'failed' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#0B5858] hover:bg-[#094848]'
-            }`}
+            disabled={submitting}
+            className="px-6 py-2.5 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 cursor-pointer bg-[#0B5858] hover:bg-[#094848]"
             style={{ fontFamily: 'Poppins' }}>
             {submitting ? 'Saving...' : 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  return createPortal(modal, document.body);
+}
+
+// ─── Decline Modal ───────────────────────────────────────────────────────────
+interface DeclineModalProps {
+  payout: Payout;
+  onClose: () => void;
+  onConfirm: (id: string, notes?: string) => void;
+}
+
+function DeclineModal({ payout, onClose, onConfirm }: DeclineModalProps) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    await onConfirm(payout.id, notes || undefined);
+    setSubmitting(false);
+  };
+
+  const modal = (
+    <div
+      ref={overlayRef}
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+            Decline Payout
+          </h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 cursor-pointer">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700" style={{ fontFamily: 'Poppins' }}>
+            <p><span className="font-medium">Agent:</span> {payout.agentName}</p>
+            <p><span className="font-medium">Amount:</span> {fmt(payout.amount)}</p>
+            <p><span className="font-medium">Method:</span> {PAYOUT_METHOD_LABELS[payout.method]}</p>
+          </div>
+          <p className="text-sm text-gray-600">The amount will be refunded to the agent&apos;s balance.</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5" style={{ fontFamily: 'Poppins' }}>
+              Reason (optional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500 bg-white resize-none"
+              style={{ fontFamily: 'Poppins' }}
+              placeholder="Optional reason for the agent..."
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
+          <button type="button" onClick={onClose}
+            className="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+            style={{ fontFamily: 'Poppins' }}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={submitting}
+            className="px-6 py-2.5 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60 cursor-pointer bg-red-600 hover:bg-red-700"
+            style={{ fontFamily: 'Poppins' }}>
+            {submitting ? 'Declining...' : 'Decline'}
           </button>
         </div>
       </div>
@@ -350,7 +431,8 @@ export default function AdminPayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [search, setSearch] = useState('');
-  const [modal, setModal] = useState<{ payout: Payout; action: 'paid' | 'failed' } | null>(null);
+  const [markPaidModal, setMarkPaidModal] = useState<Payout | null>(null);
+  const [declineModal, setDeclineModal] = useState<Payout | null>(null);
   const [detailsPayout, setDetailsPayout] = useState<Payout | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -385,10 +467,16 @@ export default function AdminPayoutsPage() {
   const paidThisMonth = payouts.filter((p) => p.status === 'paid' && p.processedAt && new Date(p.processedAt).getMonth() === new Date().getMonth()).reduce((s, p) => s + p.amount, 0);
   const totalPaid = payouts.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
 
-  const handleAction = async (id: string, status: PayoutStatus, proof?: string, notes?: string) => {
-    const updated = await updatePayoutStatus(id, status, proof, notes);
+  const handleMarkPaid = async (id: string, proofFile?: File, notes?: string) => {
+    const updated = await markPayoutPaid(id, undefined, notes, proofFile);
     setPayouts((prev) => prev.map((p) => p.id === id ? { ...p, ...updated } : p));
-    setModal(null);
+    setMarkPaidModal(null);
+  };
+
+  const handleDecline = async (id: string, notes?: string) => {
+    const updated = await markPayoutDeclined(id, notes);
+    setPayouts((prev) => prev.map((p) => p.id === id ? { ...p, ...updated } : p));
+    setDeclineModal(null);
   };
 
   /** Apply same filters as UI (status + search); optionally filter by requestedAt date range */
@@ -476,7 +564,7 @@ export default function AdminPayoutsPage() {
     { value: 'all', label: 'All Status' },
     { value: 'pending', label: 'Pending' },
     { value: 'paid', label: 'Paid' },
-    { value: 'failed', label: 'Failed' },
+    { value: 'declined', label: 'Declined' },
   ];
 
   if (roleLoading || loading) {
@@ -604,7 +692,7 @@ export default function AdminPayoutsPage() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {(p.status === 'paid' || p.status === 'failed') && (
+                          {(p.status === 'paid' || p.status === 'declined') && (
                             <button
                               type="button"
                               onClick={() => setDetailsPayout(p)}
@@ -613,19 +701,21 @@ export default function AdminPayoutsPage() {
                               View details
                             </button>
                           )}
-                          {(p.status === 'pending' || p.status === 'processing') && (
+                          {p.status === 'pending' && (
                             <>
-                              <button type="button"
-                                onClick={() => setModal({ payout: p, action: 'paid' })}
+                              <button
+                                type="button"
+                                onClick={() => setMarkPaidModal(p)}
                                 className="px-2.5 py-1.5 text-xs font-semibold bg-[#0B5858] text-white rounded-lg hover:bg-[#094848] transition-colors cursor-pointer whitespace-nowrap"
                               >
                                 Mark Paid
                               </button>
-                              <button type="button"
-                                onClick={() => setModal({ payout: p, action: 'failed' })}
+                              <button
+                                type="button"
+                                onClick={() => setDeclineModal(p)}
                                 className="px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
                               >
-                                Fail
+                                Decline
                               </button>
                             </>
                           )}
@@ -696,12 +786,18 @@ export default function AdminPayoutsPage() {
           </div>
         </div>
 
-      {modal != null && (
-        <ActionModal
-          payout={modal.payout}
-          action={modal.action}
-          onClose={() => setModal(null)}
-          onConfirm={handleAction}
+      {markPaidModal != null && (
+        <MarkPaidModal
+          payout={markPaidModal}
+          onClose={() => setMarkPaidModal(null)}
+          onConfirm={handleMarkPaid}
+        />
+      )}
+      {declineModal != null && (
+        <DeclineModal
+          payout={declineModal}
+          onClose={() => setDeclineModal(null)}
+          onConfirm={handleDecline}
         />
       )}
       {detailsPayout != null && (

@@ -1,19 +1,40 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { getAllCommissions, approveCommission, rejectCommission } from '@/services/commissionService';
-import type { BookingCommission, CommissionStatus } from '@/types/commission';
+import { getAllBookings } from '@/lib/api/bookings';
 import SingleDatePicker from '@/components/SingleDatePicker';
 
-const STATUS_LABELS: Record<CommissionStatus, string> = {
-  pending: 'Pending',
-  approved: 'Approved',
-  available: 'Available',
-  paid: 'Paid',
-};
+/** Commission status from booking_status: penciled->pending, confirmed->approved, completed->available */
+type CommissionStatus = 'pending' | 'approved' | 'available';
+
+function mapBookingStatusToCommission(rawStatus: string): CommissionStatus {
+  const map: Record<string, CommissionStatus> = {
+    penciled: 'pending',
+    confirmed: 'approved',
+    completed: 'available',
+  };
+  return map[rawStatus] || 'pending';
+}
+
+interface CommissionRow {
+  id: string;
+  bookingRef: string;
+  agentName: string;
+  propertyName: string;
+  guestName: string;
+  totalBookingAmount: number;
+  commissionRate: number;
+  commissionAmount: number;
+  referralLevel: 1;
+  status: CommissionStatus;
+  createdAt: string;
+  checkIn: string;
+  checkOut: string;
+  numberOfNights: number;
+}
 
 /** Chip style — same as agents/booking-requests (backgroundColor, color, boxShadow) */
 type ChipStyle = { backgroundColor: string; color: string; boxShadow: string };
@@ -31,7 +52,6 @@ const STATUS_CHIP_STYLES: Record<CommissionStatus, { label: string; chipStyle: C
   pending:   { label: 'Pending',   chipStyle: { backgroundColor: '#fef3c7', color: '#92400e', boxShadow: chipShadow(245, 158, 11) } },
   approved:  { label: 'Approved',  chipStyle: { backgroundColor: '#dbeafe', color: '#1e40af', boxShadow: chipShadow(59, 130, 246) } },
   available: { label: 'Available', chipStyle: { backgroundColor: '#d1fae5', color: '#065f46', boxShadow: chipShadow(5, 150, 105) } },
-  paid:      { label: 'Paid',      chipStyle: { backgroundColor: '#f5f5f4', color: '#57534e', boxShadow: chipShadow(168, 162, 158, 0.22) } },
 };
 
 type FilterStatus = 'all' | CommissionStatus;
@@ -188,59 +208,8 @@ function ExportModal({
   return createPortal(modal, document.body);
 }
 
-interface RejectModalProps {
-  commission: BookingCommission;
-  onConfirm: (reason: string) => void;
-  onClose: () => void;
-}
-
-function RejectModal({ commission, onConfirm, onClose }: RejectModalProps) {
-  const [reason, setReason] = useState('');
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => { setMounted(true); }, []);
-
-  const modal = (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" style={{ fontFamily: 'Poppins' }}>
-        <h3 className="text-base font-bold text-gray-900 mb-1">Reject Commission</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Booking ref: <strong>{commission.bookingRef}</strong> — ₱{commission.commissionAmount.toLocaleString()}
-        </p>
-        <label className="block text-xs font-semibold text-gray-600 mb-1">Reason for rejection</label>
-        <textarea
-          rows={3}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Enter reason..."
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 resize-none"
-        />
-        <div className="flex gap-3 mt-4">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onConfirm(reason)}
-            disabled={!reason.trim()}
-            className="flex-1 py-2.5 text-sm font-semibold text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            Reject Commission
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (!mounted) return null;
-  return createPortal(modal, document.body);
-}
-
 interface BreakdownModalProps {
-  commission: BookingCommission;
+  commission: CommissionRow;
   onClose: () => void;
 }
 
@@ -265,19 +234,12 @@ function BreakdownModal({ commission, onClose }: BreakdownModalProps) {
           <div className="flex justify-between"><span className="text-gray-500">Booking Ref</span><span className="font-medium">{commission.bookingRef}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Property</span><span className="font-medium">{commission.propertyName}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Guest</span><span className="font-medium">{commission.guestName}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Agent</span><span className="font-medium text-[#0B5858]">{commission.agentName}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Nights</span><span className="font-medium">{commission.numberOfNights}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Agent ID</span><span className="font-medium text-[#0B5858]">{commission.agentId}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Level</span>
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium chip-shadow" style={LEVEL_CHIP_STYLES[commission.referralLevel].chipStyle}>
-              {LEVEL_CHIP_STYLES[commission.referralLevel].label}
-            </span>
-          </div>
         </div>
 
         <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm mb-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Computation</p>
-          <div className="flex justify-between"><span className="text-gray-600">Base Amount</span><span>₱{commission.baseAmount.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-gray-600">Extra Charges</span><span>₱{commission.extraCharges.toLocaleString()}</span></div>
           <div className="flex justify-between font-medium border-t border-gray-200 pt-2"><span>Total Booking</span><span>₱{commission.totalBookingAmount.toLocaleString()}</span></div>
           <div className="flex justify-between text-gray-500"><span>Commission Rate</span><span>{commission.commissionRate}%</span></div>
           <div className="flex justify-between font-bold text-[#0B5858] text-base border-t border-gray-200 pt-2">
@@ -299,58 +261,74 @@ function BreakdownModal({ commission, onClose }: BreakdownModalProps) {
   return createPortal(modal, document.body);
 }
 
+/** Map booking from api/bookings/all to CommissionRow */
+function bookingToCommission(b: Record<string, unknown>): CommissionRow {
+  const rawStatus = (b.raw_status as string) || 'penciled';
+  const totalAmount = Number((b.payment as Record<string, unknown>)?.deposit_amount ?? b.total_amount) || 0;
+  const commissionAmount = Math.round(totalAmount * 0.1);
+  const agent = b.agent as Record<string, unknown> | null;
+  const agentName = agent
+    ? [agent.first_name, agent.last_name].filter(Boolean).join(' ').trim() || '—'
+    : '—';
+  const client = (b.client || {}) as Record<string, unknown>;
+  const guestName = [client.first_name, client.last_name].filter(Boolean).join(' ').trim() || '—';
+  const listing = (b.listing || {}) as Record<string, unknown>;
+
+  return {
+    id: String(b.id),
+    bookingRef: (b.reference_code as string) || `BKG-${b.id}`,
+    agentName,
+    propertyName: String(listing.title || '—'),
+    guestName,
+    totalBookingAmount: totalAmount,
+    commissionRate: 10,
+    commissionAmount,
+    referralLevel: 1,
+    status: mapBookingStatusToCommission(rawStatus),
+    createdAt: String(b.created_at || ''),
+    checkIn: String(b.check_in_date || ''),
+    checkOut: String(b.check_out_date || ''),
+    numberOfNights: Number(b.nights) || 0,
+  };
+}
+
 export default function AdminCommissionsPage() {
-  const [commissions, setCommissions] = useState<BookingCommission[]>([]);
+  const [commissions, setCommissions] = useState<CommissionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [search, setSearch] = useState('');
-  const [rejectTarget, setRejectTarget] = useState<BookingCommission | null>(null);
-  const [breakdownTarget, setBreakdownTarget] = useState<BookingCommission | null>(null);
+  const [breakdownTarget, setBreakdownTarget] = useState<CommissionRow | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
 
-  /** Show toast for approve/reject actions; auto-dismiss after 3s */
-  const showToast = useCallback((type: 'success' | 'error', msg: string) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const data = await getAllCommissions();
-    setCommissions(data);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  /** Reset to page 1 when filters or search change */
   useEffect(() => {
-    setCurrentPage(1);
-  }, [filterStatus, search]);
+    let cancelled = false;
+    setLoading(true);
+    getAllBookings({ limit: 500 })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = (res.data || [])
+          .filter((b) => (b.raw_status as string) !== 'cancelled')
+          .map(bookingToCommission)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setCommissions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setCommissions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
-  const handleApprove = async (id: string) => {
-    await approveCommission(id);
-    setCommissions((prev) =>
-      prev.map((c) => c.id === id ? { ...c, status: 'approved' as CommissionStatus, approvedAt: new Date().toISOString() } : c)
-    );
-    showToast('success', 'Commission approved successfully.');
-  };
-
-  const handleReject = async (reason: string) => {
-    if (!rejectTarget) return;
-    await rejectCommission(rejectTarget.id, reason);
-    setCommissions((prev) => prev.filter((c) => c.id !== rejectTarget.id));
-    setRejectTarget(null);
-    showToast('error', 'Commission declined.');
-  };
+  useEffect(() => setCurrentPage(1), [filterStatus, search]);
 
   const filtered = commissions.filter((c) => {
     const matchStatus = filterStatus === 'all' || c.status === filterStatus;
     const q = search.toLowerCase();
-    const matchSearch = !q || c.bookingRef.toLowerCase().includes(q) || c.agentId.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q) || c.guestName.toLowerCase().includes(q);
+    const matchSearch = !q || c.bookingRef.toLowerCase().includes(q) || c.agentName.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q) || c.guestName.toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
 
@@ -363,7 +341,6 @@ export default function AdminCommissionsPage() {
   const totalPending = commissions.filter((c) => c.status === 'pending').reduce((s, c) => s + c.commissionAmount, 0);
   const totalApproved = commissions.filter((c) => c.status === 'approved').reduce((s, c) => s + c.commissionAmount, 0);
   const totalAvailable = commissions.filter((c) => c.status === 'available').reduce((s, c) => s + c.commissionAmount, 0);
-  const totalPaid = commissions.filter((c) => c.status === 'paid').reduce((s, c) => s + c.commissionAmount, 0);
 
   /** Export with optional date range (check-in); same modal pattern as agent/commissions */
   const handleExport = (format: 'csv' | 'pdf', startDate: string, endDate: string) => {
@@ -376,11 +353,11 @@ export default function AdminCommissionsPage() {
         return d >= s && d <= e;
       });
     }
-    const applyFilters = (list: BookingCommission[]) =>
+    const applyFilters = (list: CommissionRow[]) =>
       list.filter((c) => {
         const matchStatus = filterStatus === 'all' || c.status === filterStatus;
         const q = search.toLowerCase();
-        const matchSearch = !q || c.bookingRef.toLowerCase().includes(q) || c.agentId.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q) || c.guestName.toLowerCase().includes(q);
+        const matchSearch = !q || c.bookingRef.toLowerCase().includes(q) || c.agentName.toLowerCase().includes(q) || c.propertyName.toLowerCase().includes(q) || c.guestName.toLowerCase().includes(q);
         return matchStatus && matchSearch;
       });
     const toExport = applyFilters(dataToExport);
@@ -388,7 +365,7 @@ export default function AdminCommissionsPage() {
     if (format === 'csv') {
       const header = ['ID', 'Booking Ref', 'Agent', 'Property', 'Guest', 'Check-in', 'Check-out', 'Nights', 'Total (₱)', 'Rate (%)', 'Commission (₱)', 'Level', 'Status', 'Date'];
       const rows = toExport.map((c) => [
-        c.id, c.bookingRef, c.agentId, c.propertyName, c.guestName,
+        c.id, c.bookingRef, c.agentName, c.propertyName, c.guestName,
         c.checkIn, c.checkOut, c.numberOfNights,
         c.totalBookingAmount, c.commissionRate, c.commissionAmount,
         `L${c.referralLevel}`, c.status, c.createdAt,
@@ -422,7 +399,7 @@ export default function AdminCommissionsPage() {
         head: [['Booking Ref', 'Agent', 'Property', 'Guest', 'Check-in', 'Commission', 'Level', 'Status']],
         body: toExport.map((c) => [
           c.bookingRef,
-          c.agentId,
+          c.agentName,
           c.propertyName.length > 18 ? c.propertyName.slice(0, 16) + '…' : c.propertyName,
           c.guestName,
           c.checkIn.slice(0, 10),
@@ -448,7 +425,6 @@ export default function AdminCommissionsPage() {
     { value: 'pending', label: 'Pending' },
     { value: 'approved', label: 'Approved' },
     { value: 'available', label: 'Available' },
-    { value: 'paid', label: 'Paid' },
   ];
 
   if (loading) {
@@ -461,17 +437,6 @@ export default function AdminCommissionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Toast — success (approve) or error (decline); matches admin/cleaning style */}
-      {toast != null && (
-        <div className={`fixed top-20 right-4 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold border animate-fade-in-up ${toast.type === 'success' ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-red-600 text-white border-red-600'}`}>
-          {toast.type === 'success'
-            ? <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            : <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          }
-          {toast.msg}
-        </div>
-      )}
-
       {/* Header — title only; export lives in filter row (same as Agent Directory) */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -479,18 +444,17 @@ export default function AdminCommissionsPage() {
             Commission Ledger
           </h1>
           <p className="text-sm text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>
-            Review and approve agent booking commissions.
+            Agent commissions from bookings (10% of total). Status reflects booking status.
           </p>
         </div>
       </div>
 
       {/* Summary Cards — same style as overview (rounded-3xl, no icon) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
         {[
-          { label: 'Pending Review', value: `₱${totalPending.toLocaleString()}`, count: commissions.filter((c) => c.status === 'pending').length },
+          { label: 'Pending', value: `₱${totalPending.toLocaleString()}`, count: commissions.filter((c) => c.status === 'pending').length },
           { label: 'Approved', value: `₱${totalApproved.toLocaleString()}`, count: commissions.filter((c) => c.status === 'approved').length },
-          { label: 'Available to Pay', value: `₱${totalAvailable.toLocaleString()}`, count: commissions.filter((c) => c.status === 'available').length },
-          { label: 'Total Paid', value: `₱${totalPaid.toLocaleString()}`, count: commissions.filter((c) => c.status === 'paid').length },
+          { label: 'Available', value: `₱${totalAvailable.toLocaleString()}`, count: commissions.filter((c) => c.status === 'available').length },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
             <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">{s.label}</p>
@@ -540,7 +504,7 @@ export default function AdminCommissionsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
-                {['Booking Ref', 'Agent', 'Property', 'Guest', 'Booking Total', 'Rate', 'Commission', 'Level', 'Status', 'Date', 'Actions'].map((h) => (
+                {['Booking Ref', 'Agent', 'Property', 'Guest', 'Booking Total', 'Rate', 'Commission', 'Level', 'Status', 'Date'].map((h) => (
                   <th key={h} className="px-5 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap">
                     {h}
                   </th>
@@ -550,7 +514,7 @@ export default function AdminCommissionsPage() {
             <tbody className="divide-y divide-gray-50">
               {paginatedCommissions.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-7 py-14 text-center text-sm font-medium text-gray-400">
+                  <td colSpan={10} className="px-7 py-14 text-center text-sm font-medium text-gray-400">
                     No commissions match your filters.
                   </td>
                 </tr>
@@ -565,7 +529,7 @@ export default function AdminCommissionsPage() {
                         {c.bookingRef}
                       </button>
                     </td>
-                    <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{c.agentId}</td>
+                    <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{c.agentName}</td>
                     <td className="px-5 py-4 text-gray-600 max-w-[140px] truncate">{c.propertyName}</td>
                     <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{c.guestName}</td>
                     <td className="px-5 py-4 font-medium text-gray-900 whitespace-nowrap">₱{c.totalBookingAmount.toLocaleString()}</td>
@@ -591,26 +555,6 @@ export default function AdminCommissionsPage() {
                     </td>
                     <td className="px-5 py-4 text-xs font-medium text-gray-500 whitespace-nowrap">
                       {new Date(c.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td className="px-5 py-4">
-                      {c.status === 'pending' ? (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleApprove(c.id)}
-                            className="px-3 py-1.5 text-xs font-semibold text-white bg-[#0B5858] hover:bg-[#094848] rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            onClick={() => setRejectTarget(c)}
-                            className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
                     </td>
                   </tr>
                 ))
@@ -678,13 +622,6 @@ export default function AdminCommissionsPage() {
       </div>
 
       {/* Modals */}
-      {rejectTarget && (
-        <RejectModal
-          commission={rejectTarget}
-          onConfirm={handleReject}
-          onClose={() => setRejectTarget(null)}
-        />
-      )}
       {breakdownTarget && (
         <BreakdownModal
           commission={breakdownTarget}

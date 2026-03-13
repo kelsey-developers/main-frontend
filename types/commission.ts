@@ -6,7 +6,7 @@
  *   commissionAmount = (baseAmount + extraCharges) × (commissionRate / 100)
  */
 
-export type CommissionStatus = 'pending' | 'approved' | 'available' | 'paid';
+export type CommissionStatus = 'pending' | 'approved' | 'available' | 'paid' | 'cancelled';
 
 export interface BookingCommission {
   id: string;

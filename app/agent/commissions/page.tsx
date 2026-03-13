@@ -13,11 +13,11 @@ import SingleDatePicker from '@/components/SingleDatePicker';
 
 const COMMISSION_RATE = 0.1; // 10%
 
-/** Map booking status to commission status */
+/** Map booking status to commission status (same as /admin/commissions) */
 function mapStatus(raw: string): CommissionStatus {
   if (raw === 'penciled') return 'pending';
-  if (raw === 'confirmed') return 'available';
-  if (raw === 'completed') return 'paid';
+  if (raw === 'confirmed') return 'approved';
+  if (raw === 'completed') return 'available';
   return 'pending';
 }
 
@@ -537,8 +537,8 @@ export default function CommissionsPage() {
               options={[
                 { value: 'all', label: 'All Statuses' },
                 { value: 'pending', label: 'Pending' },
+                { value: 'approved', label: 'Approved' },
                 { value: 'available', label: 'Available' },
-                { value: 'paid', label: 'Paid' },
               ]}
               className="min-w-[140px] capitalize"
             />

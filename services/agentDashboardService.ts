@@ -2,10 +2,10 @@
  * Agent Dashboard Service — Kelsey's Homestay Agent Hub
  *
  * Provides summary stats, top-agent leaderboards, and analytics.
- * When NEXT_PUBLIC_API_URL is not set, returns frontend-only mock data.
+ * Uses apiClient when backend is configured; otherwise returns mock data.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+import { apiClient } from '@/lib/api/client';
 
 export interface TopAgent {
   agentId: string;
@@ -69,10 +69,11 @@ const MOCK_ANALYTICS: AgentAnalytics = {
 // ─── Service Functions ────────────────────────────────────────────────────────
 
 export async function getAgentAnalytics(): Promise<AgentAnalytics> {
-  if (!API_BASE) return { ...MOCK_ANALYTICS };
-  const res = await fetch(`${API_BASE}/api/admin/agents/analytics`);
-  if (!res.ok) throw new Error('Failed to fetch agent analytics');
-  return res.json();
+  try {
+    return await apiClient.get<AgentAnalytics>('/api/admin/analytics');
+  } catch {
+    return { ...MOCK_ANALYTICS };
+  }
 }
 
 export interface AgentOverviewStats {
@@ -99,8 +100,9 @@ const MOCK_OVERVIEW: AgentOverviewStats = {
 };
 
 export async function getAgentOverviewStats(agentId: string): Promise<AgentOverviewStats> {
-  if (!API_BASE) return { ...MOCK_OVERVIEW };
-  const res = await fetch(`${API_BASE}/api/agents/${agentId}/overview`);
-  if (!res.ok) throw new Error('Failed to fetch agent overview');
-  return res.json();
+  try {
+    return await apiClient.get<AgentOverviewStats>(`/api/agents/${agentId}/overview`);
+  } catch {
+    return { ...MOCK_OVERVIEW };
+  }
 }
