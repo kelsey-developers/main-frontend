@@ -52,10 +52,10 @@ const C = {
 };
 
 // ─── Static form options ─────────────────────────────────────────
+// Warehouse stock-out reasons (damage/write-off handled via separate damage flow, not here)
 const REASONS_WH = [
   'General Use',
   'Disposal / Expired',
-  'Damaged / Write-off',
   'Inter-warehouse Transfer',
   'Event Use',
   'Staff Use',

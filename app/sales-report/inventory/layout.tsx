@@ -19,7 +19,7 @@ export default function InventoryLayout({
               display: none !important;
             }
           `}</style>
-          <div className="max-w-[1450px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
             {children}
           </div>
         </div>

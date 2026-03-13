@@ -168,9 +168,10 @@ export default function Navbar() {
             </button>
           </div>
 
-          {/* Center nav - desktop (empty for restricted-role-only users) */}
-          {!isRestrictedRoleOnly && (
-            <div className="hidden md:block absolute left-1/2 transform -translate-x-1/2 translate-x-[-137px]">
+          {/* Right - nav links, bell, then user menu (all items on the right) */}
+          <div className="hidden md:flex flex-shrink-0 ml-auto items-center gap-4">
+            {/* Nav links - desktop: main site links or role-specific (e.g. finance) */}
+            {!isRestrictedRoleOnly && (
               <div className="flex items-baseline">
                 <Link href={homeHref} className={navLinkClass}>
                   HOME
@@ -187,11 +188,40 @@ export default function Navbar() {
                   ABOUT
                 </Link>
               </div>
-            </div>
-          )}
-
-          {/* Right - bell then user menu; same as oop-dev: flex items-center gap-4 (16px) between items) */}
-          <div className="hidden md:flex flex-shrink-0 ml-auto items-center gap-4">
+            )}
+            {/* Finance: Home + Sales Report in top bar */}
+            {isFinanceOnly && (
+              <div className="flex items-baseline">
+                <Link href="/sales-report/finance" className={navLinkClass}>
+                  HOME
+                </Link>
+                <Link href="/sales-report/finance/bookings" className={navLinkClass}>
+                  SALES
+                </Link>
+                <Link href="/sales-report/finance/charges-addons" className={navLinkClass}>
+                  CHARGES
+                </Link>
+                <Link href="/sales-report/finance/damage-penalty" className={navLinkClass}>
+                  REPORTS
+                </Link>
+              </div>
+            )}
+            {isInventoryOnly && (
+              <div className="flex items-baseline">
+                <Link href="/sales-report/inventory" className={navLinkClass}>
+                  HOME
+                </Link>
+                <Link href="/sales-report/inventory/purchase-orders" className={navLinkClass}>
+                  ORDERS
+                </Link>
+                <Link href="/sales-report/inventory/items" className={navLinkClass}>
+                  ITEMS
+                </Link>
+                <Link href="/sales-report/inventory/damage-reports" className={navLinkClass}>
+                  REPORTS
+                </Link>
+              </div>
+            )}
             {/* Updates bell - minimal padding so gap to profile matches old LOGIN/SIGNUP spacing (16px) */}
             <span
               className="p-1 text-black rounded-full cursor-default opacity-90 inline-flex items-center justify-center"
@@ -315,36 +345,7 @@ export default function Navbar() {
                     <div className="px-3">
                       {isRestrictedRoleOnly ? (
                         <>
-                          {isInventoryOnly && (
-                            <Link
-                              href="/sales-report/inventory"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
-                              style={{ fontFamily: 'var(--font-poppins)' }}
-                            >
-                              Sales Report (Inventory)
-                            </Link>
-                          )}
-                          {isFinanceOnly && (
-                            <Link
-                              href="/sales-report/finance"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
-                              style={{ fontFamily: 'var(--font-poppins)' }}
-                            >
-                              Sales Report (Finance)
-                            </Link>
-                          )}
-                          {isHousekeepingOnly && (
-                            <Link
-                              href="/sales-report/housekeeping"
-                              onClick={() => setIsDropdownOpen(false)}
-                              className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
-                              style={{ fontFamily: 'var(--font-poppins)' }}
-                            >
-                              Sales Report (Housekeeping)
-                            </Link>
-                          )}
+                        
                           <Link
                             href="/settings"
                             onClick={() => setIsDropdownOpen(false)}
@@ -429,7 +430,7 @@ export default function Navbar() {
                           className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
                           style={{ fontFamily: 'var(--font-poppins)' }}
                         >
-                          Sales Report (Finance)
+                          Sales Report
                         </Link>
                       )}
                       {isInventory && (
@@ -439,7 +440,7 @@ export default function Navbar() {
                           className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
                           style={{ fontFamily: 'var(--font-poppins)' }}
                         >
-                          Sales Report (Inventory)
+                          Sales Report
                         </Link>
                       )}
                       {isHousekeeping && (
@@ -449,7 +450,7 @@ export default function Navbar() {
                           className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
                           style={{ fontFamily: 'var(--font-poppins)' }}
                         >
-                          Sales Report (Housekeeping)
+                          Sales Report
                         </Link>
                       )}
                       {!roleLoading && userRole?.role === 'cleaner' && (
@@ -564,38 +565,107 @@ export default function Navbar() {
           className={`md:hidden border-t border-gray-200 mobile-menu-dropdown${isMobileMenuOpen ? ' open' : ''}`}
         >
           <div className="px-4 py-3 space-y-1">
+            {/* Mobile top links: generic site nav for non-restricted roles */}
             {!isRestrictedRoleOnly && (
               <>
-            <Link
-              href={homeHref}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={mobileNavLinkClass}
-            >
-              HOME
-            </Link>
-            <Link
-              href="/listings"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={mobileNavLinkClass}
-            >
-              LISTINGS
-            </Link>
-            {user && (
                 <Link
-                href="/calendar"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={mobileNavLinkClass}
-              >
-                CALENDAR
-              </Link>
+                  href={homeHref}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  HOME
+                </Link>
+                <Link
+                  href="/listings"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  LISTINGS
+                </Link>
+                {user && (
+                  <Link
+                    href="/calendar"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={mobileNavLinkClass}
+                  >
+                    CALENDAR
+                  </Link>
+                )}
+                <Link
+                  href="/about"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  ABOUT
+                </Link>
+              </>
             )}
-            <Link
-              href="/about"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={mobileNavLinkClass}
-            >
-              ABOUT
-            </Link>
+
+            {/* Finance-only: match desktop finance nav in mobile */}
+            {isFinanceOnly && (
+              <>
+                <Link
+                  href="/sales-report/finance"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  HOME
+                </Link>
+                <Link
+                  href="/sales-report/finance/bookings"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  SALES
+                </Link>
+                <Link
+                  href="/sales-report/finance/charges-addons"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  CHARGES
+                </Link>
+                <Link
+                  href="/sales-report/finance/damage-penalty"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  REPORTS
+                </Link>
+              </>
+            )}
+
+            {/* Inventory-only: match desktop inventory nav in mobile */}
+            {isInventoryOnly && (
+              <>
+                <Link
+                  href="/sales-report/inventory"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  HOME
+                </Link>
+                <Link
+                  href="/sales-report/inventory/purchase-orders"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  ORDERS
+                </Link>
+                <Link
+                  href="/sales-report/inventory/items"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  ITEMS
+                </Link>
+                <Link
+                  href="/sales-report/inventory/damage-reports"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={mobileNavLinkClass}
+                >
+                  REPORTS
+                </Link>
               </>
             )}
             <span

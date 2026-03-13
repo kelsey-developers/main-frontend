@@ -68,7 +68,7 @@ function getDefaultViewFilters(): SalesReportFilters {
   return {
     ...defaultSalesReportFilters,
     filterMethod: 'quick',
-    timePeriod: 'all',
+    timePeriod: 'month',
     timePeriodScope: 'this',
     searchName: '',
     propertyType: 'All',
@@ -154,7 +154,7 @@ export default function SalesReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto px-4 sm:px-6 lg:px-8 pb-18 bg-gray-50">
+      <div className="mx-auto pb-18 bg-gray-50">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
@@ -191,10 +191,6 @@ export default function SalesReportPage() {
                   }
                 }}
               />
-              {/* Feature links only in sidebar on desktop; hidden in aside on mobile */}
-              <div className="max-lg:hidden lg:block">
-                <FinanceDashboardLinks />
-              </div>
             </div>
           </aside>
 
@@ -214,10 +210,7 @@ export default function SalesReportPage() {
               byType={revenueByType}
             />
 
-            {/* Feature links at bottom on mobile; on desktop they stay in the sidebar */}
-            <div className="lg:hidden pt-4">
-              <FinanceDashboardLinks />
-            </div>
+
           </div>
         </div>
       </div>
