@@ -116,7 +116,7 @@ export function AuthProvider({
 
   const primaryRole = user?.roles?.[0] ? normalizeRole(user.roles[0]) : null;
   const fullname = user
-    ? [user.firstName, user.lastName].filter(Boolean).join(' ')
+    ? [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ')
     : '';
 
   const hasAnyRole = (...roles: NormalizedRole[]) => {

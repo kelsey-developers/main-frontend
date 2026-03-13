@@ -7,9 +7,13 @@ import type { InventoryUnit } from '../types';
 
 interface SearchUnitsProps {
   units: InventoryUnit[];
+  /** When true, unit links include ?from=allocations for back navigation */
+  fromAllocations?: boolean;
 }
 
-const SearchUnits: React.FC<SearchUnitsProps> = ({ units }) => {
+const SearchUnits: React.FC<SearchUnitsProps> = ({ units, fromAllocations }) => {
+  const unitHref = (id: string) =>
+    fromAllocations ? `/sales-report/inventory/units/${id}?from=allocations` : `/sales-report/inventory/units/${id}`;
   const [search, setSearch] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -691,7 +695,7 @@ const SearchUnits: React.FC<SearchUnitsProps> = ({ units }) => {
                 {filteredUnits.map((unit) => (
                   <Link
                     key={unit.id}
-                    href={`/sales-report/inventory/units/${unit.id}`}
+                    href={unitHref(unit.id)}
                     onClick={() => setIsModalOpen(false)}
                     className="flex gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:border-[#0B5858]/40 hover:shadow-md transition-all"
                   >

@@ -19,8 +19,11 @@ function InventoryItemsPageContent() {
   const warehouseIdFromQuery = searchParams.get('warehouseId');
   const warehouseNameFromQuery = searchParams.get('warehouseName');
   const itemIdFromQuery = searchParams.get('itemId');
+  const viewFromQuery = searchParams.get('view');
   const [refreshTick, setRefreshTick] = useState(0);
-  const [view, setView] = useState<'items' | 'allocations'>('items');
+  const [view, setView] = useState<'items' | 'allocations'>(
+    viewFromQuery === 'allocations' ? 'allocations' : 'items'
+  );
   const [unitFilter, setUnitFilter] = useState<'all' | string>('all');
   const [thresholdEditProduct, setThresholdEditProduct] = useState<typeof inventoryItems[number] | null>(null);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(warehouseIdFromQuery);
@@ -357,7 +360,7 @@ function InventoryItemsPageContent() {
                   return (
                     <button
                       key={unit.unitId}
-                      onClick={() => router.push(`/sales-report/inventory/units/${unit.unitId}`)}
+                      onClick={() => router.push(`/sales-report/inventory/units/${unit.unitId}?from=allocations`)}
                       className="w-full text-left px-4 py-3 bg-white hover:bg-gray-50 transition-colors group"
                     >
                       <div className="flex items-center justify-between mb-1.5">

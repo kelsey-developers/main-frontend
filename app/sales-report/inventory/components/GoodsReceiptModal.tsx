@@ -7,6 +7,7 @@ import type { PurchaseOrder, PurchaseOrderLine } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import { useToast } from '../hooks/useToast';
 import { useProductNames } from '../hooks/useProductNames';
+import { useAuth } from '@/contexts/AuthContext';
 import { useMockAuth } from '@/contexts/MockAuthContext';
 import { inventoryPurchaseOrderLines, inventoryWarehouseDirectory, inventoryItems, isWarehouseActive } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
@@ -80,7 +81,9 @@ export default function GoodsReceiptModal({
   onClose: () => void;
   onSubmit: (data: any) => void;
 }) {
-  const authState = useMockAuth();
+  const auth = useAuth();
+  const mockAuth = useMockAuth();
+  const authState = auth.user ? auth : mockAuth;
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
@@ -116,7 +119,14 @@ export default function GoodsReceiptModal({
   })();
 
   const [warehouseId, setWarehouseId] = useState(defaultWarehouseId);
-  const [receivedBy, setReceivedBy] = useState(authState.userProfile?.fullname || 'Staff');
+  /** Display name from auth — not posted as FK; backend resolves name via receivedByUserId */
+  const receivedByDisplay =
+    authState.userProfile?.fullname ??
+    (auth.user
+      ? [auth.user.firstName, auth.user.lastName].filter(Boolean).join(' ') || undefined
+      : undefined) ??
+    mockAuth.userProfile?.fullname ??
+    'Staff';
   const [receiptDate, setReceiptDate] = useState(getTodayInPhilippineTime());
   const [notes, setNotes] = useState('');
 
@@ -249,9 +259,13 @@ export default function GoodsReceiptModal({
       return;
     }
 
+    const receivedByUserId =
+      auth.user?.id != null ? String(auth.user.id) : undefined;
+
     onSubmit({
       warehouseId,
-      receivedBy: (receivedBy || 'Staff').trim(),
+      receivedBy: receivedByDisplay.trim() || 'Staff',
+      receivedByUserId,
       receiptDate,
       notes,
       receiptImages,
@@ -371,16 +385,19 @@ export default function GoodsReceiptModal({
               gap: 12,
             }}
           >
-            <Field label="Received By">
+            <Field label="Received By" hint="FK posted: receivedByUserId">
               <input
                 type="text"
-                value={receivedBy}
-                onChange={e => setReceivedBy(e.target.value)}
-                placeholder="e.g. Staff or your name"
-                style={inputStyle}
+                readOnly
+                value={
+                  auth.user?.id != null
+                    ? `${receivedByDisplay} (User ID: ${auth.user.id})`
+                    : receivedByDisplay
+                }
+                style={{ ...inputStyle, backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
               />
               <div style={{ fontSize: 11, color: C.midGray, marginTop: 4, fontFamily: 'Poppins' }}>
-                Optional until login is enabled. Default: Staff
+                Name from account; create payload sends <strong>receivedByUserId</strong> for the goods receipt FK.
               </div>
             </Field>
             <Field label="Receipt Date" required>

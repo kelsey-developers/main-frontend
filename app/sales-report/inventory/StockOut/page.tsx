@@ -7,7 +7,7 @@ import StockOutModal from '../components/StockOutModal';
 
 export default function StockOutPage() {
   const searchParams = useSearchParams();
-  const [modalMode, setModalMode] = useState<'warehouse' | 'unit' | null>(null);
+  const [modalMode, setModalMode] = useState<'warehouse' | 'unit' | 'damage' | null>(null);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   const unitPrefill = useMemo(
@@ -31,7 +31,7 @@ export default function StockOutPage() {
 
   useEffect(() => {
     const mode = searchParams.get('mode');
-    if (mode === 'warehouse' || mode === 'unit') {
+    if (mode === 'warehouse' || mode === 'unit' || mode === 'damage') {
       setModalMode(mode);
     }
   }, [searchParams]);
@@ -65,6 +65,20 @@ export default function StockOutPage() {
       tagBg: 'rgba(5, 128, 126, 0.14)',
       tagColor: '#0b5858',
       gradient: 'linear-gradient(135deg, #0f766e, #14b8a6)',
+    },
+    {
+      mode: 'damage' as const,
+      icon: (
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+          <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      label: 'Damage / Write-off',
+      desc: 'Deduct stock tied to a damage receipt — movement reference is the damage incident ID only',
+      tag: 'DAMAGE',
+      tagBg: 'rgba(185, 28, 28, 0.1)',
+      tagColor: '#b91c1c',
+      gradient: 'linear-gradient(135deg, #7f1d1d, #b91c1c)',
     },
   ];
 
@@ -143,9 +157,16 @@ export default function StockOutPage() {
             onMouseLeave={() => setHoveredCard(null)}
             className="card-wrapper bg-white border-2 border-gray-200 rounded-[20px] p-7 cursor-pointer text-left shadow-sm relative overflow-hidden"
             style={{
-              '--hover-shadow': card.mode === 'warehouse' ? 'rgba(5, 128, 126, 0.22)' : 'rgba(15, 118, 110, 0.24)',
-              '--accent-color': card.mode === 'warehouse' ? '#05807e' : '#0f766e',
-              '--icon-bg': card.mode === 'warehouse' ? '#0b5858' : '#0f766e',
+              '--hover-shadow':
+                card.mode === 'damage'
+                  ? 'rgba(185, 28, 28, 0.2)'
+                  : card.mode === 'warehouse'
+                    ? 'rgba(5, 128, 126, 0.22)'
+                    : 'rgba(15, 118, 110, 0.24)',
+              '--accent-color':
+                card.mode === 'damage' ? '#b91c1c' : card.mode === 'warehouse' ? '#05807e' : '#0f766e',
+              '--icon-bg':
+                card.mode === 'damage' ? '#7f1d1d' : card.mode === 'warehouse' ? '#0b5858' : '#0f766e',
             } as React.CSSProperties}
           >
             {/* Accent strip on hover */}

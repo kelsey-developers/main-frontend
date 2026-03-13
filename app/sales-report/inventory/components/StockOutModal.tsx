@@ -357,6 +357,8 @@ function AddItemBtn({ onAdd, accent }: { onAdd: () => void; accent: string }) {
 interface WarehouseFormProps {
   prefill?: { warehouseId: string };
   onDraftChange: (draft: WarehouseDraft) => void;
+  /** When set, reason is fixed to damage write-off; reference on submit is damage receipt id only */
+  lockedReason?: 'Damaged / Write-off';
 }
 
 interface WarehouseDraft {
@@ -372,18 +374,21 @@ interface WarehouseDraft {
   items: LineItem[];
 }
 
-function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
+const DAMAGE_WRITE_OFF = 'Damaged / Write-off';
+
+function WarehouseForm({ prefill, onDraftChange, lockedReason }: WarehouseFormProps) {
   const authState = useMockAuth();
+  const isDamageOnly = lockedReason === DAMAGE_WRITE_OFF;
   const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
   const [idNumber, setIdNumber] = useState(authState.user?.id || '');
   const [warehouse, setWarehouse] = useState(prefill?.warehouseId || '');
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(isDamageOnly ? DAMAGE_WRITE_OFF : '');
   const [toWarehouse, setToWarehouse] = useState('');
   const [date, setDate] = useState(getTodayInPhilippineTime());
   const [reference, setReference] = useState('');
   const [damageIncidentId, setDamageIncidentId] = useState('');
   const [notes, setNotes] = useState('');
-  const [isDamage, setIsDamage] = useState(false);
+  const [isDamage, setIsDamage] = useState(isDamageOnly);
   const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
   const [damageIncidents, setDamageIncidents] = useState<Array<{ id: string; description?: string; reportDate?: string; warehouseId?: string }>>([]);
 
@@ -411,8 +416,8 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
   }, []);
 
   useEffect(() => {
-    setDamageIncidentId('');
-  }, [reason]);
+    if (!isDamageOnly) setDamageIncidentId('');
+  }, [reason, isDamageOnly]);
 
   const warehouseDamageIncidents = warehouse
     ? damageIncidents.filter((d) => d.warehouseId === warehouse)
@@ -435,7 +440,7 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
   }, [confirmedBy, idNumber, warehouse, reason, toWarehouse, date, reference, damageIncidentId, notes, items, onDraftChange]);
 
   const warehouses = inventoryWarehouseDirectory.filter((wh) => isWarehouseActive(wh));
-  const isTransfer = reason === 'Inter-warehouse Transfer';
+  const isTransfer = !isDamageOnly && reason === 'Inter-warehouse Transfer';
 
   return (
     <>
@@ -467,7 +472,7 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
         </Field>
       </div>
       <div style={{ borderTop: `1.5px dashed ${C.lightGray}`, margin: '14px 0 22px' }} />
-      <SectionLabel label="SOURCE & REASON" />
+      <SectionLabel label={isDamageOnly ? 'SOURCE & DAMAGE RECEIPT' : 'SOURCE & REASON'} />
       <div
         style={{
           display: 'grid',
@@ -495,12 +500,13 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
             useFixedPosition={true}
           />
         </Field>
+        {!isDamageOnly && (
         <Field label="Reason" required>
           <InventoryDropdown
             value={reason}
             onChange={(value) => {
               setReason(value);
-              setIsDamage(value === 'Damaged / Write-off');
+              setIsDamage(value === DAMAGE_WRITE_OFF);
             }}
             options={[
               { value: '', label: 'Select reason…' },
@@ -517,6 +523,16 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
             useFixedPosition={true}
           />
         </Field>
+        )}
+        {isDamageOnly && (
+        <Field label="Reason" required hint="Fixed">
+          <input
+            readOnly
+            value={DAMAGE_WRITE_OFF}
+            style={{ ...inputStyle, backgroundColor: '#fff5f7', borderColor: 'rgba(241,14,59,0.25)', cursor: 'default' }}
+          />
+        </Field>
+        )}
         <Field label="Date" required>
           <SingleDatePicker
             value={date}
@@ -575,7 +591,7 @@ function WarehouseForm({ prefill, onDraftChange }: WarehouseFormProps) {
             </svg>
             Damage Write-off
           </div>
-          <Field label="Damage Incident Reference" required hint="Select existing or create new">
+          <Field label="Damage receipt ID" required hint="Stock reference = this ID">
             <InventoryDropdown
               value={damageIncidentId}
               onChange={setDamageIncidentId}
@@ -997,7 +1013,8 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
 // STOCK OUT MODAL COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 interface StockOutModalProps {
-  mode: 'warehouse' | 'unit';
+  /** 'damage' = warehouse flow locked to damage write-off; stock reference = damage receipt id only */
+  mode: 'warehouse' | 'unit' | 'damage';
   onClose: () => void;
   returnTo?: string;
   unitPrefill?: {
@@ -1068,7 +1085,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
 
   const handleSubmit = async () => {
     try {
-      const isWH = mode === 'warehouse';
+      const isWH = mode === 'warehouse' || mode === 'damage';
       
       if (isWH) {
         if (!warehouseDraft) {
@@ -1111,16 +1128,21 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
         }
         let effectiveDamageIncidentId = warehouseDraft.damageIncidentId;
         if (warehouseDraft.reason === 'Damaged / Write-off' && warehouseDraft.damageIncidentId === CREATE_DAMAGE_INCIDENT_OPTION) {
-          const created = await createDamageIncident({
-            warehouseId: warehouseDraft.warehouse,
-            description: `Warehouse write-off - Stock Out ${warehouseDraft.date}`,
-            reportedAt: new Date(`${warehouseDraft.date}T12:00:00.000Z`).toISOString(),
-            reportedByUserId: authState.user?.id,
-            status: 'open',
-            cost: 0,
-            chargedToGuest: 0,
-            absorbedAmount: 0,
-          });
+          // No reportedByUserId in body — dropped in createDamageIncident; reporter via X-Reporter-User-Id when set
+          const created = await createDamageIncident(
+            {
+              warehouseId: warehouseDraft.warehouse,
+              description: `Warehouse write-off - Stock Out ${warehouseDraft.date}`,
+              reportedAt: new Date(`${warehouseDraft.date}T12:00:00.000Z`).toISOString(),
+              status: 'open',
+              cost: 0,
+              chargedToGuest: 0,
+              absorbedAmount: 0,
+            },
+            authState.user?.id != null
+              ? { reporterUserId: String(authState.user.id) }
+              : undefined
+          );
           effectiveDamageIncidentId = created.id;
         }
 
@@ -1209,19 +1231,32 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
     }
   };
 
-  const isWH = mode === 'warehouse';
+  const isDamageMode = mode === 'damage';
+  const isWH = mode === 'warehouse' || isDamageMode;
 
   // Palette tokens for each mode
-  const grad = isWH
-    ? `linear-gradient(135deg, ${C.whGrad1}, ${C.whGrad2})`
-    : `linear-gradient(135deg, ${C.unGrad1}, ${C.unGrad2})`;
-  const btnBg = isWH ? C.whBtn : C.unBtn;
-  const btnSh = isWH ? 'rgba(11,88,88,0.35)' : 'rgba(15,118,110,0.35)';
-  const tagText = isWH ? 'WAREHOUSE' : 'UNIT / ROOM';
-  const title = isWH ? 'Warehouse Stock Out' : 'Unit Stock Out';
-  const subtitle = isWH
-    ? 'Deduct items from warehouse inventory'
-    : 'Allocate items to a room or unit';
+  const grad = isDamageMode
+    ? `linear-gradient(135deg, #7f1d1d, #b91c1c)`
+    : isWH
+      ? `linear-gradient(135deg, ${C.whGrad1}, ${C.whGrad2})`
+      : `linear-gradient(135deg, ${C.unGrad1}, ${C.unGrad2})`;
+  const btnBg = isDamageMode ? '#b91c1c' : isWH ? C.whBtn : C.unBtn;
+  const btnSh = isDamageMode
+    ? 'rgba(185,28,28,0.35)'
+    : isWH
+      ? 'rgba(11,88,88,0.35)'
+      : 'rgba(15,118,110,0.35)';
+  const tagText = isDamageMode ? 'DAMAGE / WRITE-OFF' : isWH ? 'WAREHOUSE' : 'UNIT / ROOM';
+  const title = isDamageMode
+    ? 'Damage / Write-off'
+    : isWH
+      ? 'Warehouse Stock Out'
+      : 'Unit Stock Out';
+  const subtitle = isDamageMode
+    ? 'Deduct stock against a damage receipt — reference is the damage incident ID'
+    : isWH
+      ? 'Deduct items from warehouse inventory'
+      : 'Allocate items to a room or unit';
 
   if (!mounted) {
     return null;
@@ -1309,7 +1344,14 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
                 gap: 6,
               }}
             >
-              {isWH ? (
+              {isDamageMode ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  DAMAGE
+                </>
+              ) : isWH ? (
                 <>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <path d="M3 21h18M3 7l9-4 9 4M5 21V10M19 21V10M9 21v-6h6v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1401,7 +1443,11 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
             {/* ── Scrollable form body ── */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '26px 28px' }}>
               {isWH ? (
-                <WarehouseForm prefill={warehousePrefill} onDraftChange={setWarehouseDraft} />
+                <WarehouseForm
+                  prefill={warehousePrefill}
+                  onDraftChange={setWarehouseDraft}
+                  lockedReason={isDamageMode ? DAMAGE_WRITE_OFF : undefined}
+                />
               ) : (
                 <UnitForm prefill={unitPrefill} onDraftChange={setUnitDraft} />
               )}
