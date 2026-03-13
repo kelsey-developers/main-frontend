@@ -36,7 +36,7 @@ const labelForPricingModel = (model: PricingModel): string => {
 };
 
 export async function fetchChargeTypes(): Promise<ChargeType[]> {
-  const data = await apiClient.get<ListResponse>('/api/charge-types');
+  const data = await apiClient.get<ListResponse>('/api/market/charge-types');
   const list = data.chargeTypes ?? [];
   return list
     .filter((ct) => ct.isActive)

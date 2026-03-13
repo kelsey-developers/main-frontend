@@ -46,7 +46,7 @@ export default function AdminChargesAddonsPage() {
   });
 
   const load = async () => {
-    const data = await apiClient.get<ListResponse>('/api/charge-types?includeInactive=true');
+    const data = await apiClient.get<ListResponse>('/api/market/charge-types?includeInactive=true');
     setRows(data.chargeTypes ?? []);
   };
 
@@ -69,7 +69,7 @@ export default function AdminChargesAddonsPage() {
   const toggleActive = async (row: ChargeTypeRow) => {
     setSavingId(row.id);
     try {
-      await apiClient.patch(`/api/charge-types/${row.id}`, { isActive: !row.isActive });
+      await apiClient.patch(`/api/market/charge-types/${row.id}`, { isActive: !row.isActive });
       await load();
     } finally {
       setSavingId(null);
@@ -84,7 +84,7 @@ export default function AdminChargesAddonsPage() {
       if (updates.description !== undefined) payload.description = updates.description;
       if (updates.defaultAmount !== undefined) payload.defaultAmount = updates.defaultAmount;
       if (updates.pricingModel !== undefined) payload.pricingModel = updates.pricingModel;
-      await apiClient.patch(`/api/charge-types/${row.id}`, payload);
+      await apiClient.patch(`/api/market/charge-types/${row.id}`, payload);
       await load();
     } finally {
       setSavingId(null);
@@ -96,7 +96,7 @@ export default function AdminChargesAddonsPage() {
     try {
       const defaultAmount =
         form.defaultAmount.trim().length > 0 ? Number(form.defaultAmount) : undefined;
-      await apiClient.post('/api/charge-types', {
+      await apiClient.post('/api/market/charge-types', {
         code: form.code.trim(),
         name: form.name.trim(),
         description: form.description.trim() || undefined,
@@ -122,7 +122,7 @@ export default function AdminChargesAddonsPage() {
     <div style={{ fontFamily: 'Poppins' }}>
       <AdminPageHeader
         title="Charges & Add-ons (Master List)"
-        description="Finance/admin config. These charge types are auto-attached to new bookings and are used for finance reporting."
+        description="Configure charge types (cleaning fee, extra head, late checkout, etc.). These are auto-attached to new bookings and used for finance reporting."
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -216,16 +216,16 @@ export default function AdminChargesAddonsPage() {
           </div>
         </AdminSection>
 
-        <AdminSection title="Charge types" subtitle="Toggle active, edit amount/model. Changes affect new bookings only.">
+        <AdminSection title="Charge types" subtitle="Toggle active, edit amount/pricing model. Pricing model matches DB (PER_BOOKING, PER_NIGHT, PER_PERSON, etc.). Changes affect new bookings only.">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 640 }}>
+            <table className="w-full text-sm" style={{ minWidth: 800, tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: 160 }} />
-                <col />
-                <col style={{ width: 120 }} />
-                <col style={{ width: 168 }} />
-                <col style={{ width: 96 }} />
-                <col style={{ width: 112 }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '24%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '18%' }} />
               </colgroup>
               <thead>
                 <tr className="bg-gradient-to-r from-[#0b5858] to-[#05807e]">
@@ -241,26 +241,30 @@ export default function AdminChargesAddonsPage() {
                 {rows.map((row) => (
                   <tr key={row.id} className="hover:bg-[#f8fffe] transition-colors align-middle">
 
-                    {/* Code */}
-                    <td className="px-4 py-3.5">
-                      <code className="block font-mono text-[11px] bg-gray-100 text-[#0b5858] px-2 py-0.5 rounded w-fit max-w-[136px] truncate">
+                    {/* Code — fixed, truncate */}
+                    <td className="px-4 py-3.5 overflow-hidden" style={{ width: '15%' }}>
+                      <code className="block font-mono text-[11px] bg-gray-100 text-[#0b5858] px-2 py-0.5 rounded truncate" title={row.code}>
                         {row.code}
                       </code>
                     </td>
 
-                    {/* Name + description */}
-                    <td className="px-4 py-3.5 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm leading-tight truncate capitalize">
-                        {row.name}
-                      </p>
-                      {row.description && (
-                        <p className="text-xs text-gray-400 mt-0.5 truncate">{row.description}</p>
-                      )}
+                    {/* Name + description — fixed, truncate overflow */}
+                    <td className="px-4 py-3.5 overflow-hidden" style={{ width: '20%' }}>
+                      <div className="min-h-[2.5rem] flex flex-col justify-center overflow-hidden">
+                        <p className="font-semibold text-gray-900 text-sm leading-tight capitalize truncate" title={row.name}>
+                          {row.name}
+                        </p>
+                        {row.description && (
+                          <p className="text-xs text-gray-400 mt-0.5 truncate" title={row.description}>
+                            {row.description}
+                          </p>
+                        )}
+                      </div>
                     </td>
 
-                    {/* Default amount — inline editable */}
-                    <td className="px-4 py-3.5">
-                      <div className="relative w-24">
+                    {/* Default amount — fixed width input */}
+                    <td className="px-4 py-3.5 overflow-hidden" style={{ width: '12%' }}>
+                      <div className="relative w-[90px]">
                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 select-none pointer-events-none">
                           &#8369;
                         </span>
@@ -277,16 +281,18 @@ export default function AdminChargesAddonsPage() {
                           className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] bg-white"
                           placeholder="0"
                           inputMode="decimal"
+                          maxLength={10}
                         />
                       </div>
                     </td>
 
-                    {/* Pricing model */}
-                    <td className="px-4 py-3.5">
+                    {/* Pricing model — fixed width select */}
+                    <td className="px-4 py-3.5 overflow-hidden" style={{ width: '24%' }}>
                       <select
-                        value={row.pricingModel}
+                        value={row.pricingModel in PRICING_LABEL ? row.pricingModel : 'PER_BOOKING'}
                         onChange={(e) => void saveRow(row, { pricingModel: e.target.value as PricingModel })}
-                        className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                        className="w-full min-w-0 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                        title={PRICING_LABEL[row.pricingModel] ?? row.pricingModel}
                       >
                         {Object.entries(PRICING_LABEL).map(([value, label]) => (
                           <option key={value} value={value}>{label}</option>
@@ -294,8 +300,8 @@ export default function AdminChargesAddonsPage() {
                       </select>
                     </td>
 
-                    {/* Status */}
-                    <td className="px-4 py-3.5 text-center">
+                    {/* Status — fixed width */}
+                    <td className="px-4 py-3.5 text-center overflow-hidden" style={{ width: '11%' }}>
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
                         row.isActive ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'bg-gray-100 text-gray-500 ring-1 ring-gray-200'
                       }`}>
@@ -304,13 +310,14 @@ export default function AdminChargesAddonsPage() {
                       </span>
                     </td>
 
-                    {/* Toggle */}
-                    <td className="px-4 py-3.5 text-center">
+                    {/* Toggle — fixed width */}
+                    <td className="px-4 py-3.5 text-center overflow-hidden" style={{ width: '18%' }}>
+                      <div className="flex justify-center min-w-0">
                       <button
                         type="button"
                         onClick={() => void toggleActive(row)}
                         disabled={savingId === row.id}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-40 whitespace-nowrap ${
+                        className={`inline-flex shrink-0 items-center justify-center px-4 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-40 ${
                           row.isActive
                             ? 'border-red-200 bg-white text-red-600 hover:bg-red-50 hover:border-red-300'
                             : 'border-[#0B5858]/30 bg-white text-[#0B5858] hover:bg-[#e8f4f4]'
@@ -318,6 +325,7 @@ export default function AdminChargesAddonsPage() {
                       >
                         {savingId === row.id ? 'Saving…' : row.isActive ? 'Deactivate' : 'Activate'}
                       </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

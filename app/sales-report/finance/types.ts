@@ -34,8 +34,8 @@ export interface SalesReportFilters {
   location: string;
   /** Quick select: 'quick' | 'custom' */
   filterMethod: 'quick' | 'custom';
-  /** Quick select: view by week | month | year */
-  timePeriod: 'week' | 'month' | 'year';
+  /** Quick select: view by week | month | year | all (no date filter) */
+  timePeriod: 'week' | 'month' | 'year' | 'all';
   /** Quick select: this period or last period */
   timePeriodScope: 'this' | 'last';
   /** Custom: start month (e.g. Jan) */
@@ -54,7 +54,7 @@ export const defaultSalesReportFilters: SalesReportFilters = {
   propertyType: 'All',
   location: 'All',
   filterMethod: 'quick',
-  timePeriod: 'week',
+  timePeriod: 'all',
   timePeriodScope: 'this',
   timePeriodStart: '',
   timePeriodStartYear: '',
