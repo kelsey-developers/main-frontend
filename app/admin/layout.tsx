@@ -6,9 +6,6 @@ import { usePathname } from 'next/navigation';
 import { LAYOUT_NAVBAR_OFFSET } from '@/lib/constants';
 import { ROLE_COLORS } from '@/lib/constants';
 
-/**
- * Admin hub nav items with icons — matches Agent Hub layout pattern for consistent design system.
- */
 const ADMIN_NAV = [
   {
     href: '/admin',
@@ -81,6 +78,27 @@ const ADMIN_NAV = [
     ),
   },
   {
+    href: '/dtr',
+    label: 'DTR',
+    icon: (
+      <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    href: '/payroll',
+    label: 'Payroll',
+    icon: (
+      <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+          d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  },
+  // ── Sales Report at the bottom ─────────────────────────────────────────────
+  {
     href: '/sales-report',
     label: 'Sales Report',
     icon: (
@@ -106,7 +124,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className={`${LAYOUT_NAVBAR_OFFSET} min-h-screen bg-gray-50 font-poppins`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* Mobile top bar — same structure as Agent Hub */}
+        {/* Mobile top bar */}
         <div className="lg:hidden flex items-center justify-between py-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <div
@@ -132,7 +150,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </button>
         </div>
 
-        {/* Mobile nav dropdown — same pattern as Agent Hub */}
+        {/* Mobile nav dropdown */}
         {mobileSidebarOpen && (
           <div className="lg:hidden bg-white border border-gray-100 rounded-2xl mt-4 shadow-lg overflow-hidden animate-fade-in-up">
             <nav className="p-3 space-y-1">
@@ -156,11 +174,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         )}
 
         <div className="flex flex-col lg:flex-row gap-8 py-8">
-          {/* Desktop Sidebar — same structure as Agent Hub */}
+          {/* Desktop Sidebar */}
           <aside className="hidden lg:flex flex-col w-64 shrink-0">
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden sticky top-28">
 
-              {/* Admin profile block — mirrors Agent Hub profile card */}
+              {/* Admin profile block */}
               <div className="p-6 border-b border-gray-50 bg-gradient-to-b from-gray-50/50 to-white">
                 <div className="flex items-center gap-4">
                   <div
@@ -184,7 +202,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
               </div>
 
-              {/* Navigation — same label and link styling as Agent Hub */}
+              {/* Navigation */}
               <nav className="p-4 space-y-1 relative">
                 <p className="px-4 pt-2 pb-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
                   Navigation
@@ -207,7 +225,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           </aside>
 
-          {/* Main content — same flex-1 min-w-0 as Agent Hub. Key by pathname so each page transition runs fade-in. */}
+          {/* Main content */}
           <main className="flex-1 min-w-0">
             <div key={pathname} className="animate-fade-in-up min-h-0">
               {children}
