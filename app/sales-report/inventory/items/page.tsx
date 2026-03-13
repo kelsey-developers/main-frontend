@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import InventoryTable from '../components/InventoryTable';
 import AuditTrailModal from '../components/AuditTrailModal';
+import CycleCountModal from '../components/CycleCountModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { buildWarehouseOptions, filterItemsByWarehouse } from '../helpers/itemsHelpers';
 import UnitSearchInput from '../components/UnitSearchInput';
@@ -30,6 +31,7 @@ function InventoryItemsPageContent() {
   const [selectedItem, setSelectedItem] = useState<typeof inventoryItems[number] | null>(
     itemIdFromQuery ? inventoryItems.find((item) => item.id === itemIdFromQuery) || null : null
   );
+  const [showCycleCountModal, setShowCycleCountModal] = useState(false);
 
   useEffect(() => {
     const refresh = () => {
@@ -211,10 +213,7 @@ function InventoryItemsPageContent() {
           <button
             type="button"
             onClick={() => {
-              const params = new URLSearchParams();
-              if (activeWarehouseId) params.set('warehouseId', activeWarehouseId);
-              params.set('returnTo', '/sales-report/inventory/items');
-              router.push(`/sales-report/inventory/cycle-count?${params.toString()}`);
+              setShowCycleCountModal(true);
             }}
             style={{
               padding: '10px 18px',
@@ -440,6 +439,14 @@ function InventoryItemsPageContent() {
           router.push('/sales-report/inventory/items');
         }} 
       />
+
+      {showCycleCountModal && (
+        <CycleCountModal
+          onClose={() => setShowCycleCountModal(false)}
+          returnTo="/sales-report/inventory/items"
+          warehousePrefill={activeWarehouseId ?? undefined}
+        />
+      )}
     </>
   );
 }

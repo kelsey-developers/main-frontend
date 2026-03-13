@@ -49,6 +49,73 @@ const RevealOnScroll: React.FC<RevealProps> = ({ children, className = '', delay
   );
 };
 
+function FeatureIcon({ title }: { title: string }) {
+  const commonProps = {
+    className: 'w-6 h-6 text-[#0B5858]',
+    fill: 'none' as const,
+    stroke: 'currentColor',
+    viewBox: '0 0 24 24',
+  };
+
+  if (title === 'Find Properties') {
+    // Magnifying glass over a house
+    return (
+      <svg {...commonProps}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.5 11a4.5 4.5 0 118.3 2.57l3.21 3.2a1 1 0 11-1.42 1.42l-3.2-3.21A4.5 4.5 0 018.5 11z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12l2-2m0 0l6-6 6 6M6 10v8a1 1 0 001 1h2" />
+      </svg>
+    );
+  }
+
+  if (title === 'Leave a Review') {
+    // Star / review icon
+    return (
+      <svg {...commonProps}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4l2.09 4.24L19 9.27l-3.5 3.41.83 4.85L12 15.77 7.67 17.5l.83-4.82L5 9.27l4.91-.99L12 4z" />
+      </svg>
+    );
+  }
+
+  if (title === 'Book a Stay') {
+    // Calendar / booking icon
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="4" width="18" height="17" rx="2" ry="2" strokeWidth={2} />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 2v4M16 2v4M3 10h18" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14h2v2H9zM13 14h2v2h-2z" />
+      </svg>
+    );
+  }
+
+  if (title === 'Be Our Agent') {
+    // Briefcase / partner icon
+    return (
+      <svg {...commonProps}>
+        <rect x="3" y="7" width="18" height="12" rx="2" ry="2" strokeWidth={2} />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M3 12h6m6 0h6" />
+      </svg>
+    );
+  }
+
+  if (title === 'Be Our Guest') {
+    // User / heart icon
+    return (
+      <svg {...commonProps}>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 12a4 4 0 100-8 4 4 0 000 8z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20a8 8 0 0116 0" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 8.5a2.5 2.5 0 00-3.54 0L12 9.46l-.96-.96a2.5 2.5 0 00-3.54 3.54l4.5 4.5 4.5-4.5a2.5 2.5 0 000-3.54z" />
+      </svg>
+    );
+  }
+
+  // Fallback: simple home icon
+  return (
+    <svg {...commonProps}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+    </svg>
+  );
+}
+
 
 export default function Homepage() {
   const router = useRouter();
@@ -229,23 +296,21 @@ export default function Homepage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
             {[
-              { title: 'Find Properties', desc: 'Lorem ipsum dolor sit amet, item nobis neque ea autem.' },
-              { title: 'Leave a Review', desc: 'Lorem ipsum dolor sit amet, item nobis neque ea autem.' },
-              { title: 'Book a Stay', desc: 'Lorem ipsum dolor sit amet, item nobis neque ea autem.' },
-              { title: 'Be Our Agent', desc: 'Lorem ipsum dolor sit amet, item nobis neque ea autem.' },
-              { title: 'Be Our Guest', desc: 'Lorem ipsum dolor sit amet, item nobis neque ea autem.' },
+              { title: 'Find Properties', desc: 'Find the best places to stay while here in Davao.' },
+              { title: 'Leave a Review', desc: 'Leave a review for the places you stayed at.' },
+              { title: 'Book a Stay', desc: 'Book and have a nice home experience .' },
+              { title: 'Be Our Agent', desc: 'Be an agent for Kelsey\'s Homestay and earn commissions.' },
+              { title: 'Be Our Guest', desc: 'Be a guest in Kelsey\'s and enjoy your stay.' },
             ].map((f, index) => (
               <RevealOnScroll key={f.title} delay={index * 120}>
-                <div className="p-6 rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+                <div className="h-full p-6 rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col">
                   <div className="w-12 h-12 rounded-xl bg-[#0B5858]/10 flex items-center justify-center mb-4">
-                    <svg className="w-6 h-6 text-[#0B5858]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
+                    <FeatureIcon title={f.title} />
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2" style={{ fontFamily: 'var(--font-poppins)' }}>
                     {f.title}
                   </h3>
-                  <p className="text-sm text-gray-600" style={{ fontFamily: 'var(--font-poppins)' }}>
+                  <p className="text-sm text-gray-600 flex-1" style={{ fontFamily: 'var(--font-poppins)' }}>
                     {f.desc}
                   </p>
                 </div>

@@ -7,22 +7,9 @@ import React, {
   useEffect,
   useCallback,
 } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import type { UserInfo } from '@/lib/api/auth';
 import { logoutAction } from '@/lib/actions/auth';
-
-const PROTECTED_ROUTES = [
-  '/admin',
-  '/manage-units',
-  '/manage-users',
-  '/booking',
-  '/booking-details',
-  '/reserve',
-  '/rewards',
-  '/profile',
-  '/settings',
-  '/sales-report',
-];
 
 export type NormalizedRole =
   | 'admin'
@@ -89,7 +76,6 @@ export function AuthProvider({
 }) {
   const [user, setUser] = useState<UserInfo | null>(initialUser);
   const router = useRouter();
-  const pathname = usePathname();
 
   // Re-sync whenever the server re-renders the layout with a new cookie value
   // (happens after loginAction redirect or router.refresh())
@@ -102,17 +88,11 @@ export function AuthProvider({
     setUser(null); // instant UI update
     await logoutAction();
 
-    const isProtected = PROTECTED_ROUTES.some((route) => pathname.startsWith(route));
-
-    if (isProtected) {
-      router.push('/login');
-    } else {
-      // After logout, always go through the root (/) so the
-      // server-side RootPage can decide the correct logged-out view
-      // (landing page with loading screen) and hide calendar, etc.
-      router.push('/');
-    }
-  }, [router, pathname]);
+    // After logout, always redirect to landing page (/) for all user types
+    // (admin, agent, housekeeping, finance, etc.) so RootPage shows the
+    // logged-out landing view instead of the login screen.
+    router.push('/');
+  }, [router]);
 
   // Prefer non-user roles when user has multiple (e.g. User + Agent after approval)
   const rawRoles = user?.roles ?? [];

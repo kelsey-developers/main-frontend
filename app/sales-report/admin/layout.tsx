@@ -31,7 +31,7 @@ export default function AdminLayout({
   return (
     <RouteGuard allowedRoles={['admin']}>
     <div className={`min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 ${LAYOUT_NAVBAR_OFFSET}`} style={{ fontFamily: 'Poppins' }}>
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10 pt-6">
         <div className="mb-8">
           <nav className="flex items-center gap-2 text-sm text-gray-600 mb-4">
             <Link href="/sales-report" className="text-[#0B5858] hover:underline">
