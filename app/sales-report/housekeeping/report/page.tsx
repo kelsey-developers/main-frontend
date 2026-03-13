@@ -1,8 +1,14 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  createDamageIncident,
+  uploadDamageIncidentAttachments,
+  type CreateDamageIncidentPayload,
+} from '@/lib/api/damageIncidents';
 import InventoryDropdown from '@/app/sales-report/inventory/components/InventoryDropdown';
 
 /** Unit from GET /api/units (backend may use title or name) */
@@ -20,18 +26,6 @@ type BookingOption = {
   guest: string;
   checkIn: string;
   checkOut: string;
-};
-
-/** Payload sent to POST /api/housekeeping/reports */
-type ReportPayload = {
-  unitId: string;
-  unit: string;
-  bookingId?: string;
-  location?: string;
-  reportedAt: string;
-  description: string;
-  reportedBy?: string;
-  items: Array<{ item: string; type: 'loss' | 'broken' }>;
 };
 
 function HousekeepingReportSkeleton() {
@@ -66,6 +60,12 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/** Format YYYY-MM-DD as "Mar 13, 2026" for display in Report Date field */
+function formatReportDateDisplay(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function unitDisplayLabel(unit: UnitOption): string {
   const name = unit.title ?? unit.name ?? unit.id;
   const loc = unit.location ?? unit.city;
@@ -77,11 +77,11 @@ type ProofFile = { file: File; preview?: string };
 export type ReportCategory = 'loss' | 'broken';
 
 export default function HousekeepingReportPage() {
+  const { user } = useAuth();
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [employeeId, setEmployeeId] = useState('');
-  const [employeeName, setEmployeeName] = useState('');
-  const [employeeLoading, setEmployeeLoading] = useState(false);
-  const [employeeError, setEmployeeError] = useState<string | null>(null);
+  const reportedByName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email
+    : '';
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [unitsError, setUnitsError] = useState<string | null>(null);
@@ -178,11 +178,15 @@ export default function HousekeepingReportPage() {
 
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
   const [proofFiles, setProofFiles] = useState<ProofFile[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState<string>('');
+  /** Report date: always defaults to today (ignores booking dates). */
+  const [reportDate, setReportDate] = useState<string>(todayStr);
+  const reportDateInputRef = useRef<HTMLInputElement>(null);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
 
@@ -199,65 +203,6 @@ export default function HousekeepingReportPage() {
       })),
     [bookings],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    const trimmedId = employeeId.trim();
-    if (!trimmedId) {
-      setEmployeeName('');
-      setEmployeeError(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    async function fetchEmployee() {
-      setEmployeeLoading(true);
-      setEmployeeError(null);
-      try {
-        const data = await apiClient.get<
-          | { id?: number | string; firstName?: string; lastName?: string; fullname?: string }
-          | { user?: { id?: number | string; firstName?: string; lastName?: string; fullname?: string } }
-        >(`/api/users/${encodeURIComponent(trimmedId)}`, { signal: controller.signal });
-
-        if (cancelled) return;
-
-        const userRecord = (data as any).user ?? data;
-        if (!userRecord) {
-          setEmployeeName('');
-          setEmployeeError('Employee not found');
-          return;
-        }
-
-        const fullName =
-          (userRecord.fullname as string) ||
-          [userRecord.firstName, userRecord.lastName].filter(Boolean).join(' ').trim();
-
-        if (!fullName) {
-          setEmployeeName('');
-          setEmployeeError('Employee not found');
-          return;
-        }
-
-        setEmployeeName(fullName);
-        setEmployeeError(null);
-      } catch (err) {
-        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return;
-        setEmployeeName('');
-        setEmployeeError(err instanceof Error ? err.message : 'Failed to load employee');
-      } finally {
-        if (!cancelled) {
-          setEmployeeLoading(false);
-        }
-      }
-    }
-
-    void fetchEmployee();
-
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [employeeId]);
 
   const addFiles = useCallback((files: FileList | null) => {
     if (!files?.length) return;
@@ -288,29 +233,41 @@ export default function HousekeepingReportPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedDescription = description.trim();
-    if (!selectedUnitId || !selectedUnit || !trimmedDescription || !employeeId.trim() || !employeeName.trim()) return;
+    if (!selectedUnitId || !selectedUnit || !trimmedDescription || !reportedByName) return;
     setSubmitError(null);
     setIsSubmitting(true);
 
-    const unitName = selectedUnit.title ?? selectedUnit.name ?? selectedUnit.id;
-    const payload: ReportPayload = {
-      unitId: selectedUnitId,
-      unit: unitName,
+    const reportedAtIso = new Date(reportDate + 'T12:00:00.000Z').toISOString();
+
+    const payload: CreateDamageIncidentPayload = {
       bookingId: selectedBookingId || undefined,
-      location: selectedUnit.location ?? selectedUnit.city,
-      reportedAt: todayStr,
+      unitId: selectedUnitId,
+      // reportedByUserId omitted: auth user id may not exist in market-backend User table (FK constraint).
+      // Backend should allow null and/or resolve reporter from session.
+      reportedAt: reportedAtIso,
       description: trimmedDescription,
-      items: [],
+      resolutionNotes: notes.trim() || undefined,
+      cost: 0,
+      chargedToGuest: 0,
+      absorbedAmount: 0,
+      status: 'open',
     };
 
     try {
-      await apiClient.post<{ ok?: boolean; id?: string; message?: string }>(
-        '/api/housekeeping/reports',
-        payload
-      );
+      const incident = await createDamageIncident(payload);
+      const incidentId = incident?.id != null ? String(incident.id) : '';
+
+      if (proofFiles.length > 0 && incidentId) {
+        await uploadDamageIncidentAttachments(
+          incidentId,
+          proofFiles.map((p) => p.file)
+        );
+      }
+
       setSubmitted(true);
       setSelectedUnitId('');
       setDescription('');
+      setNotes('');
       setSelectedBookingId('');
       proofFiles.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
       setProofFiles([]);
@@ -372,112 +329,136 @@ export default function HousekeepingReportPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <form id="housekeeping-report-form" onSubmit={handleSubmit} className="space-y-5">
+            {/* Booking – full width, optional */}
             <div>
-              <div className="flex flex-col sm:flex-row gap-3 mb-2">
-                <div className="flex-1 min-w-0 text-[13px]">
-                    <span className="block font-medium text-gray-700 mb-2">
-                      Employee ID No.<span className="text-red-500">*</span>
-                    </span>
-                  <input
-                    id="employee-id-input"
-                    type="text"
-                    value={employeeId}
-                    onChange={(e) => setEmployeeId(e.target.value)}
-                    placeholder="Enter employee ID"
-                    className="w-full px-3 py-2 text-md rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
-                  />
-                </div>
-                <div className="flex-1 min-w-0 text-[13px]">
-                  <label className="block  text-gray-500 mb-2">
-                    Employee name
-                  </label>
-                  <input
-                    type="text"
-                    value={
-                      employeeLoading
-                        ? 'Loading…'
-                        : employeeName || (employeeId.trim() ? 'No match found' : '')
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Booking
+                <span className="ml-1.5 font-normal text-gray-500">Optional – link to guest stay</span>
+              </label>
+              <InventoryDropdown
+                value={selectedBookingId}
+                onChange={setSelectedBookingId}
+                options={[
+                  {
+                    value: '',
+                    label: bookingsLoading ? 'Loading bookings…' : 'No booking linked',
+                  },
+                  ...bookingDropdownOptions,
+                ]}
+                placeholder={bookingsLoading ? 'Loading bookings…' : 'Select booking…'}
+                placeholderWhen=""
+                hideIcon
+                fullWidth
+                minWidthClass="min-w-0"
+                align="left"
+                disabled={bookingsLoading || bookings.length === 0}
+              />
+              {bookingsError && (
+                <p className="mt-1.5 text-sm text-amber-600">{bookingsError}</p>
+              )}
+              {bookings.length === 0 && !bookingsLoading && !bookingsError && (
+                <p className="mt-1.5 text-xs text-gray-500">
+                  No recent bookings found within the last week and a half.
+                </p>
+              )}
+            </div>
+
+            {/* Reported By and Report Date – side by side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Reported By <span className="text-red-500">*</span>
+                  <span className="ml-1.5 font-normal text-gray-500">Auto-filled</span>
+                </label>
+                <input
+                  type="text"
+                  value={reportedByName}
+                  readOnly
+                  aria-readonly
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 text-[13px] cursor-default"
+                  aria-label="Reported by (current user)"
+                />
+                {!reportedByName && (
+                  <p className="mt-1.5 text-xs text-amber-600">Sign in to see your name here.</p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="report-date-input" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Report Date <span className="text-red-500">*</span>
+                </label>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    const el = reportDateInputRef.current;
+                    if (el?.showPicker) el.showPicker();
+                    else el?.focus();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      const el = reportDateInputRef.current;
+                      if (el?.showPicker) el.showPicker();
+                      else el?.focus();
                     }
-                    disabled
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400"
-                  />
-                  {employeeError && (
-                    <p className="mt-1 text-xs text-amber-600">{employeeError}</p>
-                  )}
+                  }}
+                  className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white text-gray-900 py-2.5 pl-3 pr-3 text-[13px] cursor-pointer hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors min-h-[42px]"
+                  aria-label="Report date – click to open calendar"
+                >
+                  <svg className="w-5 h-5 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="flex-1 text-gray-900">{formatReportDateDisplay(reportDate)}</span>
                 </div>
+                <input
+                  ref={reportDateInputRef}
+                  id="report-date-input"
+                  type="date"
+                  value={reportDate}
+                  onChange={(e) => setReportDate(e.target.value)}
+                  className="sr-only"
+                  title="Report date"
+                  aria-hidden
+                />
               </div>
             </div>
 
+            {/* Unit – full width */}
             <div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-gray-700 mb-2">
-                  Unit <span className="text-red-500">*</span>
-                </span>
-                  <InventoryDropdown
-                    value={selectedUnitId}
-                    onChange={setSelectedUnitId}
-                    options={unitOptions}
-                    placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
-                    placeholderWhen=""
-                    hideIcon
-                    fullWidth
-                    minWidthClass="min-w-0"
-                    align="left"
-                    disabled={unitsLoading}
-                  />
-                  {unitsError && (
-                    <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Unit <span className="text-red-500">*</span>
+              </label>
+              <InventoryDropdown
+                value={selectedUnitId}
+                onChange={setSelectedUnitId}
+                options={unitOptions}
+                placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
+                placeholderWhen=""
+                hideIcon
+                fullWidth
+                minWidthClass="min-w-0"
+                align="left"
+                disabled={unitsLoading}
+              />
+              {unitsError && (
+                <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
+              )}
+              {units.length === 0 && !unitsLoading && !unitsError && (
+                <p className="mt-2 text-sm text-gray-500">No units available.</p>
+              )}
+              {selectedUnit && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {(selectedUnit.location ?? selectedUnit.city) && (
+                    <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
                   )}
-                  {units.length === 0 && !unitsLoading && !unitsError && (
-                    <p className="mt-2 text-sm text-gray-500">No units available.</p>
+                  {selectedUnit.property_type && (
+                    <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
                   )}
-                  {selectedUnit && (
-                    <p className="mt-2 text-xs text-gray-500">
-                      {(selectedUnit.location ?? selectedUnit.city) && (
-                        <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
-                      )}
-                      {selectedUnit.property_type && (
-                        <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
-                      )}
-                    </p>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="block text-sm font-medium text-gray-700 mb-2">
-                    Booking <span className="text-red-500">*</span>
-                  </span>
-                  <InventoryDropdown
-                    value={selectedBookingId}
-                    onChange={setSelectedBookingId}
-                    options={[
-                      {
-                        value: '',
-                        label: bookingsLoading ? 'Loading bookings…' : 'No booking linked',
-                      },
-                      ...bookingDropdownOptions,
-                    ]}
-                    placeholder={bookingsLoading ? 'Loading bookings…' : 'Link a booking (optional)'}
-                    placeholderWhen=""
-                    hideIcon
-                    fullWidth
-                    minWidthClass="min-w-0"
-                    align="left"
-                    disabled={bookingsLoading || bookings.length === 0}
-                  />
-                  {bookingsError && (
-                    <p className="mt-2 text-md text-amber-600">{bookingsError}</p>
-                  )}
-                  {bookings.length === 0 && !bookingsLoading && !bookingsError && (
-                    <p className="mt-2 text-xs text-gray-500">
-                      No recent bookings found within the last week and a half.
-                    </p>
-                  )}
-                </div>
-              </div>
+                </p>
+              )}
             </div>
 
-            <div>
+            <div className="mb-1.5">
               <label htmlFor="report-description" className="block text-sm font-medium text-gray-700 mb-2">
                 Description <span className="text-red-500">*</span>
               </label>
@@ -486,8 +467,23 @@ export default function HousekeepingReportPage() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
+                placeholder="Describe the issue, damage, or loss..."
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors resize-none overflow-y-auto text-[13px]"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="report-notes" className="block text-sm font-medium text-gray-700 mb-2">
+                Notes
+                <span className="ml-1.5 font-normal text-gray-500">(Optional)</span>
+              </label>
+              <textarea
+                id="report-notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
                 placeholder="Any additional notes..."
-                className="w-full px-4 py-2.5 h-55 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors resize-none overflow-y-scroll"
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors resize-none overflow-y-auto text-[13px]"
               />
             </div>
 
