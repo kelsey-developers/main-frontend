@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
+import { CalendarRange, Banknote, Users, Mail, Phone, User } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
@@ -127,11 +129,122 @@ const mockBookings: Booking[] = [
   }
 ];
 
-const BookingRequests: React.FC = () => {
+/** Chip style — same shape as cleaning JobCard (backgroundColor, color, boxShadow) */
+type ChipStyle = { backgroundColor: string; color: string; boxShadow: string };
+const chipShadow = (r: number, g: number, b: number, a = 0.35) => `0 1px 0 rgba(${r},${g},${b},${a})`;
+
+const BOOKING_STATUS_CHIPS: Record<Booking['status'], { label: string; chipStyle: ChipStyle }> = {
+  pending:         { label: 'Pending',         chipStyle: { backgroundColor: '#fef3c7', color: '#92400e', boxShadow: chipShadow(245, 158, 11) } },
+  'pending-payment': { label: 'Awaiting payment', chipStyle: { backgroundColor: '#e0f2fe', color: '#075985', boxShadow: chipShadow(14, 165, 233) } },
+  booked:          { label: 'Booked',          chipStyle: { backgroundColor: 'rgba(11, 88, 88, 0.15)', color: '#0B5858', boxShadow: chipShadow(11, 88, 88, 0.32) } },
+  ongoing:         { label: 'Ongoing',         chipStyle: { backgroundColor: '#ccfbf1', color: '#115e59', boxShadow: chipShadow(20, 184, 166) } },
+  completed:       { label: 'Completed',       chipStyle: { backgroundColor: '#ccfbf1', color: '#115e59', boxShadow: chipShadow(20, 184, 166) } },
+  declined:        { label: 'Declined',        chipStyle: { backgroundColor: '#f5f5f4', color: '#57534e', boxShadow: chipShadow(168, 162, 158, 0.22) } },
+  cancelled:       { label: 'Cancelled',       chipStyle: { backgroundColor: '#f5f5f4', color: '#57534e', boxShadow: chipShadow(168, 162, 158, 0.22) } },
+};
+
+/** Shared card styles — matches admin overview/cleaning/payouts design system */
+const CARD = {
+  base: 'bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden',
+  padding: 'p-6',
+  header: 'px-6 py-5 border-b border-gray-50 bg-gray-50/30',
+  label: 'text-[11px] font-bold text-gray-400 uppercase tracking-widest',
+  value: 'text-3xl font-bold text-gray-900 tracking-tight',
+  subtitle: 'text-xs font-medium text-gray-500',
+} as const;
+
+/** Stat card label → booking status (dot uses same color as status chip) */
+const STAT_LABEL_TO_STATUS: Record<string, Booking['status']> = {
+  Pending: 'pending',
+  'Awaiting Payment': 'pending-payment',
+  Booked: 'booked',
+  Declined: 'declined',
+};
+
+/** Stat card — same layout as agent/payouts: dot + label row, value, subtitle. Dot color matches status chip. */
+function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+  const status = STAT_LABEL_TO_STATUS[label];
+  const dotColor = status != null ? BOOKING_STATUS_CHIPS[status].chipStyle.backgroundColor : undefined;
+  return (
+    <div className={`${CARD.base} ${CARD.padding} hover:shadow-md transition-shadow relative`}>
+      <div className="flex items-center gap-2.5 mb-4">
+        {dotColor != null && (
+          <span
+            className="w-2.5 h-2.5 rounded-full shrink-0"
+            style={{ backgroundColor: dotColor }}
+            aria-hidden
+          />
+        )}
+        <p className={CARD.label}>{label}</p>
+      </div>
+      <p className={CARD.value}>{value}</p>
+      {sub != null && <p className={`${CARD.subtitle} mt-1 text-gray-400`}>{sub}</p>}
+    </div>
+  );
+}
+
+/** Dropdown — same format as agents directory: rounded-2xl, shadow, click-outside close */
+function CustomDropdown({
+  value,
+  onChange,
+  options,
+  className = '',
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between gap-3 pl-4 pr-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm min-w-[140px]"
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <svg className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 top-full right-0 mt-2 w-full min-w-[160px] bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => { onChange(option.value); setTimeout(() => setIsOpen(false), 150); }}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                value === option.value ? 'bg-[#0B5858]/10 text-[#0B5858]' : 'text-gray-600 hover:bg-gray-50 hover:text-[#0B5858] active:bg-[#0B5858]/5'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** When embedded is true, Navbar and Footer are omitted (e.g. when shown inside admin layout). */
+const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false }) => {
   const router = useRouter();
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isDrawerClosing, setIsDrawerClosing] = useState(false);
+  const [detailModalActive, setDetailModalActive] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: 'success' | 'error' }>({ visible: false, message: '', type: 'success' });
   const toastRef = useRef<HTMLDivElement | null>(null);
@@ -150,8 +263,9 @@ const BookingRequests: React.FC = () => {
   const [paymentModalActive, setPaymentModalActive] = useState(false);
   const [pendingPaymentBooking, setPendingPaymentBooking] = useState<Booking | null>(null);
   
-  const [allBookings, setAllBookings] = useState<Booking[]>([]);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  /** Initial data so first paint has full layout (header, stats, filter, list) — no conditional mount, everything fades in together */
+  const [allBookings, setAllBookings] = useState<Booking[]>(mockBookings);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [sortBy, setSortBy] = useState('Newest first');
   const [statusFilter, setStatusFilter] = useState('All Status');
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
@@ -179,13 +293,15 @@ const BookingRequests: React.FC = () => {
     setImageErrors(prev => ({ ...prev, [errorKey]: true }));
   };
 
-  // Load mock bookings
+  /** Check if URL looks like an image (for proof of payment) */
+  const isImageUrl = (url: string | undefined): boolean => {
+    if (!url || typeof url !== 'string') return false;
+    return /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(url.trim());
+  };
+
+  // Optional: refetch/sync bookings from API here; initial state already has mockBookings so first paint is complete
   useEffect(() => {
-    setSummaryLoading(true);
-    setTimeout(() => {
-      setAllBookings(mockBookings);
-      setSummaryLoading(false);
-    }, 800);
+    // setAllBookings(mockBookings); // use when switching to real API
   }, []);
 
   // Show toast notification
@@ -208,22 +324,17 @@ const BookingRequests: React.FC = () => {
     }, 2200);
   };
 
-  // Handle booking click
+  // Handle booking click — open detail modal
   const handleBookingClick = (booking: Booking) => {
     const latestBooking = allBookings.find(b => b.id === booking.id) || booking;
     setSelectedBooking(latestBooking);
-    setIsDrawerClosing(false);
-    setIsDrawerOpen(true);
+    requestAnimationFrame(() => setDetailModalActive(true));
   };
 
-  // Close drawer
-  const closeDrawer = () => {
-    setIsDrawerClosing(true);
-    setTimeout(() => {
-      setIsDrawerOpen(false);
-      setIsDrawerClosing(false);
-      setTimeout(() => setSelectedBooking(null), 50);
-    }, 300);
+  // Close booking detail modal
+  const closeDetailModal = () => {
+    setDetailModalActive(false);
+    setTimeout(() => setSelectedBooking(null), 250);
   };
 
   // Modal functions
@@ -267,10 +378,6 @@ const BookingRequests: React.FC = () => {
       
       const updatedBooking = { ...booking, status: 'pending-payment' as const };
       setAllBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));
-      
-      if (isDrawerOpen && selectedBooking?.id === booking.id) {
-        setSelectedBooking(updatedBooking);
-      }
       
       // Simulate API delay
       await new Promise(resolve => setTimeout(resolve, 1200));
@@ -316,10 +423,6 @@ const BookingRequests: React.FC = () => {
       const updatedBooking = { ...pendingBooking, status: 'declined' as const };
       setAllBookings(prev => prev.map(b => b.id === pendingBooking.id ? updatedBooking : b));
       
-      if (isDrawerOpen && selectedBooking?.id === pendingBooking.id) {
-        setSelectedBooking(updatedBooking);
-      }
-      
       closeConfirmModal();
       
       // Simulate API delay
@@ -347,7 +450,7 @@ const BookingRequests: React.FC = () => {
       });
     };
 
-    return `${formatDate(startDate)} → ${formatDate(endDate)}`;
+    return `${formatDate(startDate)} — ${formatDate(endDate)}`;
   };
 
   // Get summary stats
@@ -425,171 +528,134 @@ const BookingRequests: React.FC = () => {
     });
   };
 
-  // Booking item component
+  // Booking card — hierarchy: 1) Guest + listing, 2) Dates & amount, 3) Request preview, 4) Status/actions
   const BookingItem: React.FC<{ booking: Booking }> = ({ booking }) => {
     const guestName = `${booking.client.first_name} ${booking.client.last_name}`;
     const unitName = booking.listing.title;
-    const preview = booking.request_description 
-      ? (booking.request_description.length > 60 
-          ? booking.request_description.substring(0, 60) + '...' 
-          : booking.request_description)
-      : 'No special requests';
+    const location = booking.listing.location || '';
+    const preview = booking.request_description
+      ? (booking.request_description.length > 80 ? booking.request_description.substring(0, 80) + '…' : booking.request_description)
+      : null;
 
     const isPending = booking.status === 'pending';
     const isAwaitingPayment = booking.status === 'pending-payment';
     const isBooked = ['booked', 'ongoing', 'completed'].includes(booking.status);
     const isDeclined = ['declined', 'cancelled'].includes(booking.status);
-    
+
     return (
       <div
         onClick={() => handleBookingClick(booking)}
-        className={`relative border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer overflow-hidden ${
-          isPending ? 'bg-yellow-50/30 hover:border-yellow-300' : 
-          isAwaitingPayment ? 'bg-orange-50/30 hover:border-orange-300' : 
-          isBooked ? 'bg-teal-50/30 hover:border-teal-300' : 
-          isDeclined ? 'bg-red-50/30 hover:border-red-300' : 
-          'bg-white'
-        }`}
+        className="relative rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden cursor-pointer transition-all hover:shadow-md hover:border-gray-200"
       >
-        <div className="flex items-center gap-4 relative z-10">
-          <div className="flex-shrink-0">
-            <div 
-              className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden"
-              style={{
-                background: hasValidPhoto(booking.client?.profile_photo, `client-${booking.id}`)
-                  ? 'transparent'
-                  : 'linear-gradient(to bottom right, #14b8a6, #0d9488)'
-              }}
-            >
-              {hasValidPhoto(booking.client?.profile_photo, `client-${booking.id}`) ? (
-                <img
-                  src={booking.client?.profile_photo}
-                  alt={guestName}
-                  className="w-full h-full object-cover"
-                  onError={() => handleImageError(`client-${booking.id}`)}
-                />
-              ) : (
-                <span 
-                  className="text-white text-sm font-bold" 
-                  style={{ fontFamily: 'Poppins', fontWeight: 700 }}
-                >
-                  {getInitials(booking.client.first_name, booking.client.last_name)}
-                </span>
+        <div className="p-5 flex flex-col sm:flex-row sm:items-start gap-4">
+          {/* Primary: avatar + guest + listing */}
+          <div className="flex gap-4 flex-1 min-w-0">
+            <div className="flex-shrink-0">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shadow-sm"
+                style={{
+                  background: hasValidPhoto(booking.client?.profile_photo, `client-${booking.id}`)
+                    ? 'transparent'
+                    : 'linear-gradient(135deg, #0d9488, #0f766e)',
+                }}
+              >
+                {hasValidPhoto(booking.client?.profile_photo, `client-${booking.id}`) ? (
+                  <img
+                    src={booking.client?.profile_photo}
+                    alt={guestName}
+                    className="w-full h-full object-cover"
+                    onError={() => handleImageError(`client-${booking.id}`)}
+                  />
+                ) : (
+                  <span className="text-white text-sm font-bold" style={{ fontFamily: 'Poppins', fontWeight: 700 }}>
+                    {getInitials(booking.client.first_name, booking.client.last_name)}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Poppins' }}>
+                {guestName}
+              </h3>
+              <p className="text-sm font-medium text-gray-700 mt-0.5" style={{ fontFamily: 'Poppins' }}>
+                {unitName}
+              </p>
+              {location && (
+                <p className="text-xs text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>
+                  {location}
+                </p>
               )}
             </div>
           </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 text-base" style={{ fontFamily: 'Poppins' }}>
-                  {guestName}
-                </h3>
-                <p className="text-sm text-gray-600 mt-0.5" style={{ fontFamily: 'Poppins' }}>
-                  {unitName}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 text-sm text-gray-600 mt-0.5">
-              <span style={{ fontFamily: 'Poppins' }}>{formatDateRange(booking.check_in_date, booking.check_out_date)}</span>
-              <span className="text-gray-300" style={{ fontFamily: 'Poppins' }}>|</span>
-              <span className="font-semibold text-gray-900" style={{ fontFamily: 'Poppins' }}>
-                ₱ {booking.total_amount?.toLocaleString() || '0'}
-              </span>
-            </div>
-
-            <p className="text-sm text-gray-500 line-clamp-1 mt-0.5" style={{ fontFamily: 'Poppins' }}>
-              {preview}
-            </p>
+          {/* Status chip — same style as /cleaning JobCard (rounded-full, chipStyle) */}
+          <div className="flex-shrink-0 flex items-center justify-between sm:justify-end gap-3">
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium chip-shadow"
+              style={{ fontFamily: 'Poppins', ...BOOKING_STATUS_CHIPS[booking.status].chipStyle }}
+            >
+              {BOOKING_STATUS_CHIPS[booking.status].label}
+            </span>
           </div>
-
-          {/* Action Buttons */}
-          {booking.status === 'pending' ? (
-            <div className="flex-shrink-0 flex flex-col gap-2 ml-4 w-[100px]">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openApproveModal(booking);
-                }}
-                className="w-full px-4 py-2 text-white text-sm font-medium rounded-lg transition-all duration-200 hover:opacity-90 hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                style={{ fontFamily: 'Poppins', backgroundColor: '#05807E' }}
-              >
-                Approve
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openConfirmModal(booking);
-                }}
-                className="w-full px-4 py-2 text-white text-sm font-medium rounded-lg transition-all duration-200 hover:opacity-90 hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                style={{ fontFamily: 'Poppins', backgroundColor: '#B84C4C' }}
-              >
-                Decline
-              </button>
-            </div>
-          ) : (
-            <div className="flex-shrink-0 ml-4 w-[100px]">
-              <div
-                className="w-full px-4 py-2 rounded-lg text-white text-sm font-medium shadow-lg backdrop-blur-sm text-center"
-                style={{
-                  fontFamily: 'Poppins',
-                  background: isBooked 
-                    ? 'linear-gradient(135deg, #0B5858 0%, #0d7070 100%)' 
-                    : isDeclined 
-                    ? 'linear-gradient(135deg, #B84C4C 0%, #c46666 100%)'
-                    : 'linear-gradient(135deg, #F59E0B 0%, #F97316 100%)'
-                }}
-              >
-                {isBooked && 'Booked'}
-                {isDeclined && 'Declined'}
-                {isAwaitingPayment && 'Awaiting'}
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Secondary: dates, guests, amount (last) — smaller text, lucide icons */}
+        <div className="px-5 pb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <span className="inline-flex items-center gap-1.5 text-gray-600 font-medium" style={{ fontFamily: 'Poppins' }}>
+            <CalendarRange className="w-3.5 h-3.5 text-[#0B5858] shrink-0" aria-hidden />
+            {formatDateRange(booking.check_in_date, booking.check_out_date)}
+          </span>
+          {booking.total_guests != null && booking.total_guests > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-gray-500" style={{ fontFamily: 'Poppins' }}>
+              <Users className="w-3.5 h-3.5 text-[#0B5858] shrink-0" aria-hidden />
+              {booking.total_guests} guest{booking.total_guests !== 1 ? 's' : ''}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1.5 font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+            <Banknote className="w-3.5 h-3.5 text-[#0B5858] shrink-0" aria-hidden />
+            ₱{booking.total_amount?.toLocaleString() ?? '0'}
+          </span>
+        </div>
+
+        {/* Request block — same style as cleaning JobCard: left accent bar, label, content */}
+        <div className="px-5 pb-4 pt-0">
+          <div className="pl-3 border-l-[3px] border-[#0B5858]/30 min-h-[44px] flex flex-col justify-center" style={{ fontFamily: 'Poppins' }}>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">Request</p>
+            {preview ? (
+              <p className="text-xs text-gray-700 leading-snug line-clamp-2">{preview}</p>
+            ) : (
+              <p className="text-xs text-gray-300 italic">No special requests</p>
+            )}
+          </div>
+        </div>
+
+        {/* Action buttons — bottom of card, centered and full-width; only for pending */}
+        {isPending && (
+          <div
+            className="px-5 py-4 flex flex-wrap gap-3 justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => openConfirmModal(booking)}
+              className="min-w-[120px] flex-1 max-w-[180px] px-5 py-2.5 border border-red-200 text-red-700 bg-red-50/50 text-sm font-bold rounded-xl hover:bg-red-100 transition-all active:scale-[0.98] cursor-pointer"
+            >
+              Decline
+            </button>
+            <button
+              onClick={() => openApproveModal(booking)}
+              className="min-w-[120px] flex-1 max-w-[180px] px-5 py-2.5 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+            >
+              Approve
+            </button>
+          </div>
+        )}
       </div>
     );
   };
 
-  if (summaryLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <Navbar />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
-          <div className="mb-8">
-            <div className="h-10 bg-gray-200 rounded w-64 animate-pulse mb-4"></div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="bg-white rounded-lg p-5 shadow-sm animate-pulse">
-                <div className="h-4 bg-gray-200 rounded w-20 mb-3"></div>
-                <div className="h-8 bg-gray-200 rounded w-16"></div>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white border border-gray-200 rounded-lg p-4 animate-pulse">
-                <div className="flex gap-4">
-                  <div className="h-10 w-10 rounded-full bg-gray-200"></div>
-                  <div className="flex-1">
-                    <div className="h-5 bg-gray-200 rounded w-32 mb-2"></div>
-                    <div className="h-4 bg-gray-200 rounded w-24"></div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <Navbar />
+    <div className={embedded ? 'min-h-0' : 'min-h-screen bg-gradient-to-br from-gray-50 to-gray-100'}>
+      {!embedded && <Navbar />}
 
       {/* Toast Notification */}
       {toast.visible && (
@@ -609,6 +675,262 @@ const BookingRequests: React.FC = () => {
             {toast.message}
           </div>
         </div>
+      )}
+
+      {/* Booking detail modal — portaled to body so overlay + blur cover whole page (sidebar + nav) */}
+      {selectedBooking && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center p-3 sm:p-6 bg-gray-900/50 backdrop-blur-sm overflow-y-auto"
+          onClick={closeDetailModal}
+        >
+          <div
+            className="w-full max-w-[min(calc(100vw-1.5rem),32rem)] max-h-[90vh] sm:max-h-[85vh] bg-white rounded-t-2xl sm:rounded-2xl border border-gray-100 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.25)] flex flex-col transition-all duration-250 shrink-0 overflow-hidden"
+            style={{
+              transform: detailModalActive ? 'scale(1)' : 'scale(0.95)',
+              opacity: detailModalActive ? 1 : 0,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const b = selectedBooking;
+              const guestName = `${b.client.first_name} ${b.client.last_name}`;
+              const isPending = b.status === 'pending';
+              const assignedAgent = b.agent ?? (b.assigned_agent ? mockAgents.find(a => a.id === b.assigned_agent) : null);
+
+              return (
+                <>
+                  <div className="flex items-center justify-between px-4 py-4 sm:px-6 sm:py-5 border-b border-gray-100 bg-gray-50/30 shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      <h3 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight truncate" style={{ fontFamily: 'Poppins' }}>
+                        Booking details
+                      </h3>
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium chip-shadow"
+                        style={BOOKING_STATUS_CHIPS[b.status].chipStyle}
+                      >
+                        {BOOKING_STATUS_CHIPS[b.status].label}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeDetailModal}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                      aria-label="Close"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="p-4 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-5 sm:space-y-6" style={{ fontFamily: 'Poppins' }}>
+                    {/* Client Information */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Client information</h4>
+                      <div className="flex items-start gap-3 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shrink-0"
+                          style={{
+                            background: hasValidPhoto(b.client?.profile_photo, `detail-client-${b.id}`)
+                              ? 'transparent'
+                              : 'linear-gradient(135deg, #0d9488, #0f766e)',
+                          }}
+                        >
+                          {hasValidPhoto(b.client?.profile_photo, `detail-client-${b.id}`) ? (
+                            <img
+                              src={b.client?.profile_photo}
+                              alt={guestName}
+                              className="w-full h-full object-cover"
+                              onError={() => handleImageError(`detail-client-${b.id}`)}
+                            />
+                          ) : (
+                            <span className="text-white text-sm font-bold">{getInitials(b.client.first_name, b.client.last_name)}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            <span className="text-sm font-medium text-gray-900">{guestName}</span>
+                          </div>
+                          {b.client.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              <a href={`mailto:${b.client.email}`} className="text-xs text-gray-700 truncate hover:text-[#0B5858]">{b.client.email}</a>
+                            </div>
+                          )}
+                          {b.client.contact_number && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              <span className="text-xs text-gray-700">{b.client.contact_number}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Assigned Agent */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Assigned agent</h4>
+                      {assignedAgent ? (
+                        <div className="flex items-start gap-3 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          <div
+                            className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden shrink-0"
+                            style={{
+                              background: hasValidPhoto(assignedAgent.profile_photo, `detail-agent-${b.id}`)
+                                ? 'transparent'
+                                : 'linear-gradient(135deg, #0d9488, #0f766e)',
+                            }}
+                          >
+                            {hasValidPhoto(assignedAgent.profile_photo, `detail-agent-${b.id}`) ? (
+                              <img
+                                src={assignedAgent.profile_photo}
+                                alt={assignedAgent.fullname}
+                                className="w-full h-full object-cover"
+                                onError={() => handleImageError(`detail-agent-${b.id}`)}
+                              />
+                            ) : (
+                              <span className="text-white text-sm font-bold">
+                                {assignedAgent.fullname
+                                  ? (() => {
+                                      const parts = assignedAgent.fullname.trim().split(/\s+/);
+                                      return parts.length >= 2
+                                        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                                        : (parts[0]?.[0] ?? 'A').toUpperCase();
+                                    })()
+                                  : 'A'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              <span className="text-sm font-medium text-gray-900">{assignedAgent.fullname || 'Unknown'}</span>
+                            </div>
+                            {assignedAgent.email && (
+                              <div className="flex items-center gap-2">
+                                <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                <span className="text-xs text-gray-700 truncate">{assignedAgent.email}</span>
+                              </div>
+                            )}
+                            {assignedAgent.contact_number && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                <span className="text-xs text-gray-700">{assignedAgent.contact_number}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          <p className="text-xs text-gray-500">No agent assigned</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Booking details — Unit, Location, Check-in, Check-out, Guests, Total */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Booking details</h4>
+                      <div className="space-y-2 p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-xs font-medium text-gray-600 shrink-0">Unit</span>
+                          <span className="text-xs text-gray-900 text-right">{b.listing?.title || '—'}</span>
+                        </div>
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-xs font-medium text-gray-600 shrink-0">Location</span>
+                          <span className="text-xs text-gray-900 text-right">{b.listing?.location || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-xs font-medium text-gray-600 shrink-0">Check-in</span>
+                          <span className="text-xs text-gray-900">
+                            {new Date(b.check_in_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-xs font-medium text-gray-600 shrink-0">Check-out</span>
+                          <span className="text-xs text-gray-900">
+                            {new Date(b.check_out_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                        {b.total_guests != null && b.total_guests > 0 && (
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-xs font-medium text-gray-600 shrink-0">Guests</span>
+                            <span className="text-xs text-gray-900">{b.total_guests} guest{b.total_guests !== 1 ? 's' : ''}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-start gap-2 pt-1 border-t border-gray-100">
+                          <span className="text-xs font-medium text-gray-600 shrink-0">Total</span>
+                          <span className="text-sm font-bold text-gray-900">₱{b.total_amount?.toLocaleString() ?? '0'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Special request — full text, left accent */}
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2">Special request</h4>
+                      <div className="pl-3 border-l-[3px] border-[#0B5858]/30 min-h-[36px] flex flex-col justify-center">
+                        {b.request_description ? (
+                          <p className="text-xs text-gray-700 leading-relaxed">{b.request_description}</p>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">No special requests</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Proof of payment — if billing_document_url */}
+                    {b.billing_document_url && (
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-bold text-gray-900 mb-2 sm:mb-3">Proof of payment</h4>
+                        <div className="p-3 sm:p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          {isImageUrl(b.billing_document_url) ? (
+                            <img
+                              src={b.billing_document_url}
+                              alt="Proof of payment"
+                              className="w-full max-h-48 sm:max-h-64 object-contain rounded-lg border border-gray-200"
+                            />
+                          ) : (
+                            <a
+                              href={b.billing_document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              View document
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="px-4 py-3 sm:px-6 sm:py-4 border-t border-gray-100 bg-gray-50/30 flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 justify-center shrink-0">
+                    {isPending && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { closeDetailModal(); openConfirmModal(b); }}
+                          className="w-full sm:w-auto min-w-0 sm:min-w-[140px] px-5 py-2.5 border border-red-200 text-red-700 bg-red-50/50 text-sm font-bold rounded-xl hover:bg-red-100 transition-all active:scale-[0.98] cursor-pointer"
+                        >
+                          Decline
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { closeDetailModal(); openApproveModal(b); }}
+                          className="w-full sm:w-auto min-w-0 sm:min-w-[140px] px-5 py-2.5 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+                        >
+                          Approve
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Approve Modal */}
@@ -687,162 +1009,103 @@ const BookingRequests: React.FC = () => {
         .toast--exit { transform: translateX(100%); opacity: 0; }
       `}</style>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-4xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
-              Booking Requests
-            </h1>
-            <button
-              onClick={() => router.push('/admin')}
-              className="text-gray-600 hover:text-gray-900 transition-colors cursor-pointer flex items-center gap-1"
-              style={{ fontFamily: 'Poppins' }}
-            >
-              <span>←</span>
-              <span>Back to Dashboard</span>
-            </button>
+      {/* Main content — space-y-6 layout; when embedded, layout provides max-w-7xl */}
+      {(() => {
+        const stats = getSummaryStats();
+        /** Single fade-in for entire content so header, stats, filter, list appear together. When embedded, layout already wraps with animate-fade-in-up; when not, we add it here. */
+        const content = (
+          <div className={`space-y-6 ${!embedded ? 'animate-fade-in-up' : ''}`}>
+            {/* Page header — same pattern as admin overview: title left, optional actions right */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Booking Requests</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Review and manage guest booking requests, approvals, and payments.
+                </p>
+              </div>
+              {!embedded && (
+                <a
+                  href="/admin"
+                  className="inline-flex items-center gap-2 px-5 py-3 border border-[#0B5858]/30 text-[#0B5858] bg-white text-sm font-bold rounded-2xl hover:bg-[#0B5858]/5 transition-all"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Back to Dashboard
+                </a>
+              )}
+            </div>
+
+            {/* Summary stats — same StatCard style as admin overview (no icons) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <StatCard label="Pending" value={stats.pending} sub="Awaiting approval" />
+              <StatCard label="Awaiting Payment" value={stats.awaitingPayment} sub="Guest must pay" />
+              <StatCard label="Booked" value={stats.booked} sub="Confirmed & ongoing" />
+              <StatCard label="Declined" value={stats.declined} sub="Declined or cancelled" />
+            </div>
+
+            {/* Filter bar — dropdowns same format as agents directory, left-aligned */}
+            <div className="flex flex-wrap gap-3 items-center justify-start">
+              <CustomDropdown
+                value={statusFilter}
+                onChange={setStatusFilter}
+                options={[
+                  { value: 'All Status', label: 'All Status' },
+                  { value: 'Pending', label: 'Pending' },
+                  { value: 'Awaiting Payment', label: 'Awaiting Payment' },
+                  { value: 'Booked', label: 'Booked' },
+                  { value: 'Declined', label: 'Declined' },
+                ]}
+                className="min-w-[160px]"
+              />
+              <CustomDropdown
+                value={sortBy}
+                onChange={setSortBy}
+                options={[
+                  { value: 'Newest first', label: 'Newest first' },
+                  { value: 'Oldest first', label: 'Oldest first' },
+                  { value: 'Check-in (soonest)', label: 'Check-in (soonest)' },
+                  { value: 'Amount (high to low)', label: 'Amount (high to low)' },
+                  { value: 'Amount (low to high)', label: 'Amount (low to high)' },
+                ]}
+                className="min-w-[180px]"
+              />
+            </div>
+
+            {/* List area — always in DOM; placeholder when loading so nothing pops in after data loads */}
+            {summaryLoading ? (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm min-h-[280px]" aria-hidden />
+            ) : getFilteredBookings(allBookings).length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(() => {
+                  const filtered = getFilteredBookings(allBookings);
+                  const preserveStatusOrder = statusFilter === 'All Status';
+                  return getSortedBookings(filtered, preserveStatusOrder).map((booking) => (
+                    <BookingItem key={booking.id} booking={booking} />
+                  ));
+                })()}
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center">
+                <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <h3 className="text-lg font-bold text-gray-900 tracking-tight mb-1">
+                  No {statusFilter === 'All Status' ? 'Bookings' : statusFilter} Requests
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {statusFilter === 'All Status' ? 'No bookings found' : `No ${statusFilter.toLowerCase()} booking requests`}
+                </p>
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-          {(() => {
-            const stats = getSummaryStats();
-            return (
-              <>
-                <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-yellow-400 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-gray-600 text-sm font-semibold" style={{ fontFamily: 'Poppins' }}>Pending</p>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-yellow-400">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <p className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>{stats.pending}</p>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-l-4 border-orange-400 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-gray-600 text-sm font-semibold" style={{ fontFamily: 'Poppins' }}>Awaiting Payment</p>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-orange-400">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <p className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>{stats.awaitingPayment}</p>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-l-4 border-cyan-600 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-gray-600 text-sm font-semibold" style={{ fontFamily: 'Poppins' }}>Booked</p>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-cyan-600">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    </div>
-                    <p className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>{stats.booked}</p>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-red-50 to-red-100 border-l-4 border-red-400 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-gray-600 text-sm font-semibold" style={{ fontFamily: 'Poppins' }}>Declined</p>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-red-400">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <p className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>{stats.declined}</p>
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 border-l-4 border-gray-400 rounded-lg p-5 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-gray-600 text-sm font-semibold" style={{ fontFamily: 'Poppins' }}>Total</p>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-400">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                      </div>
-                    </div>
-                    <p className="text-3xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>{stats.total}</p>
-                  </div>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-
-        {/* Sort Controls */}
-        {allBookings.length > 0 && (
-          <div className="mb-6 flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins' }}>Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2"
-              style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as any}
-            >
-              <option>All Status</option>
-              <option>Pending</option>
-              <option>Awaiting Payment</option>
-              <option>Booked</option>
-              <option>Declined</option>
-            </select>
-            
-            <span className="text-sm font-medium text-gray-700 ml-2" style={{ fontFamily: 'Poppins' }}>Sort by:</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2"
-              style={{ fontFamily: 'Poppins' }}
-            >
-              <option>Newest first</option>
-              <option>Oldest first</option>
-              <option>Check-in (soonest)</option>
-              <option>Amount (high to low)</option>
-              <option>Amount (low to high)</option>
-            </select>
+        );
+        return embedded ? content : (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
+            {content}
           </div>
-        )}
-
-        {/* Booking List */}
-        {getFilteredBookings(allBookings).length === 0 ? (
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <svg className="w-24 h-24 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2" style={{ fontFamily: 'Poppins' }}>
-              No {statusFilter === 'All Status' ? 'Bookings' : statusFilter} Requests
-            </h3>
-            <p className="text-gray-600" style={{ fontFamily: 'Poppins' }}>
-              {statusFilter === 'All Status' ? 'No bookings found' : `No ${statusFilter.toLowerCase()} booking requests`}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(() => {
-              const filtered = getFilteredBookings(allBookings);
-              const preserveStatusOrder = statusFilter === 'All Status';
-              return getSortedBookings(filtered, preserveStatusOrder).map((booking) => (
-                <BookingItem key={booking.id} booking={booking} />
-              ));
-            })()}
-          </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* Decline Confirmation Modal */}
       {showConfirmModal && (
@@ -884,7 +1147,7 @@ const BookingRequests: React.FC = () => {
                 <button
                   onClick={handleDecline}
                   disabled={isProcessing}
-                  className="px-4 py-2 text-white rounded-lg transition-all duration-200 hover:opacity-90 hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 text-white text-sm font-bold rounded-xl transition-all duration-200 hover:opacity-95 active:scale-[0.98] cursor-pointer disabled:opacity-50"
                   style={{
                     backgroundColor: '#B84C4C',
                     fontFamily: 'Poppins'
@@ -898,7 +1161,7 @@ const BookingRequests: React.FC = () => {
         </div>
       )}
 
-      <Footer />
+      {!embedded && <Footer />}
     </div>
   );
 };

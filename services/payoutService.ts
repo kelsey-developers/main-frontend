@@ -84,6 +84,22 @@ const MOCK_PAYOUTS: Payout[] = [
     proofOfPaymentUrl: '/mock-proof.png',
     requestedAt: d(45), processedAt: d(44),
   },
+  // Extra mock entries for pagination testing (10 per page)
+  { id: 'pay-011', agentId: 'agent-005', agentName: 'Ana Reyes', amount: 1600, method: 'gcash', recipientNumber: '09161234567', recipientName: 'Ana Reyes', status: 'pending', requestedAt: d(2) },
+  { id: 'pay-012', agentId: 'agent-006', agentName: 'Luz Garcia', amount: 2100, method: 'maya', recipientNumber: '09261234567', recipientName: 'Luz Garcia', status: 'paid', proofOfPaymentUrl: '/mock-proof.png', requestedAt: d(12), processedAt: d(11) },
+  { id: 'pay-013', agentId: 'agent-007', agentName: 'Carlos Mendoza', amount: 890, method: 'gcash', recipientNumber: '09181234567', recipientName: 'Carlos Mendoza', status: 'processing', requestedAt: d(4) },
+  { id: 'pay-014', agentId: 'agent-008', agentName: 'Grace Villanueva', amount: 4400, method: 'bank_transfer', bankName: 'UnionBank', accountNumber: '1122334455', recipientName: 'Grace Villanueva', status: 'pending', requestedAt: d(1) },
+  { id: 'pay-015', agentId: 'agent-002', agentName: 'Maria Santos', amount: 1850, method: 'gcash', recipientNumber: '09191234567', recipientName: 'Maria Santos', status: 'paid', proofOfPaymentUrl: '/mock-proof.png', requestedAt: d(35), processedAt: d(34) },
+  { id: 'pay-016', agentId: 'agent-009', agentName: 'Elena Bautista', amount: 3200, method: 'maya', recipientNumber: '09291234567', recipientName: 'Elena Bautista', status: 'failed', notes: 'Transaction declined by bank.', requestedAt: d(8), processedAt: d(7) },
+  { id: 'pay-017', agentId: 'agent-010', agentName: 'Miguel Torres', amount: 2750, method: 'gcash', recipientNumber: '09151234567', recipientName: 'Miguel Torres', status: 'processing', requestedAt: d(6) },
+  { id: 'pay-018', agentId: 'agent-011', agentName: 'Sofia Ramos', amount: 1100, method: 'gcash', recipientNumber: '09141234567', recipientName: 'Sofia Ramos', status: 'paid', proofOfPaymentUrl: '/mock-proof.png', requestedAt: d(40), processedAt: d(39) },
+  { id: 'pay-019', agentId: 'agent-012', agentName: 'Antonio Lim', amount: 5300, method: 'bank_transfer', bankName: 'MetroBank', accountNumber: '5544332211', recipientName: 'Antonio Lim', status: 'pending', requestedAt: d(0) },
+  { id: 'pay-020', agentId: 'agent-001', agentName: 'Juan Dela Cruz', amount: 1200, method: 'maya', recipientNumber: '09281234567', recipientName: 'Juan Dela Cruz', status: 'paid', proofOfPaymentUrl: '/mock-proof.png', requestedAt: d(50), processedAt: d(48) },
+  { id: 'pay-021', agentId: 'agent-013', agentName: 'Carmen Ong', amount: 1980, method: 'gcash', recipientNumber: '09131234567', recipientName: 'Carmen Ong', status: 'processing', requestedAt: d(3) },
+  { id: 'pay-022', agentId: 'agent-014', agentName: 'Ramon Castillo', amount: 6100, method: 'maya', recipientNumber: '09271234567', recipientName: 'Ramon Castillo', status: 'paid', proofOfPaymentUrl: '/mock-proof.png', requestedAt: d(15), processedAt: d(14) },
+  { id: 'pay-023', agentId: 'agent-004', agentName: 'Pedro Flores', amount: 760, method: 'gcash', recipientNumber: '09111234567', recipientName: 'Pedro Flores', status: 'pending', requestedAt: d(1) },
+  { id: 'pay-024', agentId: 'agent-015', agentName: 'Teresa Navarro', amount: 2340, method: 'bank_transfer', bankName: 'BDO', accountNumber: '6677889900', recipientName: 'Teresa Navarro', status: 'paid', proofOfPaymentUrl: '/mock-proof.png', requestedAt: d(22), processedAt: d(21) },
+  { id: 'pay-025', agentId: 'agent-003', agentName: 'Roberto Cruz', amount: 1450, method: 'gcash', recipientNumber: '09251234567', recipientName: 'Roberto Cruz', status: 'pending', requestedAt: d(2) },
 ];
 
 // ─── Service Functions ────────────────────────────────────────────────────────

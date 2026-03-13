@@ -83,7 +83,7 @@ export default function CleaningSchedulePage() {
         <button
           type="button"
           onClick={() => { setScheduleDate(''); setShowSchedule(true); }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#0d9488] transition-colors cursor-pointer shadow-sm shrink-0"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-[#0B5858] hover:bg-[#094848] transition-colors cursor-pointer shadow-sm shrink-0"
           style={{ fontFamily: 'Poppins', fontWeight: 600 }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
