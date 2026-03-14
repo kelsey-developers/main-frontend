@@ -9,6 +9,24 @@ import TimePicker from '@/components/TimePicker';
 
 const NewListingFormMap = dynamic(() => import('@/components/NewListingFormMap'), { ssr: false });
 
+/** Discount rule for custom stay-length based pricing */
+export interface DiscountRule {
+  id: string;
+  minNights: number;
+  discountPercent: number;
+  label: string;
+}
+
+/** Holiday pricing rule — surcharge or discount on specific dates */
+export interface HolidayPricingRule {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  adjustmentType: 'increase' | 'discount';
+  adjustmentPercent: number;
+}
+
 export interface PrefillListing {
   id: string;
   title?: string | null;
@@ -35,6 +53,8 @@ export interface PrefillListing {
   check_in_time?: string | null;
   check_out_time?: string | null;
   assigned_agent_ids?: string[];
+  discount_rules?: DiscountRule[] | null;
+  holiday_pricing_rules?: HolidayPricingRule[] | null;
 }
 
 export interface NewListingFormPayload {
@@ -61,6 +81,8 @@ export interface NewListingFormPayload {
   check_in_time?: string;
   check_out_time?: string;
   assigned_agent_ids?: string[];
+  discount_rules?: DiscountRule[];
+  holiday_pricing_rules?: HolidayPricingRule[];
 }
 
 interface NewListingFormProps {
@@ -118,6 +140,22 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
     check_out_time: ''
   });
 
+  /* ── Discount & Holiday Pricing state ────────────────────────────── */
+  const [discountRules, setDiscountRules] = useState<DiscountRule[]>([
+    { id: 'weekly', minNights: 7, discountPercent: 10, label: 'Weekly (7+ nights)' },
+    { id: 'monthly', minNights: 28, discountPercent: 20, label: 'Monthly (28+ nights)' },
+  ]);
+  const [customMinNights, setCustomMinNights] = useState('');
+  const [customDiscountPercent, setCustomDiscountPercent] = useState('');
+  const [customDiscountLabel, setCustomDiscountLabel] = useState('');
+
+  const [holidayRules, setHolidayRules] = useState<HolidayPricingRule[]>([]);
+  const [holidayName, setHolidayName] = useState('');
+  const [holidayStartDate, setHolidayStartDate] = useState('');
+  const [holidayEndDate, setHolidayEndDate] = useState('');
+  const [holidayAdjustmentType, setHolidayAdjustmentType] = useState<'increase' | 'discount'>('increase');
+  const [holidayAdjustmentPercent, setHolidayAdjustmentPercent] = useState('');
+
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedMainImageId, setSelectedMainImageId] = useState<string | null>(null);
   const [showAllFieldsInternal] = useState(false);
@@ -136,6 +174,7 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
   const commonAmenities = ['WiFi', 'Air Conditioning', 'Kitchen', 'Parking', 'Pool', 'Gym', 'Balcony', 'Garden', 'Pet Friendly', 'Security', 'Elevator', 'Laundry', 'TV', 'Refrigerator', 'Microwave', 'Dishwasher'];
   const steps = [
     { id: 'basic-info', title: 'Basic Information', completed: false, active: true },
+    { id: 'pricing-discounts', title: 'Pricing & Discounts', completed: false, active: false },
     { id: 'property-details', title: 'Property Details', completed: false, active: false },
     { id: 'images', title: 'Images', completed: false, active: false },
     { id: 'location-map', title: 'Location Map', completed: false, active: false }
@@ -190,6 +229,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
       }
       setUploadedImages(allImages);
       setSelectedMainImageId(initialListing.main_image_url ? 'existing-main' : (allImages[0]?.id ?? null));
+      if (initialListing.discount_rules?.length) setDiscountRules(initialListing.discount_rules);
+      if (initialListing.holiday_pricing_rules?.length) setHolidayRules(initialListing.holiday_pricing_rules);
     }
   }, [mode, initialListing]);
 
@@ -311,10 +352,12 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
       case 1:
         return formData.title.trim() !== '' && formData.city.trim() !== '' && formData.price.trim() !== '';
       case 2:
-        return true;
+        return true; // pricing/discounts are optional
       case 3:
-        return uploadedImages.length > 0 && selectedMainImageId !== null;
+        return true;
       case 4:
+        return uploadedImages.length > 0 && selectedMainImageId !== null;
+      case 5:
         return selectedPosition !== null && formData.latitude !== '' && formData.longitude !== '';
       default:
         return false;
@@ -372,7 +415,9 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
         longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
         check_in_time: formData.check_in_time?.trim() || undefined,
-        check_out_time: formData.check_out_time?.trim() || undefined
+        check_out_time: formData.check_out_time?.trim() || undefined,
+        discount_rules: discountRules.length > 0 ? discountRules : undefined,
+        holiday_pricing_rules: holidayRules.length > 0 ? holidayRules : undefined,
       };
       await onSubmit(payload);
       if (typeof showToast === 'function') {
@@ -427,6 +472,227 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
       </div>
     </div>
   );
+
+  /** Step 2: Pricing & Discounts — weekly/monthly discounts + holiday surcharges */
+  const renderPricingDiscountsStep = () => {
+    const handleAddCustomDiscount = () => {
+      const minN = parseInt(customMinNights);
+      const pct = parseFloat(customDiscountPercent);
+      if (!minN || minN < 1 || !pct || pct <= 0 || pct > 100) return;
+      const newRule: DiscountRule = {
+        id: `custom-${Date.now()}`,
+        minNights: minN,
+        discountPercent: pct,
+        label: customDiscountLabel.trim() || `${minN}+ nights`,
+      };
+      setDiscountRules(prev => [...prev, newRule]);
+      setCustomMinNights('');
+      setCustomDiscountPercent('');
+      setCustomDiscountLabel('');
+    };
+
+    const handleAddHoliday = () => {
+      if (!holidayName.trim() || !holidayStartDate || !holidayEndDate || !holidayAdjustmentPercent) return;
+      const pct = parseFloat(holidayAdjustmentPercent);
+      if (!pct || pct <= 0 || pct > 200) return;
+      const newRule: HolidayPricingRule = {
+        id: `holiday-${Date.now()}`,
+        name: holidayName.trim(),
+        startDate: holidayStartDate,
+        endDate: holidayEndDate,
+        adjustmentType: holidayAdjustmentType,
+        adjustmentPercent: pct,
+      };
+      setHolidayRules(prev => [...prev, newRule]);
+      setHolidayName('');
+      setHolidayStartDate('');
+      setHolidayEndDate('');
+      setHolidayAdjustmentPercent('');
+    };
+
+    const basePrice = parseFloat(formData.price) || 0;
+
+    return (
+      <div className="space-y-8">
+        {/* ── Stay-Length Discounts ─────────────────────────────────────── */}
+        <div>
+          <h3 className="text-lg font-semibold text-black mb-1" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>Stay-Length Discounts</h3>
+          <p className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Poppins' }}>Offer discounts for longer stays. Guests booking for the minimum nights or more will receive the discount automatically.</p>
+
+          {discountRules.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {discountRules.map(rule => (
+                <div key={rule.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#0B5858]/10 flex items-center justify-center">
+                      <span className="text-sm font-bold text-[#0B5858]">{rule.discountPercent}%</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>{rule.label}</p>
+                      <p className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                        {rule.minNights}+ nights — {basePrice > 0 ? `₱${(basePrice * (1 - rule.discountPercent / 100)).toFixed(0)}/night` : `${rule.discountPercent}% off`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={rule.discountPercent}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (val >= 0 && val <= 100) {
+                          setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, discountPercent: val } : r));
+                        }
+                      }}
+                      className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]"
+                      style={{ fontFamily: 'Poppins' }}
+                      min={0}
+                      max={100}
+                    />
+                    <span className="text-sm text-gray-500">%</span>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountRules(prev => prev.filter(r => r.id !== rule.id))}
+                      className="ml-2 p-1 text-[#B84C4C] hover:bg-[#B84C4C]/10 rounded transition-colors cursor-pointer"
+                      aria-label="Remove discount"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add custom discount */}
+          <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
+            <p className="text-sm font-medium text-[#0B5858] mb-3" style={{ fontFamily: 'Poppins' }}>Add Custom Discount</p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Min Nights</label>
+                <input type="number" value={customMinNights} onChange={(e) => setCustomMinNights(e.target.value)} min={1} placeholder="e.g., 3" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Discount %</label>
+                <input type="number" value={customDiscountPercent} onChange={(e) => setCustomDiscountPercent(e.target.value)} min={1} max={100} placeholder="e.g., 15" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Label (optional)</label>
+                <input type="text" value={customDiscountLabel} onChange={(e) => setCustomDiscountLabel(e.target.value)} placeholder="e.g., 3-Night Deal" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+              <div className="flex items-end">
+                <button type="button" onClick={handleAddCustomDiscount} className="w-full px-4 py-2 text-white rounded-lg transition-colors cursor-pointer text-sm" style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}>Add Discount</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Holiday / Special Date Pricing ────────────────────────────── */}
+        <div>
+          <h3 className="text-lg font-semibold text-black mb-1" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>Holiday & Special Date Pricing</h3>
+          <p className="text-sm text-gray-500 mb-4" style={{ fontFamily: 'Poppins' }}>Increase prices during peak seasons/holidays, or offer discounts during off-peak dates.</p>
+
+          {holidayRules.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {holidayRules.map(rule => (
+                <div key={rule.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${rule.adjustmentType === 'increase' ? 'bg-[#B84C4C]/10' : 'bg-[#549F74]/10'}`}>
+                      <span className={`text-sm font-bold ${rule.adjustmentType === 'increase' ? 'text-[#B84C4C]' : 'text-[#549F74]'}`}>
+                        {rule.adjustmentType === 'increase' ? '+' : '-'}{rule.adjustmentPercent}%
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>{rule.name}</p>
+                      <p className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                        {new Date(rule.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(rule.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {basePrice > 0 && ` — ₱${(basePrice * (rule.adjustmentType === 'increase' ? (1 + rule.adjustmentPercent / 100) : (1 - rule.adjustmentPercent / 100))).toFixed(0)}/night`}
+                      </p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setHolidayRules(prev => prev.filter(r => r.id !== rule.id))} className="p-1 text-[#B84C4C] hover:bg-[#B84C4C]/10 rounded transition-colors cursor-pointer" aria-label="Remove holiday rule">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Preset holidays */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-[#0B5858] mb-2" style={{ fontFamily: 'Poppins' }}>Quick Add (Philippine Holidays):</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { name: 'Christmas Season', start: '2026-12-20', end: '2026-12-31' },
+                { name: 'New Year', start: '2026-12-31', end: '2027-01-02' },
+                { name: 'Holy Week', start: '2026-03-29', end: '2026-04-04' },
+                { name: 'Chinese New Year', start: '2027-02-06', end: '2027-02-08' },
+                { name: 'Summer Peak', start: '2026-04-01', end: '2026-05-31' },
+                { name: "All Saints' Day", start: '2026-10-31', end: '2026-11-02' },
+              ].map(preset => {
+                const alreadyAdded = holidayRules.some(r => r.name === preset.name);
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    disabled={alreadyAdded}
+                    onClick={() => {
+                      setHolidayName(preset.name);
+                      setHolidayStartDate(preset.start);
+                      setHolidayEndDate(preset.end);
+                      setHolidayAdjustmentType('increase');
+                      setHolidayAdjustmentPercent('25');
+                    }}
+                    className={`px-3 py-1 rounded-full text-sm border transition-colors ${alreadyAdded ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer'}`}
+                    style={{ fontFamily: 'Poppins' }}
+                  >
+                    {preset.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Custom holiday form */}
+          <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
+            <p className="text-sm font-medium text-[#0B5858] mb-3" style={{ fontFamily: 'Poppins' }}>Add Holiday / Special Date Pricing</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Holiday / Event Name</label>
+                <input type="text" value={holidayName} onChange={(e) => setHolidayName(e.target.value)} placeholder="e.g., Christmas Season" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Adjustment Type</label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setHolidayAdjustmentType('increase')} className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer ${holidayAdjustmentType === 'increase' ? 'bg-[#B84C4C] text-white border-[#B84C4C]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`} style={{ fontFamily: 'Poppins' }}>
+                    Price Increase ↑
+                  </button>
+                  <button type="button" onClick={() => setHolidayAdjustmentType('discount')} className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors cursor-pointer ${holidayAdjustmentType === 'discount' ? 'bg-[#549F74] text-white border-[#549F74]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`} style={{ fontFamily: 'Poppins' }}>
+                    Discount ↓
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Start Date</label>
+                <input type="date" value={holidayStartDate} onChange={(e) => setHolidayStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>End Date</label>
+                <input type="date" value={holidayEndDate} onChange={(e) => setHolidayEndDate(e.target.value)} min={holidayStartDate} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Adjustment %</label>
+                <input type="number" value={holidayAdjustmentPercent} onChange={(e) => setHolidayAdjustmentPercent(e.target.value)} min={1} max={200} placeholder="e.g., 25" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+              </div>
+            </div>
+            <button type="button" onClick={handleAddHoliday} className="px-4 py-2 text-white rounded-lg transition-colors cursor-pointer text-sm" style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}>Add Holiday Pricing</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderPropertyDetailsStep = () => (
     <div className="space-y-6">
@@ -565,9 +831,10 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
   const renderStepContent = () => {
     switch (currentStep) {
       case 1: return <div className="animate-fade-in-up">{renderBasicInfoPricingStep()}</div>;
-      case 2: return <div className="animate-fade-in-up">{renderPropertyDetailsStep()}</div>;
-      case 3: return <div className="animate-fade-in-up">{renderImagesStep()}</div>;
-      case 4: return <div className="animate-fade-in-up">{renderLocationMapStep()}</div>;
+      case 2: return <div className="animate-fade-in-up">{renderPricingDiscountsStep()}</div>;
+      case 3: return <div className="animate-fade-in-up">{renderPropertyDetailsStep()}</div>;
+      case 4: return <div className="animate-fade-in-up">{renderImagesStep()}</div>;
+      case 5: return <div className="animate-fade-in-up">{renderLocationMapStep()}</div>;
       default: return null;
     }
   };
