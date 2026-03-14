@@ -1387,4 +1387,4 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
   );
 };
 
-export default BookingRequests;
+export { BookingRequests };
