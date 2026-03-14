@@ -629,10 +629,16 @@ export default function SuppliersPage() {
                   <div className="flex items-center gap-2 md:justify-start flex-wrap">
                     <button
                       onClick={() => router.push(`/sales-report/inventory/purchase-orders?supplierId=${s.id}`)}
-                      className="px-3 py-1.5 rounded-lg border border-[#cce8e8] bg-white text-[#0b5858] text-[11.5px] font-semibold hover:bg-[#e8f4f4] transition-colors whitespace-nowrap"
+                      className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
+                      title="View PO Orders"
+                      aria-label="View PO Orders"
                       style={{ fontFamily: 'Poppins' }}
                     >
-                      View PO Orders
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M2 4h12v9a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 4V3a1 1 0 011-1h2v2H4M6 2h4v2H6V2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M5 8h6M5 10h4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/>
+                      </svg>
                     </button>
                     <button
                       onClick={() => openEdit(s)}

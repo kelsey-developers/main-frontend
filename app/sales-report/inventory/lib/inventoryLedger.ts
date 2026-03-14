@@ -6,6 +6,7 @@ import {
   inventoryItems,
   inventoryWarehouseDirectory,
   getAllocatedQuantityForUnit,
+  isWarehouseActive,
 } from './inventoryDataStore';
 
 type BackendReferenceType = 'purchase_order' | 'goods_receipt' | 'booking' | 'damage_incident' | 'manual_adjustment';
@@ -104,32 +105,118 @@ const postMovement = async (
   };
   if (overrides?.unitId) payload.unitId = overrides.unitId;
 
+  // type ('IN' | 'OUT') is the action recorded for the stock movement in the database.
   const response = await apiClient.post<InventoryMovementResponse>('/api/inventory/movements', payload);
   return response.movement.id;
 };
 
-/** Input for manual stock adjustments (cycle count, additions only). Quantity must be positive. */
+/** Input for manual stock adjustments (cycle count). Quantity > 0 = add (IN), quantity < 0 = remove (OUT). */
 export type StockAdjustmentInput = LedgerMovementInput & { unitId?: string };
 
 /**
- * Manual adjustments for cycle count are sent as IN (add) with positive quantity.
+ * Manual adjustments for cycle count: positive quantity = add stock (IN), negative = remove stock (OUT).
+ * Persists via POST /api/inventory/movements (proxied to backend → database).
  * Use referenceType 'BOOKING' and referenceId when items are transferred from a booking.
+ * For removals, warehouse must have sufficient stock.
  */
 export const processStockAdjustment = async (input: StockAdjustmentInput): Promise<LedgerResult> => {
   if (input.quantity === 0) {
     throw new Error('Adjustment quantity cannot be zero.');
   }
-  if (input.quantity < 0) {
-    throw new Error('Cycle count adjustments are additions only. Less found physically = loss (track separately).');
-  }
 
   const overrides: Partial<{ warehouseId: string; referenceId: string; notes: string; unitId?: string }> = {};
   if (input.unitId) overrides.unitId = input.unitId;
 
+  const isRemoval = input.quantity < 0;
+  const absQty = Math.abs(input.quantity);
+
+  if (isRemoval) {
+    const available = getAvailableQuantity(input.productId, input.warehouseId);
+    if (available < absQty) {
+      throw new Error(
+        `Cannot remove ${absQty}: only ${available} available in this warehouse.`
+      );
+    }
+  }
+
   const movementId = await postMovement(
-    { ...input, quantity: input.quantity, referenceType: input.referenceType ?? 'MANUAL' },
-    'IN',
+    { ...input, quantity: absQty, referenceType: input.referenceType ?? 'MANUAL' },
+    isRemoval ? 'OUT' : 'IN',
     Object.keys(overrides).length > 0 ? overrides : undefined
+  );
+
+  await loadInventoryDataset(true);
+  const result = buildLedgerResult(input.productId, [movementId]);
+
+  emitInventoryMovementUpdated({
+    source: 'stock-out',
+    movementIds: [movementId],
+    productId: input.productId,
+  });
+
+  return result;
+};
+
+/** Input for unit cycle count: adjust allocation in a unit. Quantity > 0 = add to unit, < 0 = remove from unit. */
+export interface UnitAllocationAdjustmentInput {
+  productId: string;
+  unitId: string;
+  /** Optional: for movement record. If omitted, first active warehouse is used so the movement is still persisted. */
+  warehouseId?: string;
+  quantity: number;
+  reason: string;
+  date: string;
+  reference?: string;
+  referenceType?: 'PO' | 'BOOKING' | 'DAMAGE' | 'MANUAL';
+  notes?: string;
+  createdBy?: string;
+}
+
+/**
+ * Unit cycle count: adjust stock allocated to a unit. Positive quantity = add to unit, negative = remove.
+ * For removals, allocated quantity in the unit must be at least abs(quantity).
+ * Persists via POST /api/inventory/allocations and POST /api/inventory/movements (proxied to backend → database).
+ */
+export const processUnitAllocationAdjustment = async (
+  input: UnitAllocationAdjustmentInput
+): Promise<LedgerResult> => {
+  if (input.quantity === 0) {
+    throw new Error('Adjustment quantity cannot be zero.');
+  }
+
+  const allocated = getAllocatedQuantityForUnit(input.productId, input.unitId);
+  if (input.quantity < 0 && allocated < Math.abs(input.quantity)) {
+    throw new Error(
+      `Cannot remove ${Math.abs(input.quantity)}: only ${allocated} allocated in this unit.`
+    );
+  }
+
+  await apiClient.post('/api/inventory/allocations', {
+    productId: input.productId,
+    unitId: input.unitId,
+    quantityDelta: input.quantity,
+  });
+
+  const activeWarehouses = inventoryWarehouseDirectory.filter((w) => isWarehouseActive(w));
+  const warehouseIdForMovement = input.warehouseId ?? activeWarehouses[0]?.id;
+  if (!warehouseIdForMovement) {
+    throw new Error('No active warehouse available. Movement could not be recorded.');
+  }
+
+  const movementId = await postMovement(
+    {
+      productId: input.productId,
+      warehouseId: warehouseIdForMovement,
+      quantity: Math.abs(input.quantity),
+      reason: input.reason,
+      date: input.date,
+      reference: input.reference,
+      referenceType: input.referenceType ?? 'MANUAL',
+      notes: input.notes,
+      createdBy: input.createdBy,
+    },
+    input.quantity > 0 ? 'IN' : 'OUT',
+    { referenceId: input.unitId, unitId: input.unitId }
   );
 
   await loadInventoryDataset(true);

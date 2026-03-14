@@ -25,6 +25,7 @@ export {
   updateInventoryItem,
   updateProductMinStock,
   getUnitAllocationsForDisplay,
+  getUnitCountForProduct,
   normalizeUnit,
 } from './inventoryData';
 

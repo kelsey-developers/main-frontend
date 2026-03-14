@@ -338,6 +338,17 @@ const refreshUnitItemsDisplay = () => {
   replaceArray(mockUnitItems, display);
 };
 
+/** Number of units that have this product allocated. Used for warehouse reorder = minThreshold × unit count. */
+export const getUnitCountForProduct = (productId: string): number => {
+  const unitIds = new Set<string>();
+  for (const row of mockUnitItems) {
+    const pid = row.productId ?? (row as { id?: string }).id;
+    const uid = row.unitId ?? row.assignedToUnit;
+    if (pid === productId && uid) unitIds.add(uid);
+  }
+  return unitIds.size;
+};
+
 const normalizeWarehouseRecord = (wh: Record<string, unknown>): WarehouseDirectoryRecord => {
   const { isActive, is_active, deletedAt, deleted_at, ...rest } = wh;
   // Backend has no isActive; use deletedAt/deleted_at for soft deletion. Legacy isActive/is_active → deletedAt.

@@ -79,6 +79,18 @@
             <p className="text-sm mt-4 sm:text-base text-gray-600">Get items for a unit from warehouse, to and reflect in the unit</p>
           </button>
           <Link
+            href={`/sales-report/inventory/cycle-count?unitOnly=1&returnTo=${encodeURIComponent(HOUSEKEEPING_BASE)}`}
+            className="col-span-1 bg-white/90 rounded-2xl p-6 sm:p-7 shadow-sm border border-gray-100 flex flex-col items-center text-center transition transform hover:-translate-y-1 hover:shadow-lg hover:border-[#05807e]/40 focus:outline-none focus:ring-2 focus:ring-[#05807e]/30 min-h-[300px]"
+          >
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-[#05807e]/10 text-[#05807e] ring-2 ring-[#05807e]/10 my-4">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+            </div>
+            <h2 className="text-lg mt-2 sm:text-xl font-semibold text-gray-900 tracking-tight mb-1">Unit cycle count</h2>
+            <p className="text-sm mt-4 sm:text-base text-gray-600">Add or remove room stock to match physical count (unit-only adjustments)</p>
+          </Link>
+          <Link
             href={`${HOUSEKEEPING_BASE}/report`}
             className="col-span-1 bg-white/90 rounded-2xl p-6 sm:p-7 shadow-sm border border-gray-100 flex flex-col items-center text-center transition transform hover:-translate-y-1 hover:shadow-lg hover:border-red-400/40 focus:outline-none focus:ring-2 focus:ring-red-300/40 min-h-[300px]"
           >
