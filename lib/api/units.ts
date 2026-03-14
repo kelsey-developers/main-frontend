@@ -62,9 +62,10 @@ function buildImages(
   return images;
 }
 
-export async function listUnitsForManage(): Promise<Listing[]> {
+export async function listUnitsForManage(params?: { search?: string }): Promise<Listing[]> {
   try {
-    const data = await apiClient.get<unknown[]>('/api/units/manage');
+    const qs = params?.search?.trim() ? `?search=${encodeURIComponent(params.search.trim())}` : '';
+    const data = await apiClient.get<unknown[]>(`/api/units/manage${qs}`);
     return Array.isArray(data) ? data.map((u) => toManageListing(u as Record<string, unknown>)) : [];
   } catch (err) {
     if (isUnitsApiUnavailable(err)) return [];
