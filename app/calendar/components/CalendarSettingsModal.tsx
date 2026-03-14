@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 
 type LocalBlockedDateRange = {
@@ -8,6 +9,10 @@ type LocalBlockedDateRange = {
   startDate: string;
   endDate: string;
   reason?: string;
+  /** Source of external booking that caused the block */
+  externalSource?: string;
+  /** Guest name from external booking platform */
+  externalGuestName?: string;
 };
 
 type LocalSpecialPricingRule = {
@@ -40,6 +45,10 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
   const [blockedEndDate, setBlockedEndDate] = useState('');
   const [blockedReason, setBlockedReason] = useState('');
   const [blockedRanges, setBlockedRanges] = useState<LocalBlockedDateRange[]>([]);
+  /** Whether the blocked date is from an external booking site */
+  const [isExternalBooking, setIsExternalBooking] = useState(false);
+  const [externalSource, setExternalSource] = useState('');
+  const [externalGuestName, setExternalGuestName] = useState('');
 
   const [pricingStartDate, setPricingStartDate] = useState('');
   const [pricingEndDate, setPricingEndDate] = useState('');
@@ -52,16 +61,24 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
   const handleSaveBlockedRange = () => {
     if (!blockedStartDate || !blockedEndDate) return;
     setIsSaving(true);
+    const autoReason = isExternalBooking
+      ? `Booked via ${externalSource || 'External Site'}${externalGuestName ? ` — Guest: ${externalGuestName}` : ''}`
+      : blockedReason.trim() || undefined;
     const newRange: LocalBlockedDateRange = {
       id: `blocked-${Date.now()}`,
       startDate: blockedStartDate,
       endDate: blockedEndDate,
-      reason: blockedReason.trim() || undefined,
+      reason: typeof autoReason === 'string' ? autoReason : undefined,
+      externalSource: isExternalBooking ? (externalSource || 'Other') : undefined,
+      externalGuestName: isExternalBooking ? (externalGuestName || undefined) : undefined,
     };
     setBlockedRanges((prev) => [...prev, newRange]);
     setBlockedStartDate('');
     setBlockedEndDate('');
     setBlockedReason('');
+    setIsExternalBooking(false);
+    setExternalSource('');
+    setExternalGuestName('');
     setTimeout(() => setIsSaving(false), 300);
   };
 
@@ -121,11 +138,20 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  /** Portal to document.body so overlay covers the entire viewport (avoids clipping/stacking context from calendar container or admin layout). */
+  const modalContent = (
     <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center"
       onClick={onClose}
-      style={{ overflow: 'visible', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)' }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="calendar-settings-modal-title"
+      style={{
+        zIndex: 99999,
+        overflow: 'auto',
+        backdropFilter: 'blur(6px)',
+        WebkitBackdropFilter: 'blur(6px)',
+      }}
     >
       <div
         className="bg-white rounded-xl max-w-6xl w-full mx-4 flex flex-col"
@@ -140,7 +166,7 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
         }}
       >
         <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 flex-shrink-0">
-          <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'var(--font-poppins)' }}>
+          <h2 id="calendar-settings-modal-title" className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'var(--font-poppins)' }}>
             {isGlobal ? 'Global Calendar Settings' : 'Unit Calendar Settings'}
           </h2>
           <button
@@ -191,26 +217,82 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
                         <SingleDatePicker value={blockedEndDate} onChange={setBlockedEndDate} placeholder="Select end date" />
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-0.5" style={{ fontFamily: 'var(--font-poppins)' }}>
-                        Reason (Optional)
+                    {/* Toggle: external booking vs manual block */}
+                    <div className="flex items-center gap-3">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isExternalBooking}
+                          onChange={(e) => setIsExternalBooking(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0B5858] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#0B5858]"></div>
                       </label>
-                      <input
-                        type="text"
-                        value={blockedReason}
-                        onChange={(e) => setBlockedReason(e.target.value)}
-                        placeholder="e.g., Private event"
-                        className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B5858] focus:border-transparent transition-all"
-                        style={{ fontFamily: 'var(--font-poppins)' }}
-                      />
+                      <span className="text-sm text-gray-700" style={{ fontFamily: 'var(--font-poppins)' }}>
+                        Booked via another platform
+                      </span>
                     </div>
+
+                    {isExternalBooking ? (
+                      <div className="space-y-2.5 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-0.5" style={{ fontFamily: 'var(--font-poppins)' }}>
+                            Booking Source
+                          </label>
+                          <select
+                            value={externalSource}
+                            onChange={(e) => setExternalSource(e.target.value)}
+                            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B5858] focus:border-transparent transition-all bg-white"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          >
+                            <option value="">Select platform...</option>
+                            <option value="Airbnb">Airbnb</option>
+                            <option value="Booking.com">Booking.com</option>
+                            <option value="Agoda">Agoda</option>
+                            <option value="Expedia">Expedia</option>
+                            <option value="VRBO">VRBO</option>
+                            <option value="Walk-in">Walk-in / Direct</option>
+                            <option value="Phone">Phone Reservation</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-0.5" style={{ fontFamily: 'var(--font-poppins)' }}>
+                            Guest Name (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={externalGuestName}
+                            onChange={(e) => setExternalGuestName(e.target.value)}
+                            placeholder="e.g., John Doe"
+                            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B5858] focus:border-transparent transition-all"
+                            style={{ fontFamily: 'var(--font-poppins)' }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-0.5" style={{ fontFamily: 'var(--font-poppins)' }}>
+                          Reason (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={blockedReason}
+                          onChange={(e) => setBlockedReason(e.target.value)}
+                          placeholder="e.g., Private event, Maintenance"
+                          className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B5858] focus:border-transparent transition-all"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        />
+                      </div>
+                    )}
+
                     <button
                       onClick={handleSaveBlockedRange}
                       disabled={!blockedStartDate || !blockedEndDate || isSaving}
                       className="px-4 py-1.5 text-sm bg-[#0B5858] text-white rounded-lg font-medium hover:bg-[#094b4b] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:shadow-md active:scale-95"
                       style={{ fontFamily: 'var(--font-poppins)' }}
                     >
-                      {isSaving ? 'Saving...' : 'Save Blocked Range'}
+                      {isSaving ? 'Saving...' : isExternalBooking ? 'Block for External Booking' : 'Save Blocked Range'}
                     </button>
                   </div>
                 </section>
@@ -302,6 +384,19 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
                               <div className="text-xs font-medium text-gray-900 mb-0.5" style={{ fontFamily: 'var(--font-poppins)' }}>
                                 {formatDateDisplay(range.startDate)} – {formatDateDisplay(range.endDate)}
                               </div>
+                              {range.externalSource && (
+                                <div className="mb-0.5">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800" style={{ fontFamily: 'var(--font-poppins)' }}>
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                    {range.externalSource}
+                                  </span>
+                                </div>
+                              )}
+                              {range.externalGuestName && (
+                                <div className="text-[11px] text-gray-700 leading-tight" style={{ fontFamily: 'var(--font-poppins)' }}>
+                                  Guest: {range.externalGuestName}
+                                </div>
+                              )}
                               {range.reason && (
                                 <div className="text-[11px] text-gray-600 leading-tight" style={{ fontFamily: 'var(--font-poppins)' }}>
                                   {range.reason}
@@ -400,6 +495,8 @@ const CalendarSettingsModal: React.FC<CalendarSettingsModalProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : null;
 };
 
 export default CalendarSettingsModal;
