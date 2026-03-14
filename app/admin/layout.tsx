@@ -110,9 +110,12 @@ const ADMIN_NAV = [
   },
 ];
 
-/** Active state: exact match for /admin, otherwise path starts with href */
+/** Active state: exact match for /admin, otherwise path starts with href.
+ *  Special case: /payroll must not activate when on /payroll/dtr (DTR has its own nav item). */
 function isActive(pathname: string, href: string) {
-  return href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
+  if (href === '/admin') return pathname === '/admin';
+  if (href === '/payroll') return pathname === '/payroll' || (pathname.startsWith('/payroll/') && !pathname.startsWith('/payroll/dtr'));
+  return pathname.startsWith(href);
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

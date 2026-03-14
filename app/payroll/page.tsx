@@ -1,1579 +1,561 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { getPayroll, getPayrollById, markCommissionPaid } from '@/services/payrollService';
-import { downloadDailyPayslipPDF, downloadMonthlyPayslipPDF } from '@/lib/payslipGenerator';
+import React, { useState, useEffect, useCallback } from 'react';
 
-type EmploymentType = 'DAILY' | 'MONTHLY' | 'COMMISSION';
-type PayrollStatus = 'pending' | 'approved' | 'processed' | 'paid' | 'declined';
+const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
 
-interface Employee {
+// ─── Types ────────────────────────────────────────────────────────────────────
+type PeriodStatus = 'pending' | 'approved' | 'processed' | 'paid';
+
+interface PayrollPeriodEmployee {
+  id: number;
+  payroll_id: string;
   employee_id: number;
   full_name: string;
   position: string;
-  employment_type: EmploymentType;
-  current_rate: number;
-  unit_id?: number;
+  employment_type: 'DAILY' | 'MONTHLY';
+  hire_date: string;
+  effective_start: string;
+  effective_end: string;
+  days_worked: number;
+  total_hours: number;
+  overtime_hours: number;
+  daily_rate: number | null;
+  monthly_rate: number | null;
+  base_pay: number;
+  overtime_pay: number;
+  gross_income: number;
+  total_charges: number;
+  net_pay: number;
+  charges?: { charge_id: number; charge_date: string; description: string; amount: number }[];
 }
 
-interface DailyPayrollRecord {
-  id: string;
-  employee_id: number;
-  employee: Employee;
-  payPeriodStart: string;
-  payPeriodEnd: string;
-  status: PayrollStatus;
-  daysWorked: number;
-  dailyRate: number;
-  basePay: number;
-  overtimeHours: number;
-  overtimePay: number;
-  grossIncome: number;
-  totalDeductions: number;
-  netPay: number;
-  reference_number: string;
-  paymentDate?: string;
+interface PayrollPeriod {
+  payroll_id: string;
+  period_start: string;
+  period_end: string;
+  status: PeriodStatus;
+  total_gross: number;
+  total_deductions: number;
+  total_net_pay: number;
+  employee_count: number;
+  notes: string | null;
+  created_at: string;
+  employees?: PayrollPeriodEmployee[];
 }
 
-interface MonthlyPayrollRecord {
-  id: string;
-  employee_id: number;
-  employee: Employee;
-  payPeriodStart: string;
-  payPeriodEnd: string;
-  status: PayrollStatus;
-  monthlyRate: number;
-  overtimeHours: number;
-  overtimePay: number;
-  bonusAmount: number;
-  grossIncome: number;
-  totalDeductions: number;
-  netPay: number;
-  reference_number: string;
-  paymentDate?: string;
-}
-
-type CommissionPaymentStatus = 'unpaid' | 'paid';
-
-interface BookingCommission {
-  booking_id: number;
-  guest_name: string;
-  booking_date: string;
-  check_in_date: string;
-  amount: number;
-  commission_rate: number;
-  commission_amount: number;
-  commission_status: CommissionPaymentStatus;
-  paid_date?: string;
-  approved_by?: string;
-  gcash_reference?: string;
-  gcash_receipt_url?: string;
-}
-
-interface GCashModalState {
-  open: boolean;
-  payrollId: string;
-  bookingId: number;
-  agentName: string;
-  commissionAmount: number;
-}
-
-interface CommissionPayrollRecord {
-  id: string;
-  agent_id: number;
-  agent_name: string | null;
-  payPeriodStart: string;
-  payPeriodEnd: string;
-  status: PayrollStatus;
-  totalBookings: number;
-  totalCommissionAmount: number;
-  taxes: number;
-  netPayout: number;
-  reference_number: string;
-  paymentDate?: string;
-  bookingDetails?: BookingCommission[];
-}
-
-// ─── CARD tokens ──────────────────────────────────────────────────────────────
-const CARD = {
-  base:    'bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden',
-  header:  'px-6 py-5 border-b border-gray-50 bg-gray-50/30',
-  padding: 'p-6',
-  label:   'text-[11px] font-bold text-gray-400 uppercase tracking-widest',
-} as const;
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
-function fmtPeso(n: number) {
-  return `₱ ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-function agentInitials(name: string | null): string {
-  return (name ?? 'AG').substring(0, 2).toUpperCase();
-}
-function agentDisplay(name: string | null): string {
-  return name ?? '—';
+function fmtPeso(n: number | string) {
+  const v = typeof n === 'string' ? parseFloat(n) : n;
+  const abs = Math.abs(v || 0);
+  const formatted = abs.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (v || 0) < 0 ? `−₱ ${formatted}` : `₱ ${formatted}`;
 }
 
-const STATUS_STYLES: Record<PayrollStatus, string> = {
-  pending:   'bg-yellow-100 text-yellow-800 border-yellow-200',
-  approved:  'bg-blue-100 text-blue-800 border-blue-200',
-  processed: 'bg-purple-100 text-purple-800 border-purple-200',
-  paid:      'bg-green-100 text-green-800 border-green-200',
-  declined:  'bg-red-100 text-red-800 border-red-200',
+const STATUS_STYLES: Record<PeriodStatus, string> = {
+  pending:   'bg-yellow-100 text-yellow-800 border border-yellow-200',
+  approved:  'bg-blue-100 text-blue-800 border border-blue-200',
+  processed: 'bg-purple-100 text-purple-800 border border-purple-200',
+  paid:      'bg-green-100 text-green-800 border border-green-200',
 };
-
-const ALL_STATUSES: PayrollStatus[] = ['pending', 'approved', 'processed', 'paid', 'declined'];
-
-// ─── Scroll lock (no-op — modals self-scroll) ─────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function useScrollLock(_active: boolean) {}
-
-// ─── Search Bar ───────────────────────────────────────────────────────────────
-function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="relative">
-      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z" />
-      </svg>
-      <input
-        type="text"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder="Search by name or position…"
-        className="w-full pl-9 pr-8 py-2 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-all"
-      />
-      {value && (
-        <button type="button" onClick={() => onChange('')}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── GCash Modal ──────────────────────────────────────────────────────────────
-const GCashModal: React.FC<{
-  modal: GCashModalState;
-  onClose: () => void;
-  onConfirm: (payrollId: string, bookingId: number, ref: string, receiptUrl: string) => void;
-}> = ({ modal, onClose, onConfirm }) => {
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useScrollLock(modal.open);
-
-  useEffect(() => {
-    if (modal.open) {
-      setMounted(true);
-      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    }
-  }, [modal.open]);
-
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(() => { setMounted(false); setReceiptPreview(null); setReceiptFile(null); onClose(); }, 300);
-  };
-
-  if (!mounted) return null;
-
-  return (
-    <div
-      className={`z-50 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0
-        transition-[background-color] duration-300 ease-in-out ${visible ? 'bg-black/60' : 'bg-black/0'}`}
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
-    >
-      <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-md p-6
-        transition-all duration-300 ease-in-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center">
-            <span className="text-white font-bold text-sm">G</span>
-          </div>
-          <div>
-            <h3 className="font-bold text-gray-900 text-base">GCash Payment</h3>
-            <p className="text-xs text-gray-500">{modal.agentName} • ₱ {modal.commissionAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
-          </div>
-        </div>
-        <div className="mb-5">
-          <label className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-wider">Receipt Screenshot</label>
-          <label className="flex flex-col items-center justify-center w-full border-2 border-dashed border-gray-200 rounded-2xl p-4 cursor-pointer hover:border-[#0B5858]/40 transition-colors">
-            {receiptPreview
-              ? <img src={receiptPreview} alt="Receipt" className="max-h-40 rounded-xl object-contain" />
-              : <>
-                  <svg className="w-8 h-8 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <p className="text-xs text-gray-400">Tap to upload GCash receipt</p>
-                </>
-            }
-            <input type="file" accept="image/*" className="hidden" onChange={e => {
-              const f = e.target.files?.[0]; if (!f) return;
-              setReceiptFile(f);
-              const r = new FileReader(); r.onload = () => setReceiptPreview(r.result as string); r.readAsDataURL(f);
-            }} />
-          </label>
-          {receiptFile && (
-            <button type="button" onClick={() => { setReceiptPreview(null); setReceiptFile(null); }}
-              className="text-xs text-red-500 mt-1 hover:underline">Remove photo</button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <button type="button" onClick={handleClose}
-            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2.5 rounded-2xl font-medium text-sm transition-colors">
-            Cancel
-          </button>
-          <button type="button" onClick={() => { onConfirm(modal.payrollId, modal.bookingId, '', receiptPreview ?? ''); handleClose(); }}
-            className="flex-1 bg-[#0B5858] hover:bg-[#094444] text-white px-4 py-2.5 rounded-2xl font-semibold text-sm transition-colors shadow-md shadow-[#0B5858]/20">
-            Confirm Payment
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── Edit Payroll Modal ───────────────────────────────────────────────────────
-type EditableRecord =
-  | { type: 'DAILY';   data: DailyPayrollRecord }
-  | { type: 'MONTHLY'; data: MonthlyPayrollRecord }
-  | null;
-
-interface EditForm {
-  status: PayrollStatus;
-  pay_period_start: string;
-  pay_period_end: string;
-  // Daily
-  daily_rate: string;
-  overtime_hours: string;
-  overtime_pay: string;
-  total_deductions: string;
-  // Monthly
-  monthly_rate: string;
-  bonus_amount: string;
-}
-
-const EditPayrollModal: React.FC<{
-  record: EditableRecord;
-  onClose: () => void;
-  onSaved: () => void;
-}> = ({ record, onClose, onSaved }) => {
-  const [visible, setVisible]         = useState(false);
-  const [mounted, setMounted]         = useState(false);
-  const [isSaving, setIsSaving]       = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [form, setForm]               = useState<EditForm | null>(null);
-
-  useEffect(() => {
-    if (record) {
-      setMounted(true);
-      setError(null);
-      const d = record.data;
-      if (record.type === 'DAILY') {
-        const r = d as DailyPayrollRecord;
-        setForm({
-          status:           r.status,
-          pay_period_start: r.payPeriodStart,
-          pay_period_end:   r.payPeriodEnd,
-          daily_rate:       String(r.dailyRate),
-          overtime_hours:   String(r.overtimeHours),
-          overtime_pay:     String(r.overtimePay),
-          total_deductions: String(r.totalDeductions),
-          monthly_rate:     '',
-          bonus_amount:     '',
-        });
-      } else if (record.type === 'MONTHLY') {
-        const r = d as MonthlyPayrollRecord;
-        setForm({
-          status:           r.status,
-          pay_period_start: r.payPeriodStart,
-          pay_period_end:   r.payPeriodEnd,
-          daily_rate:       '',
-          overtime_hours:   String(r.overtimeHours),
-          overtime_pay:     String(r.overtimePay),
-          total_deductions: String(r.totalDeductions),
-          monthly_rate:     String(r.monthlyRate),
-          bonus_amount:     String(r.bonusAmount),
-        });
-      }
-      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    }
-  }, [record]);
-
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(() => { setMounted(false); onClose(); }, 300);
-  };
-
-  const set = (key: keyof EditForm, val: string) =>
-    setForm(prev => prev ? { ...prev, [key]: val } : prev);
-
-  const handleSave = async () => {
-    if (!record || !form) return;
-    setIsSaving(true); setError(null);
-
-    const n = (v: string) => parseFloat(v) || 0;
-
-    let body: Record<string, any> = {
-      status:           form.status,
-      pay_period_start: form.pay_period_start,
-      pay_period_end:   form.pay_period_end,
-      overtime_hours:   n(form.overtime_hours),
-      overtime_pay:     n(form.overtime_pay),
-      total_deductions: n(form.total_deductions),
-    };
-
-    if (record.type === 'DAILY') {
-      const rate     = n(form.daily_rate);
-      const days     = (record.data as DailyPayrollRecord).daysWorked;
-      const basePay  = rate * days;
-      const gross    = basePay + n(form.overtime_pay);
-      const net      = gross - n(form.total_deductions);
-      body = { ...body, daily_rate: rate, base_pay: basePay, gross_income: gross, net_pay: net };
-    } else if (record.type === 'MONTHLY') {
-      const rate  = n(form.monthly_rate);
-      const gross = rate + n(form.overtime_pay) + n(form.bonus_amount);
-      const net   = gross - n(form.total_deductions);
-      body = { ...body, monthly_rate: rate, bonus_amount: n(form.bonus_amount), gross_income: gross, net_pay: net };
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/api/payroll/${record.data.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message ?? `Server error (${res.status})`);
-      }
-      onSaved();
-      handleClose();
-    } catch (err: any) {
-      setError(err?.message ?? 'Failed to save changes.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  if (!mounted || !record || !form) return null;
-
-  const isDaily   = record.type === 'DAILY';
-  const isMonthly = record.type === 'MONTHLY';
-  const accentColor = isDaily ? '#3B82F6' : '#9333EA';
-  const avatarBg    = isDaily ? 'from-blue-500 to-blue-600' : 'from-purple-500 to-purple-600';
-  const displayName = isDaily
-    ? (record.data as DailyPayrollRecord).employee?.full_name ?? '—'
-    : (record.data as MonthlyPayrollRecord).employee?.full_name ?? '—';
-
-  const inputClass = 'w-full px-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all';
-  const focusRing  = isDaily ? 'focus:ring-blue-300' : 'focus:ring-purple-300';
-
-  return (
-    <div
-      className={`z-[60] flex items-end sm:items-center justify-center px-2 pb-4 sm:pb-0 sm:px-4
-        transition-[background-color] duration-300 ease-in-out ${visible ? 'bg-black/60' : 'bg-black/0'}`}
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
-      onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
-    >
-      <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto
-        transition-all duration-300 ease-in-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-
-        {/* Header */}
-        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 bg-gradient-to-br ${avatarBg} rounded-xl flex items-center justify-center`}>
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-900 text-base leading-tight">Edit Payroll</h2>
-              <p className="text-xs text-gray-400">{displayName}</p>
-            </div>
-          </div>
-          <button type="button" onClick={handleClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="px-6 py-5 space-y-5">
-
-          {/* Status */}
-          <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Status</p>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-              {ALL_STATUSES.map(s => (
-                <button key={s} type="button" onClick={() => set('status', s)}
-                  className={`py-2 rounded-2xl text-xs font-bold border transition-all ${
-                    form.status === s
-                      ? s === 'pending'   ? 'bg-yellow-400 text-white border-yellow-400 shadow-sm'
-                      : s === 'approved'  ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
-                      : s === 'processed' ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
-                      : s === 'paid'      ? 'bg-green-500 text-white border-green-500 shadow-sm'
-                      :                    'bg-red-500 text-white border-red-500 shadow-sm'
-                      : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                  }`}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Pay Period */}
-          <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pay Period</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-gray-400 mb-1.5 font-medium">From</p>
-                <input type="date" value={form.pay_period_start}
-                  onChange={e => set('pay_period_start', e.target.value)}
-                  className={`${inputClass} ${focusRing}`} />
-              </div>
-              <div>
-                <p className="text-xs text-gray-400 mb-1.5 font-medium">To</p>
-                <input type="date" value={form.pay_period_end} min={form.pay_period_start}
-                  onChange={e => set('pay_period_end', e.target.value)}
-                  className={`${inputClass} ${focusRing}`} />
-              </div>
-            </div>
-          </div>
-
-          {/* Daily-specific fields */}
-          {isDaily && (
-            <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Daily Rate (₱)</p>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">₱</span>
-                <input type="number" min="0" value={form.daily_rate}
-                  onChange={e => set('daily_rate', e.target.value)}
-                  className={`${inputClass} ${focusRing} pl-8`} />
-              </div>
-            </div>
-          )}
-
-          {/* Monthly-specific fields */}
-          {isMonthly && (
-            <>
-              <div>
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Monthly Salary (₱)</p>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">₱</span>
-                  <input type="number" min="0" value={form.monthly_rate}
-                    onChange={e => set('monthly_rate', e.target.value)}
-                    className={`${inputClass} ${focusRing} pl-8`} />
-                </div>
-              </div>
-              <div>
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Bonus (₱)</p>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">₱</span>
-                  <input type="number" min="0" value={form.bonus_amount}
-                    onChange={e => set('bonus_amount', e.target.value)}
-                    className={`${inputClass} ${focusRing} pl-8`} />
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Overtime */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Overtime Hours</p>
-              <input type="number" min="0" value={form.overtime_hours}
-                onChange={e => set('overtime_hours', e.target.value)}
-                className={`${inputClass} ${focusRing}`} />
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Overtime Pay (₱)</p>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">₱</span>
-                <input type="number" min="0" value={form.overtime_pay}
-                  onChange={e => set('overtime_pay', e.target.value)}
-                  className={`${inputClass} ${focusRing} pl-8`} />
-              </div>
-            </div>
-          </div>
-
-          {/* Deductions */}
-          <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Total Deductions (₱)</p>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">₱</span>
-              <input type="number" min="0" value={form.total_deductions}
-                onChange={e => set('total_deductions', e.target.value)}
-                className={`${inputClass} ${focusRing} pl-8`} />
-            </div>
-          </div>
-
-          {/* Live net pay preview */}
-          {(() => {
-            const n = (v: string) => parseFloat(v) || 0;
-            let net = 0;
-            if (isDaily) {
-              const days = (record.data as DailyPayrollRecord).daysWorked;
-              net = n(form.daily_rate) * days + n(form.overtime_pay) - n(form.total_deductions);
-            } else if (isMonthly) {
-              net = n(form.monthly_rate) + n(form.overtime_pay) + n(form.bonus_amount) - n(form.total_deductions);
-            }
-            return (
-              <div className={`rounded-2xl border p-4 flex items-center justify-between ${
-                isDaily ? 'bg-blue-50 border-blue-200' : 'bg-purple-50 border-purple-200'
-              }`}>
-                <span className={`font-bold text-sm ${isDaily ? 'text-blue-900' : 'text-purple-900'}`}>
-                  Calculated Net Pay
-                </span>
-                <span className={`font-bold text-xl ${isDaily ? 'text-blue-700' : 'text-purple-700'}`}>
-                  {fmtPeso(net)}
-                </span>
-              </div>
-            );
-          })()}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-start gap-2">
-              <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-              <p className="text-xs text-red-700 font-medium">{error}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 rounded-b-3xl px-6 py-4 flex gap-3">
-          <button type="button" onClick={handleClose}
-            className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2.5 rounded-2xl font-medium text-sm transition-colors">
-            Cancel
-          </button>
-          <button type="button" onClick={handleSave} disabled={isSaving}
-            className={`flex-1 px-4 py-2.5 rounded-2xl font-semibold text-sm text-white transition-all shadow-md ${
-              isSaving ? 'bg-gray-300 cursor-not-allowed shadow-none'
-              : isDaily ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
-              : 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20'
-            }`}>
-            {isSaving
-              ? <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                  </svg>
-                  Saving…
-                </span>
-              : 'Save Changes'
-            }
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+const STATUS_NEXT: Record<PeriodStatus, PeriodStatus | null> = {
+  pending:   'approved',
+  approved:  'processed',
+  processed: 'paid',
+  paid:      null,
 };
 
 // ─── Generate Payroll Modal ───────────────────────────────────────────────────
-interface DBEmployee {
-  employee_id: number;
-  full_name: string;
-  position: string;
-  employment_type: EmploymentType;
-  current_rate: number;
-}
-
-interface GeneratePayrollForm {
-  employee_id: string;
-  employment_type: EmploymentType;
-  current_rate: string;
-  pay_period_start: string;
-  pay_period_end: string;
-}
-
-const EMPTY_GENERATE_FORM: GeneratePayrollForm = {
-  employee_id: '',
-  employment_type: 'DAILY',
-  current_rate: '',
-  pay_period_start: '',
-  pay_period_end: '',
-};
-
-const TYPE_COLORS = {
-  DAILY:      { active: 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20',      inactive: 'border-gray-200 text-gray-600 hover:border-blue-200 hover:bg-blue-50',      avatar: 'from-blue-500 to-blue-600',      btn: 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'      },
-  MONTHLY:    { active: 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/20', inactive: 'border-gray-200 text-gray-600 hover:border-purple-200 hover:bg-purple-50', avatar: 'from-purple-500 to-purple-600',   btn: 'bg-purple-600 hover:bg-purple-700 shadow-purple-600/20'  },
-  COMMISSION: { active: 'bg-amber-600 text-white border-amber-600 shadow-md shadow-amber-600/20',   inactive: 'border-gray-200 text-gray-600 hover:border-amber-200 hover:bg-amber-50',   avatar: 'from-amber-500 to-amber-600',    btn: 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'     },
-} as const;
-
-const GeneratePayrollModal: React.FC<{
-  open: boolean;
+function GenerateModal({
+  onClose,
+  onGenerated,
+}: {
   onClose: () => void;
-  onSuccess: () => void;
-}> = ({ open, onClose, onSuccess }) => {
-  const [visible, setVisible]           = useState(false);
-  const [mounted, setMounted]           = useState(false);
-  const [form, setForm]                 = useState<GeneratePayrollForm>(EMPTY_GENERATE_FORM);
-  const [employees, setEmployees]       = useState<DBEmployee[]>([]);
-  const [loadingEmp, setLoadingEmp]     = useState(false);
-  const [empSearch, setEmpSearch]       = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError]               = useState<string | null>(null);
-  const [step, setStep]                 = useState<'form' | 'success'>('form');
-
-  useScrollLock(open);
-
-  const selectedEmp = employees.find(e => String(e.employee_id) === form.employee_id) ?? null;
-  const filteredEmployees = employees.filter(e => e.employment_type === form.employment_type);
-  const searchedEmployees = empSearch.trim()
-    ? filteredEmployees.filter(e => e.full_name.toLowerCase().includes(empSearch.toLowerCase()) || e.position.toLowerCase().includes(empSearch.toLowerCase()))
-    : filteredEmployees;
+  onGenerated: (period: PayrollPeriod) => void;
+}) {
+  const [form, setForm]       = useState({ period_start: '', period_end: '', notes: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    setMounted(true);
-    setForm(EMPTY_GENERATE_FORM);
-    setError(null);
-    setStep('form');
     requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    setLoadingEmp(true);
-    fetch(`${API_BASE}/api/employees`)
-      .then(r => r.json())
-      .then((data: DBEmployee[]) => setEmployees(data))
-      .catch(() => setError('Could not load employees. Is the backend running?'))
-      .finally(() => setLoadingEmp(false));
-  }, [open]);
-
-  useEffect(() => {
-    if (selectedEmp) {
-      setForm(prev => ({ ...prev, current_rate: String(selectedEmp.current_rate), employment_type: selectedEmp.employment_type }));
-    }
-  }, [form.employee_id]);
-
-  useEffect(() => {
-    setForm(prev => ({ ...prev, employee_id: '', current_rate: '' }));
-    setEmpSearch('');
-  }, [form.employment_type]);
+  }, []);
 
   const handleClose = () => {
     setVisible(false);
-    setTimeout(() => { setMounted(false); onClose(); }, 300);
+    setTimeout(onClose, 300);
   };
-
-  const set = <K extends keyof GeneratePayrollForm>(key: K, val: string) =>
-    setForm(prev => ({ ...prev, [key]: val }));
-
-  const tc = TYPE_COLORS[form.employment_type];
-
-  const rateLabel =
-    form.employment_type === 'DAILY'   ? 'Daily Rate (₱)' :
-    form.employment_type === 'MONTHLY' ? 'Monthly Salary (₱)' : 'Commission Rate (%)';
-
-  const isValid =
-    !!form.employee_id &&
-    !!form.current_rate &&
-    Number(form.current_rate) > 0 &&
-    !!form.pay_period_start &&
-    !!form.pay_period_end &&
-    form.pay_period_start <= form.pay_period_end;
 
   const handleSubmit = async () => {
-    if (!isValid) return;
-    setIsSubmitting(true); setError(null);
+    if (!form.period_start || !form.period_end) {
+      setError('Both start and end dates are required.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/payroll/generate`, {
+      const res = await fetch(`${PAYROLL_API}/api/payroll-periods/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          employee_id:      Number(form.employee_id),
-          employment_type:  form.employment_type,
-          current_rate:     Number(form.current_rate),
-          pay_period_start: form.pay_period_start,
-          pay_period_end:   form.pay_period_end,
-        }),
+        body: JSON.stringify(form),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.message ?? `Server error (${res.status})`);
+        const e = await res.json().catch(() => ({}));
+        throw new Error((e as any).error ?? `Server error (${res.status})`);
       }
-      setStep('success');
-      setTimeout(() => { onSuccess(); handleClose(); }, 1800);
-    } catch (err: any) {
-      setError(err?.message ?? 'Something went wrong. Please try again.');
-    } finally { setIsSubmitting(false); }
+      const data = await res.json();
+      onGenerated(data);
+      handleClose();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (!mounted) return null;
+  const inp = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]';
 
   return (
     <div
-      className={`z-50 flex items-end sm:items-center justify-center px-2 pb-4 sm:pb-0 sm:px-4 transition-[background-color] duration-300 ease-in-out ${visible ? 'bg-black/60' : 'bg-black/0'}`}
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+      className={`fixed inset-0 z-50 flex items-center justify-center px-4 transition-all duration-300 ${visible ? 'bg-black/30 backdrop-blur-md' : 'bg-black/0 backdrop-blur-none'}`}
       onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
     >
-      <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto
-        transition-all duration-300 ease-in-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+      <div className={`bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-[420px] transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}>
 
-        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 bg-gradient-to-br ${tc.avatar} rounded-xl flex items-center justify-center transition-all duration-300`}>
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M12 7h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="font-bold text-gray-900 text-base leading-tight">Generate Payroll</h2>
-              <p className="text-xs text-gray-400">Create a new payroll record</p>
-            </div>
-          </div>
-          <button type="button" onClick={handleClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <h2 className="text-[17px] font-bold text-gray-900">Generate Payroll</h2>
+          <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {step === 'success' ? (
-          <div className="flex flex-col items-center justify-center px-6 py-16 gap-4">
-            <div className="w-16 h-16 bg-green-100 rounded-3xl flex items-center justify-center">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <div className="text-center">
-              <p className="font-bold text-gray-900 text-lg">Payroll Generated!</p>
-              <p className="text-sm text-gray-400 mt-1">{selectedEmp?.full_name ?? 'Employee'}'s payroll record has been created.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="px-6 py-5 space-y-5">
+        {/* Pay Period */}
+        <div className="px-6 py-5">
+          <p className="text-[13px] font-semibold text-gray-900 mb-4">Pay Period</p>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Employment Type</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(['DAILY', 'MONTHLY', 'COMMISSION'] as EmploymentType[]).map(type => (
-                  <button key={type} type="button" onClick={() => set('employment_type', type)}
-                    className={`py-2.5 rounded-2xl text-xs font-bold border transition-all ${
-                      form.employment_type === type ? TYPE_COLORS[type].active : TYPE_COLORS[type].inactive
-                    }`}>
-                    {type.charAt(0) + type.slice(1).toLowerCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Employee</p>
-              {!loadingEmp && filteredEmployees.length > 0 && (
-                <div className="relative mb-2">
-                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z" />
-                  </svg>
-                  <input type="text" value={empSearch} onChange={e => setEmpSearch(e.target.value)}
-                    placeholder="Search employee…"
-                    className="w-full pl-9 pr-8 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-all"
-                  />
-                  {empSearch && (
-                    <button type="button" onClick={() => setEmpSearch('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className="border border-gray-100 rounded-2xl overflow-hidden">
-                {loadingEmp ? (
-                  <div className="flex items-center gap-2 px-4 py-4 text-sm text-gray-400">
-                    <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Loading employees…
-                  </div>
-                ) : searchedEmployees.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-gray-400 text-center">
-                    {empSearch ? `No results for "${empSearch}"` : `No ${form.employment_type.toLowerCase()} employees found`}
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-50 max-h-52 overflow-y-auto overscroll-contain">
-                    {searchedEmployees.map(emp => {
-                      const isSelected = String(emp.employee_id) === form.employee_id;
-                      return (
-                        <button key={emp.employee_id} type="button"
-                          onClick={() => set('employee_id', String(emp.employee_id))}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all ${
-                            isSelected ? `bg-gradient-to-r ${tc.avatar}` : 'hover:bg-gray-50'
-                          }`}>
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold
-                            ${isSelected ? 'bg-white/20 text-white' : `bg-gradient-to-br ${TYPE_COLORS[emp.employment_type].avatar} text-white`}`}>
-                            {emp.full_name.substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-gray-900'}`}>{emp.full_name}</p>
-                            <p className={`text-xs truncate ${isSelected ? 'text-white/70' : 'text-gray-500'}`}>{emp.position}</p>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className={`text-xs font-semibold ${isSelected ? 'text-white/70' : 'text-gray-400'}`}>Rate</p>
-                            <p className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-[#0B5858]'}`}>
-                              {emp.employment_type === 'COMMISSION' ? `${emp.current_rate}%` : fmtPeso(emp.current_rate)}
-                            </p>
-                          </div>
-                          {isSelected && (
-                            <svg className="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {form.employee_id && (
-              <div>
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">{rateLabel}</p>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold select-none">
-                    {form.employment_type === 'COMMISSION' ? '%' : '₱'}
-                  </span>
-                  <input type="number" min="0" value={form.current_rate}
-                    onChange={e => set('current_rate', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-2xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-all"
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Auto-filled from employee record. Edit to override.</p>
-              </div>
-            )}
-
-            <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-2">Pay Period</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-gray-400 mb-1.5 font-medium">From</p>
-                  <input type="date" value={form.pay_period_start}
-                    onChange={e => set('pay_period_start', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-all"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-1.5 font-medium">To</p>
-                  <input type="date" value={form.pay_period_end} min={form.pay_period_start}
-                    onChange={e => set('pay_period_end', e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {selectedEmp && form.pay_period_start && form.pay_period_end && form.current_rate && (
-              <div className="rounded-2xl border p-4 bg-gray-50">
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">Summary</p>
-                <div className="space-y-2">
-                  {[
-                    ['Employee', selectedEmp.full_name],
-                    ['Type',     form.employment_type.charAt(0) + form.employment_type.slice(1).toLowerCase()],
-                    ['Rate',     form.employment_type === 'COMMISSION' ? `${form.current_rate}%` : fmtPeso(Number(form.current_rate))],
-                    ['Period',   `${form.pay_period_start} → ${form.pay_period_end}`],
-                  ].map(([label, val]) => (
-                    <div key={label} className="flex justify-between text-sm">
-                      <span className="text-gray-500">{label}</span>
-                      <span className="font-semibold text-gray-900">{val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-start gap-2">
-                <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <label className="block text-xs text-gray-500 mb-1.5">From</label>
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <p className="text-xs text-red-700 font-medium">{error}</p>
+                <input type="date" value={form.period_start}
+                  onChange={e => setForm(f => ({ ...f, period_start: e.target.value }))}
+                  className={`${inp} pl-9`} />
               </div>
-            )}
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1.5">To</label>
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <input type="date" value={form.period_end} min={form.period_start}
+                  onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))}
+                  className={`${inp} pl-9`} />
+              </div>
+            </div>
           </div>
-        )}
+        </div>
 
-        {step === 'form' && (
-          <div className="sticky bottom-0 bg-white border-t border-gray-100 rounded-b-3xl px-6 py-4 flex gap-3">
-            <button type="button" onClick={handleClose}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2.5 rounded-2xl font-medium text-sm transition-colors">
+        {/* Notes */}
+        <div className="px-6 py-5 border-t border-gray-100">
+          <p className="text-[13px] font-semibold text-gray-900 mb-4">
+            Notes <span className="text-gray-400 font-normal text-xs">(optional)</span>
+          </p>
+          <div className="border-l-2 border-[#0B5858]/30 pl-4">
+            <input type="text" value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="e.g. March 1–15 payroll"
+              className={inp} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100">
+          {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>}
+          <div className="flex gap-3">
+            <button onClick={handleClose}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button type="button" onClick={handleSubmit} disabled={!isValid || isSubmitting}
-              className={`flex-1 px-4 py-2.5 rounded-2xl font-semibold text-sm text-white transition-all shadow-md ${
-                !isValid || isSubmitting ? 'bg-gray-300 cursor-not-allowed shadow-none' : `${tc.btn}`
-              }`}>
-              {isSubmitting
-                ? <span className="flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                    Generating…
-                  </span>
-                : 'Generate Payroll'
-              }
+            <button onClick={handleSubmit} disabled={loading}
+              className="flex-1 py-2.5 bg-[#0B5858] hover:bg-[#094444] text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-60">
+              {loading ? 'Generating…' : 'Generate Now'}
             </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
-};
+}
 
-// ─── Daily Row ────────────────────────────────────────────────────────────────
-const DailyPayrollRow: React.FC<{
-  payroll: DailyPayrollRecord;
-  onView: (id: string) => void;
-  onDownloadPayslip: (id: string) => void;
-  onDelete: (id: string) => void;
-  onEdit: (record: EditableRecord) => void;
-}> = ({ payroll, onView, onDownloadPayslip, onDelete, onEdit }) => {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <>
-      <div
-        className={`p-4 rounded-2xl border cursor-pointer transition-all hover:border-[#0B5858]/30 hover:bg-[#0B5858]/5 group ${expanded ? 'border-[#0B5858]/20 bg-[#0B5858]/5' : 'border-gray-100'}`}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">{(payroll.employee?.full_name ?? 'EM').substring(0, 2).toUpperCase()}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm text-gray-900 group-hover:text-[#0B5858] transition-colors">{payroll.employee?.full_name ?? `Employee #${payroll.employee_id}`}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{payroll.employee?.position} • <span className="text-blue-600 font-semibold">{payroll.daysWorked} days</span></p>
-          </div>
-          <span className="hidden sm:inline text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">DAILY</span>
-          <div className="text-right shrink-0">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Net Pay</p>
-            <p className="text-base font-bold text-[#0B5858]">{fmtPeso(payroll.netPay)}</p>
-          </div>
-          <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </div>
-      {expanded && (
-        <div className="mx-1 bg-blue-50/60 rounded-2xl border border-blue-100 p-5">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Earnings — Daily Worker</p>
-          <div className="space-y-2 mb-4">
-            {[
-              ['Daily Rate', fmtPeso(payroll.dailyRate)],
-              ['Days Worked', `${payroll.daysWorked} days`],
-              ['Base Pay', fmtPeso(payroll.basePay)],
-              [`Overtime (${payroll.overtimeHours}h)`, fmtPeso(payroll.overtimePay)],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between text-sm py-1.5 border-b border-blue-100">
-                <span className="text-gray-600">{label}</span>
-                <span className="font-semibold text-gray-900">{value}</span>
-              </div>
-            ))}
-            <div className="flex justify-between text-sm py-2 bg-blue-100/60 rounded-xl px-3 mt-3">
-              <span className="font-bold text-blue-900">Gross Income</span>
-              <span className="font-bold text-blue-700">{fmtPeso(payroll.grossIncome)}</span>
-            </div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={() => onDownloadPayslip(payroll.id)}
-              className="flex-1 bg-white border border-gray-200 hover:border-[#0B5858]/30 text-gray-700 px-4 py-2 rounded-2xl text-sm font-semibold transition-all">
-              Download Payslip
-            </button>
-            <button type="button" onClick={() => onView(payroll.id)}
-              className="flex-1 bg-[#0B5858] hover:bg-[#094444] text-white px-4 py-2 rounded-2xl text-sm font-semibold transition-all shadow-md shadow-[#0B5858]/20">
-              View Details
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); onEdit({ type: 'DAILY', data: payroll }); }}
-              className="w-9 h-9 flex items-center justify-center bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 rounded-2xl transition-all shrink-0" title="Edit payslip">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); onDelete(payroll.id); }}
-              className="w-9 h-9 flex items-center justify-center bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 rounded-2xl transition-all shrink-0" title="Delete payslip">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
-
-// ─── Monthly Row ──────────────────────────────────────────────────────────────
-const MonthlyPayrollRow: React.FC<{
-  payroll: MonthlyPayrollRecord;
-  onView: (id: string) => void;
-  onDownloadPayslip: (id: string) => void;
-  onDelete: (id: string) => void;
-  onEdit: (record: EditableRecord) => void;
-}> = ({ payroll, onView, onDownloadPayslip, onDelete, onEdit }) => {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <>
-      <div
-        className={`p-4 rounded-2xl border cursor-pointer transition-all hover:border-purple-200 hover:bg-purple-50/40 group ${expanded ? 'border-purple-200 bg-purple-50/40' : 'border-gray-100'}`}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">{(payroll.employee?.full_name ?? 'EM').substring(0, 2).toUpperCase()}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm text-gray-900 group-hover:text-purple-700 transition-colors">{payroll.employee?.full_name ?? `Employee #${payroll.employee_id}`}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{payroll.employee?.position} • <span className="text-purple-600 font-semibold">Fixed Salary</span></p>
-          </div>
-          <span className="hidden sm:inline text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">MONTHLY</span>
-          <div className="text-right shrink-0">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Net Pay</p>
-            <p className="text-base font-bold text-[#0B5858]">{fmtPeso(payroll.netPay)}</p>
-          </div>
-          <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </div>
-      {expanded && (
-        <div className="mx-1 bg-purple-50/60 rounded-2xl border border-purple-100 p-5">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-4">Earnings — Monthly Staff</p>
-          <div className="space-y-2 mb-4">
-            {[
-              ['Monthly Salary', fmtPeso(payroll.monthlyRate)],
-              [`Overtime (${payroll.overtimeHours}h)`, fmtPeso(payroll.overtimePay)],
-              ['Bonus', fmtPeso(payroll.bonusAmount)],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between text-sm py-1.5 border-b border-purple-100">
-                <span className="text-gray-600">{label}</span>
-                <span className="font-semibold text-gray-900">{value}</span>
-              </div>
-            ))}
-            <div className="flex justify-between text-sm py-2 bg-purple-100/60 rounded-xl px-3 mt-3">
-              <span className="font-bold text-purple-900">Gross Income</span>
-              <span className="font-bold text-purple-700">{fmtPeso(payroll.grossIncome)}</span>
-            </div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={() => onDownloadPayslip(payroll.id)}
-              className="flex-1 bg-white border border-gray-200 hover:border-purple-300 text-gray-700 px-4 py-2 rounded-2xl text-sm font-semibold transition-all">
-              Download Payslip
-            </button>
-            <button type="button" onClick={() => onView(payroll.id)}
-              className="flex-1 bg-[#0B5858] hover:bg-[#094444] text-white px-4 py-2 rounded-2xl text-sm font-semibold transition-all shadow-md shadow-[#0B5858]/20">
-              View Details
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); onEdit({ type: 'MONTHLY', data: payroll }); }}
-              className="w-9 h-9 flex items-center justify-center bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-600 rounded-2xl transition-all shrink-0" title="Edit payslip">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); onDelete(payroll.id); }}
-              className="w-9 h-9 flex items-center justify-center bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 rounded-2xl transition-all shrink-0" title="Delete payslip">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
-
-// ─── Commission Row ───────────────────────────────────────────────────────────
-const CommissionPayrollRow: React.FC<{
-  payroll: CommissionPayrollRecord;
-  onView: (id: string) => void;
-  onDownloadPayslip: (id: string) => void;
-  onMarkPaid: (payrollId: string, bookingId: number, gcashRef: string, receiptUrl: string) => void;
-  onDelete: (id: string) => void;
-}> = ({ payroll, onView, onDownloadPayslip, onMarkPaid, onDelete }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [gcashModal, setGcashModal] = useState<GCashModalState>({ open: false, payrollId: '', bookingId: 0, agentName: '', commissionAmount: 0 });
-
-  const paidCount   = payroll.bookingDetails?.filter(b => b.commission_status === 'paid').length ?? 0;
-  const unpaidCount = payroll.bookingDetails?.filter(b => b.commission_status === 'unpaid').length ?? 0;
-
-  return (
-    <>
-      <GCashModal modal={gcashModal} onClose={() => setGcashModal(m => ({ ...m, open: false }))}
-        onConfirm={(pid, bid, ref, url) => onMarkPaid(pid, bid, ref, url)} />
-      <div
-        className={`p-4 rounded-2xl border cursor-pointer transition-all hover:border-amber-200 hover:bg-amber-50/40 group ${expanded ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'}`}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-sm">{agentInitials(payroll.agent_name)}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-sm text-gray-900 group-hover:text-amber-700 transition-colors">{agentDisplay(payroll.agent_name)}</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Agent • <span className="text-amber-600 font-semibold">{payroll.totalBookings} bookings</span>
-              {unpaidCount > 0 && <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-semibold">{unpaidCount} unpaid</span>}
-              {paidCount > 0 && <span className="ml-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-semibold">{paidCount} paid</span>}
-            </p>
-          </div>
-          <span className="hidden sm:inline text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">COMMISSION</span>
-          <div className="text-right shrink-0">
-            <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider">Net Payout</p>
-            <p className="text-base font-bold text-[#0B5858]">{fmtPeso(payroll.netPayout)}</p>
-          </div>
-          <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </div>
-      {expanded && (
-        <div className="mx-1 bg-amber-50/60 rounded-2xl border border-amber-100 p-5 space-y-4">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Booking Details & Commission</p>
-          {!payroll.bookingDetails || payroll.bookingDetails.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No booking details available.</p>
-          ) : (
-            <div className="space-y-2">
-              {payroll.bookingDetails.map((booking, idx) => (
-                <div key={idx} className={`rounded-2xl border p-4 ${booking.commission_status === 'paid' ? 'border-green-200 bg-green-50/60' : 'border-amber-200 bg-white'}`}>
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{booking.guest_name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Booked: {new Date(booking.booking_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {' • '}Check-in: {new Date(booking.check_in_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${booking.commission_status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}`}>
-                      {booking.commission_status === 'paid' ? '✓ Paid' : '● Unpaid'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      {booking.commission_status === 'paid' && booking.gcash_reference && (
-                        <p className="text-xs font-semibold text-blue-600">GCash Ref: {booking.gcash_reference}</p>
-                      )}
-                      {booking.commission_status === 'unpaid' && (
-                        <p className="text-xs text-gray-400">Awaiting GCash payment</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <p className="text-sm font-bold text-amber-700">{fmtPeso(booking.commission_amount)}</p>
-                      {booking.commission_status === 'unpaid' && (
-                        <button type="button"
-                          onClick={e => { e.stopPropagation(); setGcashModal({ open: true, payrollId: payroll.id, bookingId: booking.booking_id, agentName: agentDisplay(payroll.agent_name), commissionAmount: booking.commission_amount }); }}
-                          className="px-3 py-1 bg-[#0B5858] hover:bg-[#094444] text-white text-xs font-semibold rounded-xl transition-colors">
-                          Mark as Paid
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="space-y-2">
-            {[
-              ['Total Bookings', `${payroll.totalBookings}`],
-              ['Paid',   fmtPeso(payroll.bookingDetails?.filter(b => b.commission_status === 'paid').reduce((s, b) => s + b.commission_amount, 0) ?? 0)],
-              ['Unpaid', fmtPeso(payroll.bookingDetails?.filter(b => b.commission_status === 'unpaid').reduce((s, b) => s + b.commission_amount, 0) ?? 0)],
-            ].map(([label, value]) => (
-              <div key={label} className="flex justify-between text-sm py-1.5 border-b border-amber-100">
-                <span className="text-gray-600">{label}</span>
-                <span className="font-semibold text-gray-900">{value}</span>
-              </div>
-            ))}
-            <div className="flex justify-between text-sm py-2 bg-amber-100/60 rounded-xl px-3">
-              <span className="font-bold text-amber-900">Gross Commission</span>
-              <span className="font-bold text-amber-700">{fmtPeso(payroll.totalCommissionAmount)}</span>
-            </div>
-          </div>
-          <div className="flex gap-2 pt-2 flex-wrap">
-            <button type="button" onClick={() => onDownloadPayslip(payroll.id)}
-              className="flex-1 bg-white border border-gray-200 hover:border-amber-300 text-gray-700 px-4 py-2 rounded-2xl text-sm font-semibold transition-all">
-              Download Report
-            </button>
-            <button type="button" onClick={() => onView(payroll.id)}
-              className="flex-1 bg-[#0B5858] hover:bg-[#094444] text-white px-4 py-2 rounded-2xl text-sm font-semibold transition-all shadow-md shadow-[#0B5858]/20">
-              View Details
-            </button>
-            <button type="button" onClick={e => { e.stopPropagation(); onDelete(payroll.id); }}
-              className="w-9 h-9 flex items-center justify-center bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 rounded-2xl transition-all shrink-0" title="Delete record">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-};
-
-// ─── Payroll Detail Modal ─────────────────────────────────────────────────────
-type ViewRecord =
-  | { type: 'DAILY';      data: DailyPayrollRecord }
-  | { type: 'MONTHLY';    data: MonthlyPayrollRecord }
-  | { type: 'COMMISSION'; data: CommissionPayrollRecord }
-  | null;
-
-const PayrollDetailModal: React.FC<{
-  record: ViewRecord;
+// ─── Period Detail Modal ──────────────────────────────────────────────────────
+function PeriodDetail({
+  period,
+  onClose,
+  onStatusUpdated,
+}: {
+  period: PayrollPeriod;
   onClose: () => void;
-  onDownloadPayslip: (id: string) => void;
-}> = ({ record, onClose, onDownloadPayslip }) => {
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useScrollLock(!!record);
+  onStatusUpdated: (updated: PayrollPeriod) => void;
+}) {
+  const [detail, setDetail]       = useState<PayrollPeriod | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [visible, setVisible]     = useState(false);
+  const [advancing, setAdvancing] = useState(false);
 
   useEffect(() => {
-    if (record) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-  }, [record]);
+    requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
+    fetch(`${PAYROLL_API}/api/payroll-periods/${period.payroll_id}`)
+      .then(r => r.json())
+      .then(d => setDetail(d))
+      .catch(() => setDetail(period))
+      .finally(() => setLoading(false));
+  }, [period.payroll_id]);
 
-  const handleClose = () => { setVisible(false); setTimeout(() => { setMounted(false); onClose(); }, 300); };
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(onClose, 300);
+  };
 
-  if (!mounted || !record) return null;
-  const { type, data } = record;
+  const advanceStatus = async () => {
+    if (!detail) return;
+    const next = STATUS_NEXT[detail.status];
+    if (!next) return;
+    setAdvancing(true);
+    try {
+      const res = await fetch(`${PAYROLL_API}/api/payroll-periods/${detail.payroll_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setDetail(d => d ? { ...d, status: updated.status } : d);
+        onStatusUpdated({ ...period, status: updated.status });
+      }
+    } finally {
+      setAdvancing(false);
+    }
+  };
 
-  const avatarLabel = type === 'COMMISSION' ? agentInitials((data as CommissionPayrollRecord).agent_name) : ((data as DailyPayrollRecord).employee?.full_name ?? 'EM').substring(0, 2).toUpperCase();
-  const displayName = type === 'COMMISSION' ? agentDisplay((data as CommissionPayrollRecord).agent_name) : (data as DailyPayrollRecord).employee?.full_name ?? `Employee #${(data as DailyPayrollRecord).employee_id}`;
-  const displaySub  = type === 'COMMISSION' ? 'Commission Agent' : (data as DailyPayrollRecord).employee?.position ?? '';
-  const avatarBg    = type === 'DAILY' ? 'from-blue-500 to-blue-600' : type === 'MONTHLY' ? 'from-purple-500 to-purple-600' : 'from-amber-500 to-amber-600';
-  const netLabel    = type === 'COMMISSION' ? 'Net Payout' : 'Net Pay';
-  const netAmount   = type === 'COMMISSION' ? (data as CommissionPayrollRecord).netPayout : (data as DailyPayrollRecord).netPay;
-  const netBg       = type === 'DAILY' ? 'bg-blue-50 border-blue-200 text-blue-800' : type === 'MONTHLY' ? 'bg-purple-50 border-purple-200 text-purple-800' : 'bg-amber-50 border-amber-200 text-amber-800';
+  const d = detail ?? period;
+  const nextStatus = STATUS_NEXT[d.status];
 
   return (
     <div
-      className={`z-50 flex items-end sm:items-center justify-center px-2 pb-4 sm:pb-0 sm:px-4
-        transition-[background-color] duration-300 ease-in-out ${visible ? 'bg-black/60' : 'bg-black/0'}`}
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+      className={`fixed inset-0 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto transition-all duration-300 ${visible ? 'bg-black/30 backdrop-blur-md' : 'bg-black/0 backdrop-blur-none'}`}
       onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
     >
-      <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto
-        transition-all duration-300 ease-in-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex items-center justify-between">
-          <h2 className="font-bold text-gray-900 text-lg">Payroll Details</h2>
-          <button type="button" onClick={handleClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-4xl mb-8 transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+
+        {/* Header */}
+        <div className="sticky top-0 bg-white rounded-t-3xl border-b border-gray-100 px-6 py-4 flex flex-wrap items-center gap-3 z-10">
+          <div className="w-9 h-9 bg-gradient-to-br from-[#0B5858] to-[#0d7a7a] rounded-xl flex items-center justify-center shrink-0">
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
             </svg>
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-5">
-          <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 bg-gradient-to-br ${avatarBg} rounded-2xl flex items-center justify-center shrink-0`}>
-              <span className="text-white font-bold text-base">{avatarLabel}</span>
-            </div>
-            <div className="flex-1">
-              <p className="font-bold text-gray-900 text-lg leading-tight">{displayName}</p>
-              <p className="text-sm text-gray-500">{displaySub}</p>
-            </div>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${STATUS_STYLES[data.status]}`}>
-              {data.status.charAt(0).toUpperCase() + data.status.slice(1)}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-2xl p-3">
-              <p className="text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Reference No.</p>
-              <p className="text-sm font-semibold text-gray-900 font-mono">{data.reference_number}</p>
-            </div>
-            <div className="bg-gray-50 rounded-2xl p-3">
-              <p className="text-xs text-gray-400 mb-1 font-semibold uppercase tracking-wider">Pay Period</p>
-              <p className="text-xs font-semibold text-gray-900">{fmtDate(data.payPeriodStart)} – {fmtDate(data.payPeriodEnd)}</p>
-            </div>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-              {type === 'DAILY' ? 'Earnings — Daily Worker' : type === 'MONTHLY' ? 'Earnings — Monthly Staff' : 'Commission Summary'}
-            </p>
-            <div className="space-y-1">
-              {type === 'DAILY' && (() => {
-                const d = data as DailyPayrollRecord;
-                return [['Daily Rate', fmtPeso(d.dailyRate)], ['Days Worked', `${d.daysWorked} days`], ['Base Pay', fmtPeso(d.basePay)], [`Overtime (${d.overtimeHours}h)`, fmtPeso(d.overtimePay)], ['Gross Income', fmtPeso(d.grossIncome)], ['Deductions', fmtPeso(d.totalDeductions)]].map(([label, value]) => (
-                  <div key={label} className="flex justify-between text-sm py-2 border-b border-gray-100">
-                    <span className="text-gray-600">{label}</span><span className="font-semibold text-gray-900">{value}</span>
-                  </div>
-                ));
-              })()}
-              {type === 'MONTHLY' && (() => {
-                const d = data as MonthlyPayrollRecord;
-                return [['Monthly Salary', fmtPeso(d.monthlyRate)], [`Overtime (${d.overtimeHours}h)`, fmtPeso(d.overtimePay)], ['Bonus', fmtPeso(d.bonusAmount)], ['Gross Income', fmtPeso(d.grossIncome)], ['Deductions', fmtPeso(d.totalDeductions)]].map(([label, value]) => (
-                  <div key={label} className="flex justify-between text-sm py-2 border-b border-gray-100">
-                    <span className="text-gray-600">{label}</span><span className="font-semibold text-gray-900">{value}</span>
-                  </div>
-                ));
-              })()}
-              {type === 'COMMISSION' && (() => {
-                const d = data as CommissionPayrollRecord;
-                return [['Total Bookings', `${d.totalBookings}`], ['Total Commission', fmtPeso(d.totalCommissionAmount)], ['Taxes / Deductions', fmtPeso(d.taxes)]].map(([label, value]) => (
-                  <div key={label} className="flex justify-between text-sm py-2 border-b border-gray-100">
-                    <span className="text-gray-600">{label}</span><span className="font-semibold text-gray-900">{value}</span>
-                  </div>
-                ));
-              })()}
-            </div>
+            <h2 className="font-bold text-gray-900 text-base font-mono">{d.payroll_id}</h2>
+            <p className="text-xs text-gray-400">{fmtDate(d.period_start)} – {fmtDate(d.period_end)}</p>
           </div>
-          <div className={`rounded-2xl border p-4 flex items-center justify-between ${netBg}`}>
-            <span className="font-bold text-base">{netLabel}</span>
-            <span className="font-bold text-2xl">{fmtPeso(netAmount)}</span>
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_STYLES[d.status]}`}>{d.status}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {nextStatus && (
+              <button onClick={advanceStatus} disabled={advancing}
+                className="px-4 py-2 bg-[#0B5858] hover:bg-[#094444] text-white text-xs font-semibold rounded-xl transition-colors disabled:opacity-60">
+                {advancing ? '…' : `Mark as ${nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)}`}
+              </button>
+            )}
+            <button onClick={handleClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </div>
-        <div className="sticky bottom-0 bg-white border-t border-gray-100 rounded-b-3xl px-6 py-4 flex gap-3">
-          {(type === 'DAILY' || type === 'MONTHLY') && (
-            <button type="button" onClick={() => { onDownloadPayslip(data.id); handleClose(); }}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-2xl font-medium text-sm transition-colors">
-              Download Payslip
-            </button>
+
+        <div className="p-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            {([
+              { label: 'Employees', value: String(d.employee_count), sub: 'included in payroll', accent: false },
+              { label: 'Total Gross', value: fmtPeso(d.total_gross), sub: 'before deductions', accent: false },
+              { label: 'Total Charges', value: fmtPeso(d.total_deductions), sub: 'deducted', accent: false },
+              { label: 'Total Net Pay', value: fmtPeso(d.total_net_pay), sub: 'to be disbursed', accent: true },
+            ] as const).map(card => (
+              <div key={card.label} className={`rounded-2xl p-4 ${card.accent ? 'bg-[#0B5858] text-white' : 'bg-gray-50'}`}>
+                <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${card.accent ? 'text-white/70' : 'text-gray-400'}`}>{card.label}</p>
+                <p className={`text-lg font-bold truncate ${card.accent ? 'text-white' : 'text-gray-900'}`}>{card.value}</p>
+                <p className={`text-xs mt-0.5 ${card.accent ? 'text-white/60' : 'text-gray-400'}`}>{card.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="py-12 text-center text-gray-400 text-sm">Loading breakdown…</div>
+          ) : (
+            <>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Employee Breakdown</h3>
+              {(d.employees ?? []).length === 0 ? (
+                <div className="py-8 text-center text-gray-400 text-sm">No employees matched this payroll period.</div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-gray-100">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        {['Employee', 'Type', 'Effective Period', 'Days', 'OT hrs', 'Base Pay', 'OT Pay', 'Charges', 'Net Pay'].map(h => (
+                          <th key={h} className="text-left py-3 px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(d.employees ?? []).map((emp, i) => (
+                        <React.Fragment key={emp.id}>
+                          <tr className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
+                            <td className="py-3 px-4">
+                              <p className="font-semibold text-gray-900">{emp.full_name}</p>
+                              <p className="text-xs text-gray-400">{emp.position}</p>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${emp.employment_type === 'DAILY' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                {emp.employment_type}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-xs text-gray-500 whitespace-nowrap">
+                              {fmtDate(emp.effective_start)} – {fmtDate(emp.effective_end)}
+                            </td>
+                            <td className="py-3 px-4 text-gray-700 font-medium">{emp.days_worked}</td>
+                            <td className="py-3 px-4">
+                              <span className={Number(emp.overtime_hours) > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}>
+                                {Number(emp.overtime_hours).toFixed(1)}h
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-gray-700">{fmtPeso(emp.base_pay)}</td>
+                            <td className="py-3 px-4">
+                              <span className={Number(emp.overtime_pay) > 0 ? 'text-orange-600' : 'text-gray-300'}>
+                                {fmtPeso(emp.overtime_pay)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={Number(emp.total_charges) > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}>
+                                {Number(emp.total_charges) > 0 ? `−${fmtPeso(emp.total_charges)}` : '—'}
+                              </span>
+                            </td>
+                            <td className={`py-3 px-4 font-bold ${Number(emp.net_pay) < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                              {fmtPeso(emp.net_pay)}
+                            </td>
+                          </tr>
+                          {/* Charge detail rows */}
+                          {(emp.charges ?? []).length > 0 && (
+                            <tr>
+                              <td colSpan={9} className="pb-3 px-8">
+                                <div className="bg-red-50 border border-red-100 rounded-xl p-3 space-y-1">
+                                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1.5">Charges Detail</p>
+                                  {(emp.charges ?? []).map(c => (
+                                    <div key={c.charge_id} className="flex justify-between text-xs text-red-700">
+                                      <span>{fmtDate(c.charge_date)} — {c.description}</span>
+                                      <span className="font-semibold ml-4">{fmtPeso(c.amount)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
-          <button type="button" onClick={handleClose}
-            className="flex-1 bg-[#0B5858] hover:bg-[#094444] text-white px-4 py-2 rounded-2xl font-semibold text-sm transition-colors shadow-md shadow-[#0B5858]/20">
-            Close
-          </button>
         </div>
       </div>
     </div>
   );
-};
+}
 
-// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
-export default function PayrollPage() {
-  const [employmentTypeFilter, setEmploymentTypeFilter] = useState<EmploymentType | 'all'>('all');
-  const [search, setSearch]                   = useState('');
-  const [isLoading, setIsLoading]             = useState(true);
-  const [error, setError]                     = useState<string | null>(null);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [editRecord, setEditRecord]           = useState<EditableRecord>(null);
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function PayrollPeriodsPage() {
+  const [periods, setPeriods]           = useState<PayrollPeriod[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [showGenerate, setShowGenerate] = useState(false);
+  const [selected, setSelected]         = useState<PayrollPeriod | null>(null);
+  const [deleting, setDeleting]         = useState<string | null>(null);
 
-  const [dailyPayroll,      setDailyPayroll]      = useState<DailyPayrollRecord[]>([]);
-  const [monthlyPayroll,    setMonthlyPayroll]    = useState<MonthlyPayrollRecord[]>([]);
-  const [commissionPayroll, setCommissionPayroll] = useState<CommissionPayrollRecord[]>([]);
-  const [viewRecord,        setViewRecord]        = useState<ViewRecord>(null);
+  // Filters
+  const [search, setSearch]           = useState('');
+  const [filterStart, setFilterStart] = useState('');
+  const [filterEnd, setFilterEnd]     = useState('');
 
-  const loadPayroll = async () => {
-    setIsLoading(true); setError(null);
+  const fetchPeriods = useCallback(async () => {
+    setLoading(true);
     try {
-      const { daily, monthly, commission } = await getPayroll();
-      const enrichedCommission = await Promise.all(
-        commission.map(async record => {
-          try {
-            const detail = await getPayrollById(record.id) as CommissionPayrollRecord;
-            return { ...record, bookingDetails: detail.bookingDetails ?? [] };
-          } catch { return { ...record, bookingDetails: [] }; }
-        })
-      );
-      setDailyPayroll(daily); setMonthlyPayroll(monthly); setCommissionPayroll(enrichedCommission);
-    } catch { setError('Failed to load payroll records. Is the backend running?'); }
-    finally { setIsLoading(false); }
+      const params = new URLSearchParams();
+      if (search)      params.set('payroll_id', search);
+      if (filterStart) params.set('start', filterStart);
+      if (filterEnd)   params.set('end', filterEnd);
+      const res = await fetch(`${PAYROLL_API}/api/payroll-periods?${params}`);
+      if (res.ok) setPeriods(await res.json());
+    } catch {
+      /* network error — keep empty state */
+    } finally {
+      setLoading(false);
+    }
+  }, [search, filterStart, filterEnd]);
+
+  useEffect(() => { fetchPeriods(); }, [fetchPeriods]);
+
+  const handleDelete = async (payrollId: string) => {
+    if (!confirm(`Delete payroll period ${payrollId}? This cannot be undone.`)) return;
+    setDeleting(payrollId);
+    await fetch(`${PAYROLL_API}/api/payroll-periods/${payrollId}`, { method: 'DELETE' });
+    setPeriods(p => p.filter(x => x.payroll_id !== payrollId));
+    setDeleting(null);
   };
 
-  useEffect(() => { loadPayroll(); }, []);
-
-  const q = search.toLowerCase();
-  const filteredDaily      = dailyPayroll.filter(p => !q || p.employee?.full_name?.toLowerCase().includes(q) || p.employee?.position?.toLowerCase().includes(q));
-  const filteredMonthly    = monthlyPayroll.filter(p => !q || p.employee?.full_name?.toLowerCase().includes(q) || p.employee?.position?.toLowerCase().includes(q));
-  const filteredCommission = commissionPayroll.filter(p => !q || p.agent_name?.toLowerCase().includes(q));
-
-  const handleView = (id: string) => {
-    const d = dailyPayroll.find(p => p.id === id);      if (d) { setViewRecord({ type: 'DAILY', data: d }); return; }
-    const m = monthlyPayroll.find(p => p.id === id);    if (m) { setViewRecord({ type: 'MONTHLY', data: m }); return; }
-    const c = commissionPayroll.find(p => p.id === id); if (c) { setViewRecord({ type: 'COMMISSION', data: c }); }
+  const handleStatusUpdated = (updated: PayrollPeriod) => {
+    setPeriods(p =>
+      p.map(x => x.payroll_id === updated.payroll_id ? { ...x, status: updated.status } : x)
+    );
   };
-
-  const handleDownloadPayslip = (id: string) => {
-    const d = dailyPayroll.find(p => p.id === id);   if (d) { downloadDailyPayslipPDF(d); return; }
-    const m = monthlyPayroll.find(p => p.id === id); if (m) { downloadMonthlyPayslipPDF(m); }
-  };
-
-  const handleMarkPaid = async (payrollId: string, bookingId: number, gcashRef: string, receiptUrl: string) => {
-    try {
-      const updated = await markCommissionPaid(payrollId, bookingId, gcashRef, receiptUrl);
-      setCommissionPayroll(prev => prev.map(record => {
-        if (record.id !== payrollId) return record;
-        return { ...record, bookingDetails: record.bookingDetails?.map(b => b.booking_id === bookingId ? { ...b, ...updated } : b) };
-      }));
-    } catch (err) { console.error('Error marking commission as paid:', err); }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this payroll record? This cannot be undone.')) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/payroll/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
-      setDailyPayroll(prev      => prev.filter(p => p.id !== id));
-      setMonthlyPayroll(prev    => prev.filter(p => p.id !== id));
-      setCommissionPayroll(prev => prev.filter(p => p.id !== id));
-    } catch { alert('Failed to delete. Please try again.'); }
-  };
-
-  const totalResults = filteredDaily.length + filteredMonthly.length + filteredCommission.length;
 
   return (
-    <>
-      <PayrollDetailModal record={viewRecord} onClose={() => setViewRecord(null)} onDownloadPayslip={handleDownloadPayslip} />
-      <GeneratePayrollModal open={showGenerateModal} onClose={() => setShowGenerateModal(false)} onSuccess={loadPayroll} />
-      <EditPayrollModal record={editRecord} onClose={() => setEditRecord(null)} onSaved={loadPayroll} />
-
-      <div className="mb-6 flex items-center justify-between gap-4">
+    <div style={{ fontFamily: 'Poppins, sans-serif' }}>
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Payroll</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage employee payroll, commissions, and payslips.</p>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Payroll Periods</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Generate and manage payroll by period</p>
         </div>
-        <button type="button" onClick={() => setShowGenerateModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[#0B5858] hover:bg-[#094444] text-white rounded-2xl text-sm font-semibold transition-all shadow-md shadow-[#0B5858]/20 shrink-0">
+        <button
+          onClick={() => setShowGenerate(true)}
+          className="flex items-center gap-2 bg-[#0B5858] hover:bg-[#094444] text-white px-5 py-2.5 rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-[#0B5858]/20"
+        >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
           Generate Payroll
         </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Daily Workers', count: dailyPayroll.length,      color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-200'   },
-          { label: 'Monthly Staff', count: monthlyPayroll.length,    color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
-          { label: 'Agents',        count: commissionPayroll.length, color: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-200'  },
-          { label: 'Total Payroll', count: dailyPayroll.length + monthlyPayroll.length + commissionPayroll.length, color: 'text-[#0B5858]', bg: 'bg-white', border: 'border-gray-200' },
-        ].map(s => (
-          <div key={s.label} className={`${CARD.base} ${CARD.padding} border ${s.border} ${s.bg}`}>
-            <p className={`${CARD.label} mb-2`}>{s.label}</p>
-            <p className={`text-3xl font-bold ${s.color}`}>{s.count}</p>
+      {/* Filters */}
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 mb-5">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z" />
+            </svg>
+            <input
+              type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search by Payroll ID…"
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858]"
+            />
           </div>
-        ))}
-      </div>
-
-      <div className={CARD.base}>
-        <div className={CARD.header}>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex gap-2 flex-wrap">
-              {(['all', 'DAILY', 'MONTHLY', 'COMMISSION'] as const).map(type => (
-                <button key={type} type="button" onClick={() => setEmploymentTypeFilter(type)}
-                  className={`px-4 py-2 rounded-2xl text-sm font-semibold transition-all ${
-                    employmentTypeFilter === type
-                      ? type === 'all'        ? 'bg-[#0B5858] text-white shadow-md shadow-[#0B5858]/20'
-                        : type === 'DAILY'    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                        : type === 'MONTHLY'  ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20'
-                        : 'bg-amber-600 text-white shadow-md shadow-amber-600/20'
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:text-gray-900'
-                  }`}>
-                  {type === 'all' ? 'All Types' : type.charAt(0) + type.slice(1).toLowerCase()}
-                </button>
-              ))}
-            </div>
-            <div className="sm:ml-auto sm:w-64">
-              <SearchBar value={search} onChange={setSearch} />
-            </div>
-          </div>
-          {search && <p className="text-xs text-gray-500 mt-2">{totalResults} result{totalResults !== 1 ? 's' : ''} for &ldquo;{search}&rdquo;</p>}
-        </div>
-
-        <div className={CARD.padding}>
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
-              <p className="text-red-700 font-semibold mb-3">{error}</p>
-              <button type="button" onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-red-600 text-white rounded-2xl text-sm font-semibold hover:bg-red-700 transition-colors">Retry</button>
-            </div>
-          )}
-
-          {isLoading && !error && (
-            <div className="py-16 flex flex-col items-center gap-3">
-              <div className="h-7 w-7 animate-spin rounded-full border-[3px] border-[#0B5858] border-r-transparent" />
-              <p className="text-sm text-gray-400">Loading payroll data…</p>
-            </div>
-          )}
-
-          {!isLoading && !error && (
-            <div className="space-y-8">
-              {(employmentTypeFilter === 'all' || employmentTypeFilter === 'DAILY') && filteredDaily.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <h2 className="text-lg font-bold text-gray-900">Daily Workers</h2>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">{filteredDaily.length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {filteredDaily.map(record => (
-                      <DailyPayrollRow key={record.id} payroll={record}
-                        onView={handleView}
-                        onDownloadPayslip={handleDownloadPayslip}
-                        onDelete={handleDelete}
-                        onEdit={setEditRecord}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {(employmentTypeFilter === 'all' || employmentTypeFilter === 'MONTHLY') && filteredMonthly.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <h2 className="text-lg font-bold text-gray-900">Monthly Staff</h2>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-purple-100 text-purple-800">{filteredMonthly.length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {filteredMonthly.map(record => (
-                      <MonthlyPayrollRow key={record.id} payroll={record}
-                        onView={handleView}
-                        onDownloadPayslip={handleDownloadPayslip}
-                        onDelete={handleDelete}
-                        onEdit={setEditRecord}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {(employmentTypeFilter === 'all' || employmentTypeFilter === 'COMMISSION') && filteredCommission.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <h2 className="text-lg font-bold text-gray-900">Commission-Based Agents</h2>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800">{filteredCommission.length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {filteredCommission.map(record => (
-                      <CommissionPayrollRow key={record.id} payroll={record}
-                        onView={handleView}
-                        onDownloadPayslip={handleDownloadPayslip}
-                        onMarkPaid={handleMarkPaid}
-                        onDelete={handleDelete}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {totalResults === 0 && (
-                <div className="py-16 text-center">
-                  {search ? (
-                    <><p className="text-base font-bold text-gray-500">No results found</p><p className="text-sm text-gray-400 mt-1">Try a different search term</p></>
-                  ) : (
-                    <>
-                      <p className="text-base font-bold text-gray-500">No payroll records found</p>
-                      <p className="text-sm text-gray-400 mt-1">Start by generating a payroll record.</p>
-                      <button type="button" onClick={() => setShowGenerateModal(true)}
-                        className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-[#0B5858] hover:bg-[#094444] text-white rounded-2xl text-sm font-semibold transition-all shadow-md shadow-[#0B5858]/20">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Generate Payroll
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+          <input type="date" value={filterStart} onChange={e => setFilterStart(e.target.value)}
+            className="px-3 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30" />
+          <input type="date" value={filterEnd} min={filterStart} onChange={e => setFilterEnd(e.target.value)}
+            className="px-3 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30" />
+          {(search || filterStart || filterEnd) && (
+            <button onClick={() => { setSearch(''); setFilterStart(''); setFilterEnd(''); }}
+              className="px-4 py-2.5 border border-gray-200 text-gray-500 rounded-2xl text-sm hover:bg-gray-50 transition-colors">
+              Clear
+            </button>
           )}
         </div>
       </div>
-    </>
+
+      {/* Periods table */}
+      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="py-16 text-center text-gray-400 text-sm">Loading payroll periods…</div>
+        ) : periods.length === 0 ? (
+          <div className="py-16 text-center">
+            <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+              </svg>
+            </div>
+            <p className="text-gray-500 font-medium">No payroll periods found</p>
+            <p className="text-gray-400 text-sm mt-1">Click "Generate Payroll" to create the first period</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[900px]">
+              <thead className="bg-gray-50/80 border-b border-gray-100">
+                <tr>
+                  {['Payroll ID', 'Period', 'Employees', 'Total Gross', 'Charges', 'Net Pay', 'Status', ''].map(h => (
+                    <th key={h} className="text-left py-3 px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {periods.map(p => (
+                  <tr key={p.payroll_id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <td className="py-3.5 px-4">
+                      <span className="font-mono font-semibold text-gray-800 text-xs">{p.payroll_id}</span>
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap text-gray-600 text-xs">
+                      {fmtDate(p.period_start)} – {fmtDate(p.period_end)}
+                    </td>
+                    <td className="py-3.5 px-4 text-gray-700 font-medium">{p.employee_count}</td>
+                    <td className="py-3.5 px-4 text-gray-700">{fmtPeso(p.total_gross)}</td>
+                    <td className="py-3.5 px-4">
+                      <span className={Number(p.total_deductions) > 0 ? 'text-red-600' : 'text-gray-300'}>
+                        {Number(p.total_deductions) > 0 ? `−${fmtPeso(p.total_deductions)}` : '—'}
+                      </span>
+                    </td>
+                    <td className={`py-3.5 px-4 font-bold ${Number(p.total_net_pay) < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                      {fmtPeso(p.total_net_pay)}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_STYLES[p.status]}`}>{p.status}</span>
+                    </td>
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setSelected(p)}
+                          className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors">
+                          View
+                        </button>
+                        <button onClick={() => handleDelete(p.payroll_id)} disabled={deleting === p.payroll_id}
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-medium transition-colors disabled:opacity-50">
+                          {deleting === p.payroll_id ? '…' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {showGenerate && (
+        <GenerateModal
+          onClose={() => setShowGenerate(false)}
+          onGenerated={period => { setPeriods(p => [period, ...p]); }}
+        />
+      )}
+      {selected && (
+        <PeriodDetail
+          period={selected}
+          onClose={() => setSelected(null)}
+          onStatusUpdated={handleStatusUpdated}
+        />
+      )}
+    </div>
   );
 }
