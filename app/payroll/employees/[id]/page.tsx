@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-
-const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
+import { PAYROLL_API_BASE, payrollFetch } from '@/lib/api/payroll';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type EmploymentType = 'DAILY' | 'MONTHLY' | 'COMMISSION';
@@ -84,7 +83,7 @@ function RateEditor({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${PAYROLL_API}/api/employees/${employee.employee_id}`, {
+      const res = await payrollFetch(`${PAYROLL_API_BASE}/api/employees/${employee.employee_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ current_rate: n }),
@@ -202,7 +201,7 @@ function InfoEditor({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${PAYROLL_API}/api/employees/${employee.employee_id}`, {
+      const res = await payrollFetch(`${PAYROLL_API_BASE}/api/employees/${employee.employee_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -304,8 +303,8 @@ export default function EmployeeProfilePage() {
   useEffect(() => {
     if (!id) return;
     Promise.all([
-      fetch(`${PAYROLL_API}/api/employees/${id}`).then(r => r.json()),
-      fetch(`${PAYROLL_API}/api/charges/employee/${id}`).then(r => r.json()).catch(() => []),
+      payrollFetch(`${PAYROLL_API_BASE}/api/employees/${id}`).then(r => r.json()),
+      payrollFetch(`${PAYROLL_API_BASE}/api/charges/employee/${id}`).then(r => r.json()).catch(() => []),
     ]).then(([emp, chg]) => {
       setEmployee(emp);
       setCharges(Array.isArray(chg) ? chg.slice(0, 10) : []);
@@ -315,7 +314,7 @@ export default function EmployeeProfilePage() {
   // Fetch payroll appearances from periods
   useEffect(() => {
     if (!id) return;
-    fetch(`${PAYROLL_API}/api/payroll-periods`)
+    payrollFetch(`${PAYROLL_API_BASE}/api/payroll-periods`)
       .then(r => r.json())
       .then(async (periods: any[]) => {
         if (!Array.isArray(periods)) return;
@@ -324,7 +323,7 @@ export default function EmployeeProfilePage() {
         await Promise.all(
           periods.slice(0, 20).map(async (p: any) => {
             try {
-              const detail = await fetch(`${PAYROLL_API}/api/payroll-periods/${p.payroll_id}`).then(r => r.json());
+              const detail = await payrollFetch(`${PAYROLL_API_BASE}/api/payroll-periods/${p.payroll_id}`).then(r => r.json());
               const empRow = (detail.employees ?? []).find((e: any) => String(e.employee_id) === String(id));
               if (empRow) {
                 results.push({
@@ -353,7 +352,7 @@ export default function EmployeeProfilePage() {
     if (!employee) return;
     if (!confirm(`Deactivate ${employee.full_name}? They will be excluded from future payroll periods.`)) return;
     setDeactivating(true);
-    await fetch(`${PAYROLL_API}/api/employees/${employee.employee_id}`, { method: 'DELETE' });
+    await payrollFetch(`${PAYROLL_API_BASE}/api/employees/${employee.employee_id}`, { method: 'DELETE' });
     router.push('/payroll/employees');
   };
 

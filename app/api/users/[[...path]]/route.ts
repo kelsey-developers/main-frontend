@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 // Roles the Auth Service (kelsey.idateph.com) supports
 const AUTH_SERVICE_ROLES = new Set(['Guest', 'Agent', 'Admin']);
 
-// Roles stored in market-backend only — Auth Service returns "Unknown role" for these
+// Roles that can be stored in market-backend when MARKET_API_URL is set; otherwise Auth Service handles them
 const INTERNAL_ROLES = new Set(['Finance', 'Inventory', 'Housekeeping', 'Operations', 'Frontdesk']);
 
 async function getToken(): Promise<string | null> {
@@ -41,12 +41,10 @@ async function proxyAuthService(request: NextRequest, upstreamPath: string, body
   return NextResponse.json(data, { status: res.status });
 }
 
-/** Forward role update to the market-backend. */
-async function patchInternalRole(email: string, name: string, role: string): Promise<NextResponse> {
+/** Forward role update to the market-backend (when configured). */
+async function patchInternalRole(email: string, name: string, role: string): Promise<NextResponse | null> {
   const marketApiUrl = process.env.MARKET_API_URL?.replace(/\/$/, '');
-  if (!marketApiUrl) {
-    return NextResponse.json({ error: 'MARKET_API_URL not configured' }, { status: 503 });
-  }
+  if (!marketApiUrl) return null; // Fall through to Auth Service
 
   const res = await fetch(`${marketApiUrl}/api/user-roles`, {
     method: 'PATCH',
@@ -104,7 +102,6 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ path?
   const role = typeof parsedBody.role === 'string' ? parsedBody.role : null;
 
   if (role && INTERNAL_ROLES.has(role)) {
-    // Route to market-backend — Auth Service doesn't know this role
     const email = typeof parsedBody.email === 'string' ? parsedBody.email : null;
     const firstName = typeof parsedBody.firstName === 'string' ? parsedBody.firstName : '';
     const lastName  = typeof parsedBody.lastName  === 'string' ? parsedBody.lastName  : '';
@@ -114,7 +111,9 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ path?
       return NextResponse.json({ error: 'email is required when assigning an internal role' }, { status: 400 });
     }
 
-    return patchInternalRole(email, name, role);
+    const internalRes = await patchInternalRole(email, name, role);
+    if (internalRes) return internalRes;
+    // MARKET_API_URL not set — forward to Auth Service (supports Finance, Inventory, Housekeeping)
   }
 
   if (role && AUTH_SERVICE_ROLES.has(role)) {

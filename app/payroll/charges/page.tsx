@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-
-const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
+import { PAYROLL_API_BASE, payrollFetch } from '@/lib/api/payroll';
 
 interface Employee {
   employee_id: number;
@@ -87,9 +86,9 @@ function ChargeModal({
         description: form.description,
         amount:      Number(form.amount),
       };
-      const url    = isEdit ? `${PAYROLL_API}/api/charges/${charge!.charge_id}` : `${PAYROLL_API}/api/charges`;
+      const url    = isEdit ? `${PAYROLL_API_BASE}/api/charges/${charge!.charge_id}` : `${PAYROLL_API_BASE}/api/charges`;
       const method = isEdit ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
+      const res = await payrollFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -218,7 +217,7 @@ export default function ChargesPage() {
   const [filterEnd, setFilterEnd]     = useState('');
 
   useEffect(() => {
-    fetch(`${PAYROLL_API}/api/employees`)
+    payrollFetch(`${PAYROLL_API_BASE}/api/employees`)
       .then(r => r.json())
       .then(d => setEmployees(Array.isArray(d) ? d : []))
       .catch(() => {});
@@ -231,7 +230,7 @@ export default function ChargesPage() {
       if (filterEmp)   params.set('employee_id', filterEmp);
       if (filterStart) params.set('start', filterStart);
       if (filterEnd)   params.set('end', filterEnd);
-      const res = await fetch(`${PAYROLL_API}/api/charges?${params}`);
+      const res = await payrollFetch(`${PAYROLL_API_BASE}/api/charges?${params}`);
       if (res.ok) setCharges(await res.json());
     } catch { /* network error */ }
     finally { setLoading(false); }
@@ -251,7 +250,7 @@ export default function ChargesPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this charge? This cannot be undone.')) return;
     setDeleting(id);
-    await fetch(`${PAYROLL_API}/api/charges/${id}`, { method: 'DELETE' });
+    await payrollFetch(`${PAYROLL_API_BASE}/api/charges/${id}`, { method: 'DELETE' });
     setCharges(c => c.filter(x => x.charge_id !== id));
     setDeleting(null);
   };

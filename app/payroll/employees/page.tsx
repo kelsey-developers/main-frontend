@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-
-const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
+import { PAYROLL_API_BASE, payrollFetch } from '@/lib/api/payroll';
 
 type EmploymentType = 'DAILY' | 'MONTHLY';
 
@@ -91,9 +90,9 @@ function EmployeeModal({
     setLoading(true);
     setError(null);
     try {
-      const url    = isEdit ? `${PAYROLL_API}/api/employees/${employee!.employee_id}` : `${PAYROLL_API}/api/employees`;
+      const url    = isEdit ? `${PAYROLL_API_BASE}/api/employees/${employee!.employee_id}` : `${PAYROLL_API_BASE}/api/employees`;
       const method = isEdit ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
+      const res = await payrollFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, current_rate: Number(form.current_rate) }),
@@ -235,7 +234,7 @@ export default function EmployeesPage() {
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${PAYROLL_API}/api/employees`);
+      const res = await payrollFetch(`${PAYROLL_API_BASE}/api/employees`);
       if (res.ok) setEmployees(await res.json());
     } catch { /* network error */ }
     finally { setLoading(false); }
@@ -255,7 +254,7 @@ export default function EmployeesPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`Deactivate ${name}? They will no longer appear in new payroll periods.`)) return;
     setDeleting(id);
-    await fetch(`${PAYROLL_API}/api/employees/${id}`, { method: 'DELETE' });
+    await payrollFetch(`${PAYROLL_API_BASE}/api/employees/${id}`, { method: 'DELETE' });
     setEmployees(e => e.filter(x => x.employee_id !== id));
     setDeleting(null);
   };

@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-
-const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
+import { PAYROLL_API_BASE, payrollFetch } from '@/lib/api/payroll';
 
 interface Employee {
   employee_id: number;
@@ -106,9 +105,9 @@ function DTRModal({
       if (form.time_in)  body.time_in  = form.time_in;
       if (form.time_out) body.time_out = form.time_out;
 
-      const url    = isEdit ? `${PAYROLL_API}/api/dtr/${record!.dtr_id}` : `${PAYROLL_API}/api/dtr`;
+      const url    = isEdit ? `${PAYROLL_API_BASE}/api/dtr/${record!.dtr_id}` : `${PAYROLL_API_BASE}/api/dtr`;
       const method = isEdit ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
+      const res = await payrollFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -238,7 +237,7 @@ export default function DTRPage() {
 
   // Load employees for dropdown
   useEffect(() => {
-    fetch(`${PAYROLL_API}/api/employees`)
+    payrollFetch(`${PAYROLL_API_BASE}/api/employees`)
       .then(r => r.json())
       .then(d => setEmployees(Array.isArray(d) ? d : []))
       .catch(() => {});
@@ -251,7 +250,7 @@ export default function DTRPage() {
       if (filterEmp)   params.set('employee_id', filterEmp);
       if (filterStart) params.set('start', filterStart);
       if (filterEnd)   params.set('end', filterEnd);
-      const res = await fetch(`${PAYROLL_API}/api/dtr/all?${params}`);
+      const res = await payrollFetch(`${PAYROLL_API_BASE}/api/dtr/all?${params}`);
       if (res.ok) setRecords(await res.json());
     } catch { /* network error */ }
     finally { setLoading(false); }
@@ -268,7 +267,7 @@ export default function DTRPage() {
   const handleDelete = async (id: number) => {
     if (!confirm('Delete this DTR entry? This cannot be undone.')) return;
     setDeleting(id);
-    await fetch(`${PAYROLL_API}/api/dtr/${id}`, { method: 'DELETE' });
+    await payrollFetch(`${PAYROLL_API_BASE}/api/dtr/${id}`, { method: 'DELETE' });
     setRecords(r => r.filter(x => x.dtr_id !== id));
     setDeleting(null);
   };
