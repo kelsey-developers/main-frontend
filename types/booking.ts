@@ -7,12 +7,8 @@ export type BookingStatus =
   | 'declined'
   | 'cancelled';
 
-export type PaymentMethod =
-  | 'bank_transfer'
-  | 'credit_card'
-  | 'company_account'
-  | 'cash'
-  | '';
+/** Only GCash and Bank Transfer are accepted in the reserve flow */
+export type PaymentMethod = 'gcash' | 'bank_transfer' | '';
 
 export interface AdditionalService {
   id: string;
@@ -108,6 +104,13 @@ export interface BookingFormData {
   cashPayerContact?: string;
   cashPayBeforeArrival?: boolean;
 
+  /** GCash payment fields */
+  gcashName?: string;
+  gcashNumber?: string;
+  gcashRefNumber?: string;
+  gcashReceiptUploaded?: boolean;
+  gcashReceiptFileName?: string;
+
   bookingReference?: string;
   assignedAgentName?: string;
 
@@ -122,6 +125,16 @@ export interface BookingFormData {
   locationCoords?: string;
   checkInInstructions?: string;
   locationNotes?: string;
+
+  /** Per-pax guest list with name and age classification */
+  guestList?: GuestEntry[];
+}
+
+/** Individual guest entry — used for per-pax tracking */
+export interface GuestEntry {
+  id: string;
+  name: string;
+  classification: 'Adult' | 'Senior' | 'Child' | 'Infant' | 'PWD';
 }
 
 export interface BlockedRange {
