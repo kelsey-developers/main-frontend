@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import type { BookingFormData } from '@/types/booking';
+import type { BookingFormData, GuestEntry } from '@/types/booking';
 import { BookingSummarySidebar } from './BookingSummarySidebar';
 import { NeedHelpCard } from './NeedHelpCard';
 
@@ -499,6 +499,190 @@ const PhoneInput: React.FC<{
   );
 };
 
+/** Classifications for guest age/type — used for per-pax tracking */
+const GUEST_CLASSIFICATIONS: { value: GuestEntry['classification']; label: string; color: string }[] = [
+  { value: 'Adult', label: 'Adult (18-59)', color: 'bg-green-100 text-green-700 border-green-200' },
+  { value: 'Senior', label: 'Senior (60+)', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+  { value: 'Child', label: 'Child (2-17)', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+  { value: 'Infant', label: 'Infant (0-1)', color: 'bg-pink-100 text-pink-700 border-pink-200' },
+  { value: 'PWD', label: 'PWD', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+];
+
+/**
+ * GuestListSection — allows adding per-pax guest info with age/type classification.
+ * The primary guest is auto-included from the client info above.
+ */
+const GuestListSection: React.FC<{
+  guestList: GuestEntry[];
+  onUpdateGuestList: (list: GuestEntry[]) => void;
+  primaryGuestName: string;
+}> = ({ guestList, onUpdateGuestList, primaryGuestName }) => {
+  const [newGuestName, setNewGuestName] = useState('');
+  const [newGuestClassification, setNewGuestClassification] = useState<GuestEntry['classification']>('Adult');
+
+  /* Auto-add primary guest as first entry if not already present */
+  useEffect(() => {
+    if (primaryGuestName && guestList.length === 0) {
+      onUpdateGuestList([{ id: 'primary', name: primaryGuestName, classification: 'Adult' }]);
+    }
+  }, [primaryGuestName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Keep primary guest name in sync */
+  useEffect(() => {
+    if (primaryGuestName && guestList.length > 0 && guestList[0].id === 'primary' && guestList[0].name !== primaryGuestName) {
+      const updated = [...guestList];
+      updated[0] = { ...updated[0], name: primaryGuestName };
+      onUpdateGuestList(updated);
+    }
+  }, [primaryGuestName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAddGuest = () => {
+    const name = newGuestName.trim();
+    if (!name) return;
+    const entry: GuestEntry = { id: `guest-${Date.now()}`, name, classification: newGuestClassification };
+    onUpdateGuestList([...guestList, entry]);
+    setNewGuestName('');
+    setNewGuestClassification('Adult');
+  };
+
+  const handleRemoveGuest = (id: string) => {
+    if (id === 'primary') return; // can't remove primary guest
+    onUpdateGuestList(guestList.filter(g => g.id !== id));
+  };
+
+  const handleClassificationChange = (id: string, classification: GuestEntry['classification']) => {
+    onUpdateGuestList(guestList.map(g => g.id === id ? { ...g, classification } : g));
+  };
+
+  const classificationColorMap = Object.fromEntries(GUEST_CLASSIFICATIONS.map(c => [c.value, c.color]));
+
+  const guestCounts = guestList.reduce((acc, g) => {
+    acc[g.classification] = (acc[g.classification] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h3 className="text-sm sm:text-base font-semibold text-[#0B5858]" style={{ fontFamily: 'Poppins' }}>
+            Guest List (Per Pax)
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5" style={{ fontFamily: 'Poppins' }}>
+            Add all guests staying at the property with their age classification
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {Object.entries(guestCounts).map(([cls, count]) => (
+            <span key={cls} className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${classificationColorMap[cls] || 'bg-gray-100 text-gray-700'}`}>
+              {count} {cls}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Guest table */}
+      {guestList.length > 0 && (
+        <div className="border border-gray-200 rounded-lg overflow-hidden mb-3">
+          <table className="w-full text-sm" style={{ fontFamily: 'Poppins' }}>
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 w-8">#</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Guest Name</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Classification</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {guestList.map((guest, i) => (
+                <tr key={guest.id} className={guest.id === 'primary' ? 'bg-[#0B5858]/5' : ''}>
+                  <td className="px-3 py-2 text-gray-500 text-xs">{i + 1}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900 text-xs sm:text-sm">{guest.name}</span>
+                      {guest.id === 'primary' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#0B5858] text-white font-medium">Primary</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={guest.classification}
+                      onChange={(e) => handleClassificationChange(guest.id, e.target.value as GuestEntry['classification'])}
+                      className="text-xs sm:text-sm px-2 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858] focus:border-transparent bg-white"
+                      style={{ fontFamily: 'Poppins' }}
+                    >
+                      {GUEST_CLASSIFICATIONS.map(c => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    {guest.id !== 'primary' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveGuest(guest.id)}
+                        className="p-1 text-[#B84C4C] hover:bg-[#B84C4C]/10 rounded transition-colors cursor-pointer"
+                        aria-label="Remove guest"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add guest form */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
+        <div className="flex-1">
+          <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Guest Name</label>
+          <input
+            type="text"
+            value={newGuestName}
+            onChange={(e) => setNewGuestName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddGuest(); } }}
+            placeholder="Enter guest name..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]"
+            style={{ fontFamily: 'Poppins' }}
+          />
+        </div>
+        <div className="w-full sm:w-40">
+          <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Type</label>
+          <select
+            value={newGuestClassification}
+            onChange={(e) => setNewGuestClassification(e.target.value as GuestEntry['classification'])}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74] bg-white"
+            style={{ fontFamily: 'Poppins' }}
+          >
+            {GUEST_CLASSIFICATIONS.map(c => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={handleAddGuest}
+          disabled={!newGuestName.trim()}
+          className="px-4 py-2 bg-[#0B5858] text-white rounded-lg text-sm font-medium hover:bg-[#094b4b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+          style={{ fontFamily: 'Poppins' }}
+        >
+          + Add Guest
+        </button>
+      </div>
+
+      <p className="text-[10px] text-gray-400 mt-2" style={{ fontFamily: 'Poppins' }}>
+        Total guests: {guestList.length} — The primary guest is auto-filled from the client information above.
+      </p>
+    </div>
+  );
+};
+
 const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, listingId, onUpdate, onUpdateField, onNext, onBack, onCancel }) => {
   const updateField = (k: keyof BookingFormData, v: any) => {
     if (typeof onUpdateField === 'function') {
@@ -700,6 +884,13 @@ const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, listingId, on
           </div>
         </div>
       </div>
+
+      {/* ── Per-Pax Guest List ─────────────────────────────────────────── */}
+      <GuestListSection
+        guestList={(formData as any).guestList ?? []}
+        onUpdateGuestList={(list) => updateField('guestList' as keyof BookingFormData, list)}
+        primaryGuestName={`${formData.firstName ?? ''} ${formData.lastName ?? ''}`.trim()}
+      />
 
       <div className="hidden lg:flex justify-end space-x-4 mt-6 pt-4 border-t border-gray-200">
         <button onClick={onCancel} className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm" style={{ fontFamily: 'Poppins' }}>

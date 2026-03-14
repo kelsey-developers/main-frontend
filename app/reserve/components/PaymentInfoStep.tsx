@@ -33,7 +33,7 @@ interface PaymentInfoStepProps {
   };
 }
 
-type PaymentMethod = 'bank_transfer' | 'credit_card' | 'company_account' | 'cash' | '';
+type PaymentMethod = 'gcash' | 'bank_transfer' | '';
 
 const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
   formData,
@@ -52,10 +52,8 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
   const [hasInteracted, setHasInteracted] = React.useState<boolean>(false);
 
   const [bankReceiptPreview, setBankReceiptPreview] = React.useState<string | null>(null);
-  const [billingDocPreview, setBillingDocPreview] = React.useState<string | null>(null);
 
   const bankReceiptUrlRef = React.useRef<string | null>(null);
-  const billingDocUrlRef = React.useRef<string | null>(null);
 
   // Keep local selection in sync with formData.paymentMethod WITHOUT showing details.
   React.useEffect(() => {
@@ -71,7 +69,7 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.paymentMethod]);
 
-  // Cleanup object URLs on unmount
+  // Cleanup bank receipt object URL on unmount
   React.useEffect(() => {
     return () => {
       if (bankReceiptUrlRef.current) {
@@ -81,14 +79,6 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
           // ignore
         }
         bankReceiptUrlRef.current = null;
-      }
-      if (billingDocUrlRef.current) {
-        try {
-          URL.revokeObjectURL(billingDocUrlRef.current);
-        } catch {
-          // ignore
-        }
-        billingDocUrlRef.current = null;
       }
     };
   }, []);
@@ -130,63 +120,6 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
     return collapseInternalNoLeading(cleaned);
   };
 
-  const sanitizeExpiry = (value: string) => {
-    if (typeof value !== 'string') return value;
-    const digits = value.replace(/\D/g, '').slice(0, 6);
-    if (digits.length <= 2) return digits;
-    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  };
-
-  const luhnCheck = (cardNumber: string): boolean => {
-    const digits = (cardNumber || '').replace(/\D/g, '');
-    if (digits.length < 12) return false;
-    let sum = 0;
-    let shouldDouble = false;
-    for (let i = digits.length - 1; i >= 0; i--) {
-      let d = parseInt(digits.charAt(i), 10);
-      if (Number.isNaN(d)) return false;
-      if (shouldDouble) {
-        d *= 2;
-        if (d > 9) d -= 9;
-      }
-      sum += d;
-      shouldDouble = !shouldDouble;
-    }
-    return sum % 10 === 0;
-  };
-
-  const parseExpiryInfo = (expiry: string) => {
-    if (!expiry) return { validFormat: false, expired: false };
-    const cleaned = expiry.trim();
-    const mmyy = /^(\d{2})\/(\d{2})$/;
-    const mmyyyy = /^(\d{2})\/(\d{4})$/;
-    let month = 0;
-    let year = 0;
-    if (mmyy.test(cleaned)) {
-      const [, mm, yy] = cleaned.match(mmyy) as RegExpMatchArray;
-      month = parseInt(mm, 10);
-      year = 2000 + parseInt(yy, 10);
-    } else if (mmyyyy.test(cleaned)) {
-      const [, mm, yyyy] = cleaned.match(mmyyyy) as RegExpMatchArray;
-      month = parseInt(mm, 10);
-      year = parseInt(yyyy, 10);
-    } else {
-      return { validFormat: false, expired: false };
-    }
-    if (month < 1 || month > 12) return { validFormat: false, expired: false };
-    const expiryDate = new Date(year, month, 0, 23, 59, 59, 999);
-    const today = new Date();
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    return { validFormat: true, expired: expiryDate.getTime() < todayOnly.getTime() };
-  };
-
-  const isValidEmail = (email?: string) => {
-    if (!email) return false;
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email.trim());
-  };
-
   const isValidPersonName = (name?: string) => {
     if (!name) return false;
     const n = trimAndCollapse(name);
@@ -215,17 +148,6 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
       }
       setBankReceiptPreview(null);
     }
-    if (method !== 'company_account') {
-      if (billingDocUrlRef.current) {
-        try {
-          URL.revokeObjectURL(billingDocUrlRef.current);
-        } catch {
-          // ignore
-        }
-        billingDocUrlRef.current = null;
-      }
-      setBillingDocPreview(null);
-    }
 
     onUpdate({
       paymentMethod: method,
@@ -235,33 +157,19 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
 
   const clearPaymentFieldsExcept = (keep: Exclude<PaymentMethod, ''>) => {
     const cleared: Partial<BookingFormData> = {
-      cardNumber: '',
-      nameOnCard: '',
-      cvvCode: '',
-      expirationDate: '',
       bankName: '',
       bankAccountNumber: '',
       depositorName: '',
       bankReceiptFileName: '',
       bankReceiptUploaded: false,
-      companyName: '',
-      billingContact: '',
-      billingEmail: '',
-      poNumber: '',
-      billingDocumentFileName: '',
-      billingDocumentUploaded: false,
-      cashPayerName: '',
-      cashPayerContact: '',
-      cashPayBeforeArrival: false
+      gcashName: '',
+      gcashNumber: '',
+      gcashRefNumber: '',
+      gcashReceiptUploaded: false,
+      gcashReceiptFileName: '',
     };
 
     switch (keep) {
-      case 'credit_card':
-        delete (cleared as any).cardNumber;
-        delete (cleared as any).nameOnCard;
-        delete (cleared as any).cvvCode;
-        delete (cleared as any).expirationDate;
-        break;
       case 'bank_transfer':
         delete (cleared as any).bankName;
         delete (cleared as any).bankAccountNumber;
@@ -269,18 +177,12 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
         delete (cleared as any).bankReceiptFileName;
         delete (cleared as any).bankReceiptUploaded;
         break;
-      case 'company_account':
-        delete (cleared as any).companyName;
-        delete (cleared as any).billingContact;
-        delete (cleared as any).billingEmail;
-        delete (cleared as any).poNumber;
-        delete (cleared as any).billingDocumentFileName;
-        delete (cleared as any).billingDocumentUploaded;
-        break;
-      case 'cash':
-        delete (cleared as any).cashPayerName;
-        delete (cleared as any).cashPayerContact;
-        delete (cleared as any).cashPayBeforeArrival;
+      case 'gcash':
+        delete (cleared as any).gcashName;
+        delete (cleared as any).gcashNumber;
+        delete (cleared as any).gcashRefNumber;
+        delete (cleared as any).gcashReceiptUploaded;
+        delete (cleared as any).gcashReceiptFileName;
         break;
       default:
         break;
@@ -294,18 +196,6 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
       value = collapseInternalNoLeading(value);
     }
     onUpdate({ [field]: value } as Partial<BookingFormData>);
-  };
-
-  const handleCardInputChange = (field: 'cardNumber' | 'nameOnCard' | 'cvvCode' | 'expirationDate', value: string) => {
-    if (field === 'cardNumber') {
-      onUpdate({ [field]: sanitizeDigits(value).slice(0, 19) } as Partial<BookingFormData>);
-    } else if (field === 'cvvCode') {
-      onUpdate({ [field]: sanitizeDigits(value).slice(0, 4) } as Partial<BookingFormData>);
-    } else if (field === 'expirationDate') {
-      onUpdate({ [field]: sanitizeExpiry(value) } as Partial<BookingFormData>);
-    } else {
-      onUpdate({ [field]: sanitizeAlpha(value) } as Partial<BookingFormData>);
-    }
   };
 
   const onBankReceiptChange = (e: React.ChangeEvent<HTMLInputElement> | File | null) => {
@@ -336,34 +226,6 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
     }
   };
 
-  const onBillingDocChange = (e: React.ChangeEvent<HTMLInputElement> | File | null) => {
-    const file = e && 'target' in (e as any) ? (e as React.ChangeEvent<HTMLInputElement>).target.files?.[0] ?? null : (e as File | null);
-    if (billingDocUrlRef.current) {
-      try {
-        URL.revokeObjectURL(billingDocUrlRef.current);
-      } catch {
-        // ignore
-      }
-      billingDocUrlRef.current = null;
-    }
-
-    if (file) {
-      handleGenericInput('billingDocumentFileName', file.name);
-      handleGenericInput('billingDocumentUploaded', true);
-      if (file.type.startsWith('image/')) {
-        const url = URL.createObjectURL(file);
-        billingDocUrlRef.current = url;
-        setBillingDocPreview(url);
-      } else {
-        setBillingDocPreview(null);
-      }
-    } else {
-      handleGenericInput('billingDocumentFileName', '');
-      handleGenericInput('billingDocumentUploaded', false);
-      setBillingDocPreview(null);
-    }
-  };
-
   const handleClickableKey = (e: React.KeyboardEvent, clickFn: () => void) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -379,14 +241,6 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
       onBankReceiptChange(file);
     }
   };
-  const handleDropBillingDoc = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const file = e.dataTransfer.files?.[0] ?? null;
-    if (file) {
-      onBillingDocChange(file);
-    }
-  };
 
   const handleTermsChange = (agree: boolean) => onUpdate({ agreeToTerms: agree });
 
@@ -396,52 +250,14 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
 
   const isPaymentMethodComplete = (method?: PaymentMethod) => {
     switch (method) {
-      case 'credit_card':
-        return !!(formData.cardNumber && formData.nameOnCard && formData.cvvCode && formData.expirationDate);
       case 'bank_transfer':
         return !!(formData.bankName && formData.bankAccountNumber && formData.depositorName && (formData.bankReceiptFileName || formData.bankReceiptUploaded === true));
-      case 'company_account':
-        return !!(formData.companyName && formData.billingContact && formData.billingEmail);
-      case 'cash':
-        return !!(formData.cashPayerName);
+      case 'gcash':
+        return !!((formData as any).gcashName && (formData as any).gcashNumber && (formData as any).gcashReceiptUploaded);
       default:
         return false;
     }
   };
-
-  const cardNumber = formData.cardNumber ?? '';
-  const cvvCode = formData.cvvCode ?? '';
-  const expirationDate = formData.expirationDate ?? '';
-  const nameOnCard = formData.nameOnCard ?? '';
-
-  const cardNumberDigits = sanitizeDigits(cardNumber);
-  const cardNumberError = (() => {
-    if (!cardNumberDigits) return 'Card number required';
-    if (cardNumberDigits.length < 12) return 'Card number too short';
-    if (cardNumberDigits.length > 19) return 'Card number too long';
-    if (!luhnCheck(cardNumberDigits)) return 'Card number appears invalid';
-    return '';
-  })();
-
-  const expiryInfo = parseExpiryInfo(expirationDate);
-  const expiryError = (() => {
-    if (!expirationDate) return 'Expiration required';
-    if (!expiryInfo.validFormat) return 'Expiration format invalid (MM/YY or MM/YYYY)';
-    if (expiryInfo.expired) return 'Card expired';
-    return '';
-  })();
-
-  const cvvError = (() => {
-    if (!cvvCode) return 'CVV required';
-    if (!/^\d{3,4}$/.test(cvvCode)) return 'CVV must be 3 or 4 digits';
-    return '';
-  })();
-
-  const nameOnCardError = (() => {
-    if (!nameOnCard) return 'Name on card required';
-    if (!isValidPersonName(nameOnCard)) return 'Name on card contains invalid characters or numbers';
-    return '';
-  })();
 
   const bankName = formData.bankName ?? '';
   const bankAccountNumber = formData.bankAccountNumber ?? '';
@@ -460,53 +276,30 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
     return '';
   })();
 
-  const companyName = formData.companyName ?? '';
-  const billingContact = formData.billingContact ?? '';
-  const billingEmail = formData.billingEmail ?? '';
-  const companyError = (() => {
-    if (!companyName) return 'Company name required';
-    if (!billingContact) return 'Billing contact required';
-    if (!billingEmail) return 'Billing email required';
-    if (!isValidEmail(billingEmail)) return 'Enter a valid billing email';
-    if (!isValidPersonName(billingContact)) return 'Billing contact contains invalid characters or numbers';
-    return '';
-  })();
-
-  const cashPayerName = formData.cashPayerName ?? '';
-  const cashPayerContact = formData.cashPayerContact ?? '';
-  const cashContactNormalized = sanitizePhone(cashPayerContact);
-  const cashContactDigits = cashContactNormalized.replace(/\D/g, '');
-  const cashPayerError = (() => {
-    if (!cashPayerName) return 'Payer name required';
-    if (!isValidPersonName(cashPayerName)) return 'Payer name contains invalid characters or numbers';
-    if (cashPayerContact) {
-      if (!(cashContactDigits.length === 10 || cashContactDigits.length === 11 || (cashContactDigits.length >= 7 && cashContactDigits.length <= 15))) {
-        return 'Payer contact must be 10 or 11 digits (or 7–15 digits for international)';
-      }
-    }
+  /* ── GCash validation ─────────────────────────────────────────────── */
+  const gcashName = (formData as any).gcashName ?? '';
+  const gcashNumber = (formData as any).gcashNumber ?? '';
+  const gcashReceiptUploaded = (formData as any).gcashReceiptUploaded ?? false;
+  const gcashError = (() => {
+    if (!gcashName) return 'GCash account name required';
+    if (!gcashNumber) return 'GCash number required';
+    const digits = gcashNumber.replace(/\D/g, '');
+    if (digits.length < 10 || digits.length > 11) return 'GCash number must be 10-11 digits';
+    if (!gcashReceiptUploaded) return 'Please upload proof of payment';
     return '';
   })();
 
   const methodValidationError = (() => {
     switch (methodToValidate) {
-      case 'credit_card':
-        if (cardNumberError) return cardNumberError;
-        if (nameOnCardError) return nameOnCardError;
-        if (cvvError) return cvvError;
-        if (expiryError) return expiryError;
-        return '';
       case 'bank_transfer':
         if (bankAccountError) return bankAccountError;
         if (depositorError) return depositorError;
         return '';
-      case 'company_account':
-        if (companyError) return companyError;
-        return '';
-      case 'cash':
-        if (cashPayerError) return cashPayerError;
+      case 'gcash':
+        if (gcashError) return gcashError;
         return '';
       default:
-        return 'Select a payment method';
+        return 'Select a payment method (GCash or Bank Transfer)';
     }
   })();
 
@@ -607,28 +400,69 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
         <div className="lg:col-span-2">
           <div className="border border-[#E6F5F4] rounded-lg p-3 sm:p-4 bg-white shadow-sm">
           <div className="space-y-3 mb-4">
-            {/* Only show cash option for now. Other options are commented out for easy re-enable later. */}
+            {/* Accepted payment methods: GCash and Bank Transfer only */}
             <label
-              className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 focus-within:ring-2 focus-within:ring-[#0B5858] cursor-pointer"
-              aria-label="Cash Payment"
-              title="Cash Payment"
+              className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all cursor-pointer ${
+                currentSelectedForUI === 'gcash' ? 'border-[#0B5858] bg-[#0B5858]/5' : 'border-gray-200 hover:bg-gray-50'
+              }`}
+              aria-label="GCash Payment"
+              title="GCash Payment"
             >
               <input
                 type="radio"
                 name="paymentMethod"
-                value="cash"
-                checked={currentSelectedForUI === 'cash'}
-                onChange={() => handlePaymentMethodChange('cash')}
+                value="gcash"
+                checked={currentSelectedForUI === 'gcash'}
+                onChange={() => handlePaymentMethodChange('gcash')}
                 className="w-4 h-4 text-[#0B5858] border-gray-300 focus:ring-[#0B5858]"
               />
-              <span className="ml-1 text-xs sm:text-sm text-gray-800">Cash Payment</span>
+              <div className="flex items-center gap-2 flex-1">
+                <div className="w-10 h-10 bg-[#007AFF] rounded-lg flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-bold text-xs">GC</span>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>GCash</span>
+                  <p className="text-[10px] text-gray-500" style={{ fontFamily: 'Poppins' }}>Send payment via GCash and upload proof</p>
+                </div>
+              </div>
             </label>
 
-            {/*
-            <label ...> Bank Transfer / Deposit </label>
-            <label ...> Credit or Debit Card </label>
-            <label ...> Company Account / Billing </label>
-            */}
+            <label
+              className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all cursor-pointer ${
+                currentSelectedForUI === 'bank_transfer' ? 'border-[#0B5858] bg-[#0B5858]/5' : 'border-gray-200 hover:bg-gray-50'
+              }`}
+              aria-label="Bank Transfer"
+              title="Bank Transfer"
+            >
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="bank_transfer"
+                checked={currentSelectedForUI === 'bank_transfer'}
+                onChange={() => handlePaymentMethodChange('bank_transfer')}
+                className="w-4 h-4 text-[#0B5858] border-gray-300 focus:ring-[#0B5858]"
+              />
+              <div className="flex items-center gap-2 flex-1">
+                <div className="w-10 h-10 bg-[#0B5858] rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                  </svg>
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>Bank Transfer</span>
+                  <p className="text-[10px] text-gray-500" style={{ fontFamily: 'Poppins' }}>Transfer to our bank account and upload receipt</p>
+                </div>
+              </div>
+            </label>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
+              <svg className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <p className="text-xs text-blue-800" style={{ fontFamily: 'Poppins' }}>
+                Only GCash and Bank Transfer are accepted. Send the exact amount and upload the receipt/screenshot as proof of payment.
+              </p>
+            </div>
           </div>
 
           {/* Payment method detail panels */}
@@ -780,307 +614,164 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
             </div>
           )}
 
-          {hasInteracted && selectedMethod === 'credit_card' && (
+          {/* ── GCash Payment Panel ──────────────────────────────────────── */}
+          {hasInteracted && selectedMethod === 'gcash' && (
             <div className="mt-2 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-semibold text-gray-700">
-                  Card (Credit / Debit)
-                </span>
-                <div className="flex space-x-2">
-                  <img src="/Credit_Cards/Credit.png" alt="Credit Card" className="h-5 sm:h-6" />
+              {/* GCash payment instructions */}
+              <div className="bg-gradient-to-r from-[#007AFF]/10 to-blue-50 border border-[#007AFF]/20 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 bg-[#007AFF] rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <span className="text-white font-bold text-sm">GC</span>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 mb-1" style={{ fontFamily: 'Poppins' }}>Send Payment To:</h4>
+                    <p className="text-lg font-bold text-[#007AFF]" style={{ fontFamily: 'Poppins' }}>0917 123 4567</p>
+                    <p className="text-xs text-gray-600 mt-0.5" style={{ fontFamily: 'Poppins' }}>Registered Name: KBC Property Management</p>
+                    <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>
+                      Send the exact total amount shown in the summary. Include your booking reference in the message.
+                    </p>
+                  </div>
                 </div>
-              </div>
-
-              {expiryInfo.validFormat && expiryInfo.expired && (
-                <div className="mb-2 p-3 rounded-md bg-red-50 border border-red-200 text-xs text-red-800" role="alert">
-                  The expiration date you entered indicates the card is expired. Please update the expiration date or use another card.
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Card Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.cardNumber || ''}
-                  onChange={(e) => handleCardInputChange('cardNumber', e.target.value)}
-                  placeholder="1234567890123456"
-                  inputMode="numeric"
-                  maxLength={19}
-                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                  aria-describedby={cardNumberError ? 'card-number-error' : undefined}
-                />
-                {cardNumberError && <div id="card-number-error" className="mt-1 text-xs text-yellow-700">{cardNumberError}</div>}
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Name on Card
-                </label>
-                <input
-                  type="text"
-                  value={formData.nameOnCard || ''}
-                  onChange={(e) => handleCardInputChange('nameOnCard', e.target.value)}
-                  placeholder="John Doe"
-                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                  aria-describedby={nameOnCardError ? 'name-on-card-error' : undefined}
-                />
-                {nameOnCardError && <div id="name-on-card-error" className="mt-1 text-xs text-yellow-700">{nameOnCardError}</div>}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                    CVV
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.cvvCode || ''}
-                    onChange={(e) => handleCardInputChange('cvvCode', e.target.value)}
-                    placeholder="123"
-                    maxLength={4}
-                    inputMode="numeric"
-                    className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                    aria-describedby={cvvError ? 'cvv-error' : undefined}
-                  />
-                  {cvvError && <div id="cvv-error" className="mt-1 text-xs text-yellow-700">{cvvError}</div>}
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                    Expiration (MM/YY)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.expirationDate || ''}
-                    onChange={(e) => handleCardInputChange('expirationDate', e.target.value)}
-                    placeholder="12/25"
-                    maxLength={7}
-                    inputMode="numeric"
-                    className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                    aria-describedby={expiryError ? 'expiry-error' : undefined}
-                  />
-                  {expiryError && <div id="expiry-error" className="mt-1 text-xs text-yellow-700">{expiryError}</div>}
-                </div>
-              </div>
-
-              <div className="text-[11px] text-gray-600">
-                We use a PCI-compliant processor — card details are tokenized and not stored on our servers.
-              </div>
-            </div>
-          )}
-
-          {hasInteracted && selectedMethod === 'company_account' && (
-            <div className="mt-2 space-y-4">
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Company Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.companyName || ''}
-                  onChange={(e) => handleGenericInput('companyName', sanitizeAlphanumericAndSpace(e.target.value))}
-                  placeholder="ACME Corporation"
-                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Billing Contact Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.billingContact || ''}
-                  onChange={(e) => handleGenericInput('billingContact', sanitizeAlpha(e.target.value))}
-                  placeholder="Jane Accountant"
-                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                    Billing Email
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.billingEmail || ''}
-                    onChange={(e) => handleGenericInput('billingEmail', e.target.value.trim())}
-                    placeholder="billing@company.com"
-                    className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                    aria-describedby={companyError ? 'company-error' : undefined}
-                  />
-                  {companyError && <div id="company-error" className="mt-1 text-xs text-yellow-700">{companyError}</div>}
-                </div>
-
-                <div>
-                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                    PO / Billing Reference (optional)
+                    GCash Account Name *
                   </label>
                   <input
                     type="text"
-                    value={formData.poNumber || ''}
-                    onChange={(e) => handleGenericInput('poNumber', sanitizeAlphanumericAndSpace(e.target.value))}
-                    placeholder="PO-12345"
-                    className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
+                    value={(formData as any).gcashName || ''}
+                    onChange={(e) => handleGenericInput('gcashName', sanitizeAlpha(e.target.value))}
+                    placeholder="Your GCash registered name"
+                    className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858] focus:border-transparent"
+                    style={{ fontFamily: 'Poppins' }}
                   />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                    GCash Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={(formData as any).gcashNumber || ''}
+                    onChange={(e) => handleGenericInput('gcashNumber', sanitizeDigits(e.target.value).slice(0, 11))}
+                    placeholder="09XX XXX XXXX"
+                    inputMode="numeric"
+                    maxLength={11}
+                    className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858] focus:border-transparent"
+                    style={{ fontFamily: 'Poppins' }}
+                  />
+                  <div className="text-[11px] text-gray-500 mt-1">Your GCash mobile number (11 digits)</div>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Upload Billing Documents (optional)
+                  GCash Reference Number (optional)
                 </label>
+                <input
+                  type="text"
+                  value={(formData as any).gcashRefNumber || ''}
+                  onChange={(e) => handleGenericInput('gcashRefNumber', sanitizeAlphanumericAndSpace(e.target.value))}
+                  placeholder="e.g., 1234 5678 9012"
+                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858] focus:border-transparent"
+                  style={{ fontFamily: 'Poppins' }}
+                />
+              </div>
 
+              {/* Upload GCash receipt/screenshot */}
+              <div>
+                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                  Upload GCash Receipt / Screenshot *
+                </label>
                 <div
                   className={
                     "w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg border-2 border-dashed " +
-                    (formData.billingDocumentUploaded ? "border-green-400 bg-green-50" : "border-gray-300 bg-gray-50") +
+                    ((formData as any).gcashReceiptUploaded ? "border-green-400 bg-green-50" : "border-gray-300 bg-gray-50") +
                     " cursor-pointer"
                   }
                   onClick={() => {
-                    const el = document.getElementById('billingDocInput') as HTMLInputElement | null;
+                    const el = document.getElementById('gcashReceiptInput') as HTMLInputElement | null;
                     el?.click();
                   }}
                   onKeyDown={(e) => handleClickableKey(e, () => {
-                    const el = document.getElementById('billingDocInput') as HTMLInputElement | null;
+                    const el = document.getElementById('gcashReceiptInput') as HTMLInputElement | null;
                     el?.click();
                   })}
                   role="button"
                   tabIndex={0}
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={handleDropBillingDoc}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0] ?? null;
+                    if (file) {
+                      handleGenericInput('gcashReceiptFileName', file.name);
+                      handleGenericInput('gcashReceiptUploaded', true);
+                    }
+                  }}
+                  aria-label="Upload GCash receipt"
                 >
                   <div className="flex-shrink-0">
                     <svg className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" d="M12 3v12M3 12h18" />
+                      <path strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   </div>
-
                   <div className="flex-1 text-left">
                     <div className="text-xs sm:text-sm font-medium text-gray-800">
-                      {formData.billingDocumentFileName ? formData.billingDocumentFileName : 'Click to upload a billing document (PDF or image)'}
+                      {(formData as any).gcashReceiptFileName ? (formData as any).gcashReceiptFileName : 'Click to upload GCash receipt screenshot'}
                     </div>
                     <div className="text-[10px] sm:text-xs text-gray-500 mt-1">
-                      Optional: Upload PO, invoice or other billing documents.
+                      Screenshot of your GCash payment confirmation
                     </div>
                   </div>
-
                   <div>
                     <button
                       type="button"
-                      className="px-3 py-1 text-xs bg-[#0B5858] text-white rounded"
+                      className="px-3 py-1 text-xs bg-[#007AFF] text-white rounded hover:bg-[#0066CC] transition-colors"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const el = document.getElementById('billingDocInput') as HTMLInputElement | null;
+                        const el = document.getElementById('gcashReceiptInput') as HTMLInputElement | null;
                         el?.click();
                       }}
                     >
                       Browse
                     </button>
                   </div>
-
                   <input
-                    id="billingDocInput"
+                    id="gcashReceiptInput"
                     type="file"
-                    accept="application/pdf,image/*"
+                    accept="image/*"
                     style={{ display: 'none' }}
                     onChange={(e) => {
-                      onBillingDocChange(e);
+                      const file = e.target.files?.[0] ?? null;
+                      if (file) {
+                        handleGenericInput('gcashReceiptFileName', file.name);
+                        handleGenericInput('gcashReceiptUploaded', true);
+                      }
                     }}
                   />
                 </div>
-
-                <div className="mt-2">
-                  {billingDocPreview ? (
-                    <img src={billingDocPreview} alt="billing preview" className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded border" />
-                  ) : formData.billingDocumentUploaded ? (
-                    <div className="px-3 py-1 text-xs bg-green-100 text-green-800 rounded">
-                      Document uploaded
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-500">
-                      No document uploaded.
-                    </div>
-                  )}
-                </div>
+                {(formData as any).gcashReceiptUploaded && (
+                  <div className="mt-2 px-3 py-1 text-xs bg-green-100 text-green-800 rounded inline-flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                    Receipt uploaded
+                  </div>
+                )}
+                {gcashError && <div className="mt-1 text-xs text-yellow-700">{gcashError}</div>}
               </div>
 
-              <p className="text-[11px] sm:text-xs text-gray-500">
-                For invoice/billing arrangements we will contact the billing contact. Please ensure PO/reference is provided if required by your accounts payable.
-              </p>
-            </div>
-          )}
-
-          {hasInteracted && selectedMethod === 'cash' && (
-            <div className="mt-2 space-y-4">
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Payer Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.cashPayerName || ''}
-                  onChange={(e) => handleGenericInput('cashPayerName', sanitizeAlpha(e.target.value))}
-                  placeholder="Name of person who will pay on arrival"
-                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                  aria-describedby={cashPayerError ? 'cash-payer-error' : undefined}
-                />
-                <div className="text-[11px] sm:text-xs text-gray-500 mt-1">
-                  No numbers — enter the payer's full name.
-                </div>
-                {cashPayerError && <div id="cash-payer-error" className="mt-1 text-xs text-yellow-700">{cashPayerError}</div>}
-              </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Payer Contact Number (optional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.cashPayerContact || ''}
-                  onChange={(e) => handleGenericInput('cashPayerContact', sanitizePhone(e.target.value))}
-                  placeholder="+639123456789"
-                  inputMode="tel"
-                  className="w-full text-xs sm:text-sm px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#0B5858]"
-                />
-                <div className="text-[11px] sm:text-xs text-gray-500 mt-1">
-                  Optional: digits only (optionally a single leading +). No letters.
+              <div className="bg-amber-50 border-l-4 border-amber-300 p-3 text-xs text-gray-700 rounded">
+                <div className="font-medium mb-1">Payment Instructions:</div>
+                <div className="text-[11px] text-gray-600 space-y-0.5" style={{ lineHeight: 1.5 }}>
+                  <p>1. Open GCash app and tap &quot;Send Money&quot;</p>
+                  <p>2. Send the exact total amount to <span className="font-semibold text-[#007AFF]">0917 123 4567</span></p>
+                  <p>3. Add your name and booking reference in the message</p>
+                  <p>4. Take a screenshot of the confirmation</p>
+                  <p>5. Upload the screenshot above</p>
                 </div>
               </div>
-
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                  Payment Option
-                </label>
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="cashLocation"
-                      checked={!formData.cashPayBeforeArrival}
-                      onChange={() => handleGenericInput('cashPayBeforeArrival', false)}
-                      className="w-4 h-4 text-[#0B5858] border-gray-300 focus:ring-[#0B5858]"
-                    />
-                    <span className="text-xs sm:text-sm text-gray-700">Pay on arrival / on-site</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="cashLocation"
-                      checked={!!formData.cashPayBeforeArrival}
-                      onChange={() => handleGenericInput('cashPayBeforeArrival', true)}
-                      className="w-4 h-4 text-[#0B5858] border-gray-300 focus:ring-[#0B5858]"
-                    />
-                    <span className="text-xs sm:text-sm text-gray-700">Pay before arrival (arrange pickup)</span>
-                  </label>
-                </div>
-              </div>
-
-              <p className="text-[11px] sm:text-xs text-gray-500">
-                If paying on arrival, ensure the payer brings a valid ID and booking reference. If paying before arrival, we'll arrange pickup and confirm via contact number.
-              </p>
             </div>
           )}
 
@@ -1091,24 +782,14 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
                   Bank transfer selected. Please transfer the exact amount and upload the receipt using the highlighted upload area.
                 </div>
               )}
-              {hasInteracted && selectedMethod === 'credit_card' && (
+              {hasInteracted && selectedMethod === 'gcash' && (
                 <div className="text-xs text-gray-700">
-                  Secure card payment. You will be charged when you confirm.
-                </div>
-              )}
-              {hasInteracted && selectedMethod === 'company_account' && (
-                <div className="text-xs text-gray-700">
-                  We will issue an invoice to the billing email after confirmation.
-                </div>
-              )}
-              {hasInteracted && selectedMethod === 'cash' && (
-                <div className="text-xs text-gray-700">
-                  Cash payment selected. Please ensure the named payer presents valid ID and booking reference.
+                  GCash payment selected. Your payment will be verified after receipt upload. Allow up to 24 hours for confirmation.
                 </div>
               )}
               {!hasInteracted && (
                 <div className="text-xs text-gray-700">
-                  No payment method selected yet.
+                  Please select GCash or Bank Transfer to proceed.
                 </div>
               )}
               <div className="mt-3 flex justify-center">
