@@ -1,10 +1,147 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import { CalendarView } from '../calendar/page';
 import { getAgentAnalytics } from '@/services/agentDashboardService';
 import type { AgentAnalytics } from '@/services/agentDashboardService';
+
+/** Time range for bookings charts */
+type ChartRange = 'weekly' | 'monthly' | 'quarterly';
+
+/** Generate mock bookings/revenue series for the selected range (replace with API when available) */
+function buildChartData(range: ChartRange): { name: string; bookings: number; revenue: number }[] {
+  const now = new Date();
+  const data: { name: string; bookings: number; revenue: number }[] = [];
+  let count: number;
+  let fmt: (d: Date) => string;
+  if (range === 'weekly') {
+    count = 7;
+    fmt = (d) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      data.push({
+        name: fmt(d),
+        bookings: Math.floor(Math.random() * 8) + 2,
+        revenue: Math.floor(Math.random() * 40000) + 10000,
+      });
+    }
+  } else if (range === 'monthly') {
+    count = 6;
+    fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      data.push({
+        name: fmt(d),
+        bookings: Math.floor(Math.random() * 25) + 10,
+        revenue: Math.floor(Math.random() * 150000) + 50000,
+      });
+    }
+  } else {
+    const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+    const y = now.getFullYear();
+    const currentQ = Math.floor(now.getMonth() / 3) + 1;
+    for (let i = 3; i >= 0; i--) {
+      let q = currentQ - i;
+      let year = y;
+      if (q < 1) {
+        q += 4;
+        year -= 1;
+      }
+      data.push({
+        name: `${quarters[q - 1]} ${year}`,
+        bookings: Math.floor(Math.random() * 60) + 30,
+        revenue: Math.floor(Math.random() * 400000) + 150000,
+      });
+    }
+  }
+  return data;
+}
+
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: 'white',
+  border: '1px solid #e5e7eb',
+  borderRadius: '8px',
+  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+  fontSize: '12px',
+} as const;
+
+/** Period options for Bookings & Revenue charts — same custom dropdown design as agents/commissions */
+const CHART_PERIOD_OPTIONS: { label: string; value: ChartRange }[] = [
+  { label: 'Weekly', value: 'weekly' },
+  { label: 'Monthly', value: 'monthly' },
+  { label: 'Quarterly', value: 'quarterly' },
+];
+
+/** Custom period dropdown: rounded-2xl button + dropdown panel matching admin design system */
+function ChartPeriodDropdown({
+  value,
+  onChange,
+}: {
+  value: ChartRange;
+  onChange: (v: ChartRange) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = CHART_PERIOD_OPTIONS.find((o) => o.value === value) ?? CHART_PERIOD_OPTIONS[1];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2.5 min-w-[120px] bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm"
+        style={{ fontFamily: 'Poppins, sans-serif' }}
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <svg className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 top-full right-0 mt-2 w-full min-w-[140px] bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+          {CHART_PERIOD_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value);
+                setTimeout(() => setIsOpen(false), 150);
+              }}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                value === option.value ? 'bg-[#0B5858]/10 text-[#0B5858]' : 'text-gray-600 hover:bg-gray-50 hover:text-[#0B5858] active:bg-[#0B5858]/5'
+              }`}
+              style={{ fontFamily: 'Poppins, sans-serif' }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Shared card styles for consistency across admin dashboard */
 const CARD = {
@@ -41,6 +178,9 @@ function StatCard({
 const AdminPage: React.FC = React.memo(() => {
   const [agentAnalytics, setAgentAnalytics] = useState<AgentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [chartRange, setChartRange] = useState<ChartRange>('monthly');
+
+  const chartData = useMemo(() => buildChartData(chartRange), [chartRange]);
 
   useEffect(() => {
     let mounted = true;
@@ -168,95 +308,53 @@ const AdminPage: React.FC = React.memo(() => {
           </div>
         </div>
 
-        {/* Quick Actions */}
+        {/* Bookings & Revenue charts */}
         <div className={`${CARD.base} flex flex-col`}>
-          <div className={CARD.header}>
-            <h2 className="text-lg font-bold text-gray-900 tracking-tight">Quick Actions</h2>
-            <p className={`${CARD.subtitle} mt-1`}>Shortcuts to main admin areas</p>
+          <div className={`${CARD.header} flex flex-wrap items-center justify-between gap-3`}>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 tracking-tight">Bookings & Revenue</h2>
+              <p className={`${CARD.subtitle} mt-1`}>Trends by time period</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-gray-500 whitespace-nowrap">Period</span>
+              <ChartPeriodDropdown value={chartRange} onChange={setChartRange} />
+            </div>
           </div>
-          <div className={`${CARD.padding} flex flex-col gap-3`}>
-            {[
-              {
-                href: '/admin/agents',
-                title: 'All Agents',
-                desc: 'View and manage agents',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                ),
-                color: 'bg-[#0B5858]/10 text-[#0B5858]',
-              },
-              {
-                href: '/admin/commissions',
-                title: 'Commission Ledger',
-                desc: 'Review and approve commissions',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" /></svg>
-                ),
-                color: 'bg-[#FACC15]/20 text-[#0B5858]',
-              },
-              {
-                href: '/admin/payouts',
-                title: 'Manage Payouts',
-                desc: 'Process payout requests',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
-                ),
-                color: 'bg-[#0B5858]/10 text-[#0B5858]',
-              },
-              {
-                href: '/admin/cleaning',
-                title: 'Cleaning',
-                desc: 'Jobs and schedule',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" /></svg>
-                ),
-                color: 'bg-[#FACC15]/20 text-[#0B5858]',
-              },
-              {
-                href: '/admin/lending',
-                title: 'Lending',
-                desc: 'Active loans and overdue',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                ),
-                color: 'bg-[#0B5858]/10 text-[#0B5858]',
-              },
-              {
-                href: '/dtr',
-                title: 'DTR',
-                desc: 'Daily time records',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                ),
-                color: 'bg-[#FACC15]/20 text-[#0B5858]',
-              },
-              {
-                href: '/payroll',
-                title: 'Payroll',
-                desc: 'Manage pay records',
-                icon: (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-                ),
-                color: 'bg-[#0B5858]/10 text-[#0B5858]',
-              },
-            ].map((action, i) => (
-              <Link
-                key={i}
-                href={action.href}
-                className={`group flex items-center gap-4 ${CARD.innerRow} hover:border-[#0B5858]/30 hover:bg-[#0B5858]/5 transition-all`}
-              >
-                <div className={`${CARD.iconBox} ${action.color} group-hover:scale-105 transition-transform`}>
-                  {action.icon}
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900 group-hover:text-[#0B5858] transition-colors">{action.title}</p>
-                  <p className="text-xs font-medium text-gray-500 mt-0.5">{action.desc}</p>
-                </div>
-                <div className="ml-auto">
-                  <svg className="w-5 h-5 text-gray-300 group-hover:text-[#0B5858] transition-colors group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-                </div>
-              </Link>
-            ))}
+          <div className="p-6 pt-4 flex flex-col gap-6">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Poppins' }}>Bookings over time</h3>
+              <div className="h-[240px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="bookingsGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#0B5858" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#0B5858" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                    <XAxis dataKey="name" stroke="#666" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#666" fontSize={11} tickLine={false} width={32} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: unknown): [React.ReactNode, string] => [Number(value ?? 0), 'Bookings']} />
+                    <Area type="monotone" dataKey="bookings" stroke="#0B5858" strokeWidth={2} fill="url(#bookingsGradient)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Poppins' }}>Revenue (₱)</h3>
+              <div className="h-[240px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barSize={chartRange === 'weekly' ? 24 : 32}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                    <XAxis dataKey="name" stroke="#666" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#666" fontSize={11} tickLine={false} width={48} tickFormatter={(v) => v >= 1000 ? `${v / 1000}k` : String(v)} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: unknown): [React.ReactNode, string] => [`₱${Number(value ?? 0).toLocaleString()}`, 'Revenue']} />
+                    <Bar dataKey="revenue" fill="#0B5858" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
         </div>
       </div>

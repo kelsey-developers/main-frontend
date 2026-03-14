@@ -108,21 +108,22 @@ export default function Navbar() {
   }
 
   /* Nav structure matches oop-dev; links use font-sans font-medium */
+  /* Fixed height (h-14 sm:h-16) + min-height prevent layout shift on route change or when auth/role content updates. */
   /* If you change h-14/h-16 here, update LAYOUT_NAVBAR_OFFSET in lib/constants.ts so page content stays visually clear of the nav */
   if (!mounted) {
     return (
-      <nav className="fixed top-0 left-0 right-0 bg-white z-[40] shadow-sm" aria-hidden>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center h-14 sm:h-16 relative" />
+      <nav className="fixed top-0 left-0 right-0 bg-white z-[40] shadow-sm min-h-14 sm:min-h-16 h-14 sm:h-16" aria-hidden style={{ contain: 'layout' }}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+          <div className="flex items-center h-full min-h-14 sm:min-h-16 relative" />
         </div>
       </nav>
     );
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white z-[40] shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center h-14 sm:h-16 relative">
+    <nav className="fixed top-0 left-0 right-0 bg-white z-[40] shadow-sm min-h-14 sm:min-h-16 h-14 sm:h-16" style={{ contain: 'layout' }}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full">
+        <div className="flex items-center h-14 sm:h-16 min-h-14 sm:min-h-16 relative">
           {/* Logo */}
           <div className="flex-shrink-0">
             <Link href={homeHref} className="block cursor-pointer">
@@ -222,7 +223,8 @@ export default function Navbar() {
                 </Link>
               </div>
             )}
-            {/* Updates bell - minimal padding so gap to profile matches old LOGIN/SIGNUP spacing (16px) */}
+            {/* Updates bell - only show when logged in (no notifications for guests) */}
+            {user && (
             <span
               className="p-1 text-black rounded-full cursor-default opacity-90 inline-flex items-center justify-center"
               aria-label="Updates"
@@ -231,6 +233,7 @@ export default function Navbar() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
             </span>
+            )}
             {user ? (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -630,15 +633,20 @@ export default function Navbar() {
                 </Link>
               </>
             )}
-            <span
-              className="flex items-center gap-2 px-3 py-2 text-black font-sans font-medium text-sm rounded-md text-left cursor-default opacity-90"
-            >
-              <svg className="w-5 h-5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-              Updates
-            </span>
-            <div className="border-t border-gray-200 my-2" />
+            {/* Updates (notification) - only show when logged in */}
+            {user && (
+              <>
+                <span
+                  className="flex items-center gap-2 px-3 py-2 text-black font-sans font-medium text-sm rounded-md text-left cursor-default opacity-90"
+                >
+                  <svg className="w-5 h-5 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  Updates
+                </span>
+                <div className="border-t border-gray-200 my-2" />
+              </>
+            )}
             {user ? (
               <>
                 <Link

@@ -4,6 +4,7 @@ import { BookingService } from '@/services/bookingService';
 import { ListingService } from '@/services/listingService';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Listing } from '@/types/listing';
+import GatePass from './GatePass';
 
 interface ConfirmationStepProps {
   formData: BookingFormData;
@@ -134,10 +135,12 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   onCancel,
   onOverlapError,
 }) => {
-  // new state for showing the confirmation/processing modal
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error' | 'overlap'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** Holds the booking reference after successful creation — used for gate pass */
+  const [successRef, setSuccessRef] = useState<string | null>(null);
+  const [showGatePass, setShowGatePass] = useState(false);
 
   // Get current user for assigned agent
   const { user, userProfile } = useAuth();
@@ -286,17 +289,13 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   const propertyLocationShort = (listing as any)?.location || formData.propertyLocationShort || 'Bajada, J.P. Laurel Ave, Poblacion District, Davao City, 8000 Davao del Sur';
   const propertyImage = (listing as any)?.main_image_url || formData.propertyImage || '/heroimage.png';
 
-  // Payment display helpers: show details based on formData.paymentMethod
+  // Payment display: only GCash and Bank Transfer are supported
   const paymentMethodLabel = (method?: string) => {
     switch (method) {
-      case 'credit_card':
-        return 'Card (Credit / Debit)';
+      case 'gcash':
+        return 'GCash';
       case 'bank_transfer':
-        return 'Bank Transfer / Deposit';
-      case 'company_account':
-        return 'Company Account / Billing';
-      case 'cash':
-        return 'Cash';
+        return 'Bank Transfer';
       default:
         return '—';
     }
@@ -353,12 +352,14 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
 
       await Promise.resolve(onConfirm());
 
+      const ref = booking.reference_code || String(booking.id);
+      setSuccessRef(ref);
       setStatus('success');
 
+      /* Show gate pass after brief success animation, then allow user to proceed */
       setTimeout(() => {
-        const ref = booking.reference_code || String(booking.id);
-        window.location.href = `/booking-details/${encodeURIComponent(ref)}`;
-      }, 2000);
+        setShowGatePass(true);
+      }, 2200);
     } catch (err: unknown) {
       const isOverlap = err instanceof Error && (err as Error & { overlapping?: boolean }).overlapping === true;
       const message =
@@ -588,19 +589,31 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
                     />
                   )}
 
-                  {formData.requirePayment !== false && formData.paymentMethod === 'credit_card' && (
+                  {formData.requirePayment !== false && formData.paymentMethod === 'gcash' && (
                     <>
                       <FieldRow
-                        icon={<IconCard />}
-                        title={formData.cardNumber ? maskedCard(formData.cardNumber) : 'No card on file'}
-                        subtitle="Card number"
-                      />
-
-                      <FieldRow
                         icon={<IconUser />}
-                        title={formData.nameOnCard ? formData.nameOnCard : `${formData.firstName || ''} ${formData.lastName || ''}`.trim() || '—'}
-                        subtitle={formData.expirationDate ? `Exp: ${safeString(formData.expirationDate)}` : 'Cardholder name'}
+                        title={safeString((formData as any).gcashName)}
+                        subtitle="GCash account name"
                       />
+                      <FieldRow
+                        icon={<IconPhone />}
+                        title={safeString((formData as any).gcashNumber)}
+                        subtitle="GCash number"
+                      />
+                      {(formData as any).gcashRefNumber && (
+                        <FieldRow
+                          icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
+                          title={safeString((formData as any).gcashRefNumber)}
+                          subtitle="Reference number"
+                        />
+                      )}
+                      <div className="mt-2 text-xs">
+                        <div className={(formData as any).gcashReceiptUploaded ? "px-3 py-1 bg-green-100 text-green-800 inline-flex items-center gap-2 rounded" : "text-gray-500 inline-flex items-center gap-2"}>
+                          <span className="flex-shrink-0">{<IconReceipt />}</span>
+                          <span className="break-words" style={{ wordBreak: 'break-word' }}>{(formData as any).gcashReceiptUploaded ? ((formData as any).gcashReceiptFileName || 'Receipt uploaded') : ((formData as any).gcashReceiptFileName || 'No receipt uploaded')}</span>
+                        </div>
+                      </div>
                     </>
                   )}
 
@@ -656,79 +669,6 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
                     </>
                   )}
 
-                  {formData.requirePayment !== false && formData.paymentMethod === 'company_account' && (
-                    <>
-                      <FieldRow
-                        icon={<svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16v10H4z"></path></svg>}
-                        title={safeString(formData.companyName)}
-                        subtitle="Company"
-                      />
-
-                      <FieldRow
-                        icon={<IconUser />}
-                        title={safeString(formData.billingContact)}
-                        subtitle="Billing contact"
-                      />
-
-                      <FieldRow
-                        icon={<IconMail />}
-                        title={safeString(formData.billingEmail)}
-                        subtitle="Billing email"
-                      />
-
-                      <div className="mt-2 text-xs">
-                        <div className={formData.billingDocumentUploaded ? "px-3 py-1 bg-green-100 text-green-800 inline-flex items-center gap-2 rounded" : "text-gray-500 inline-flex items-center gap-2"}>
-                          <span className="flex-shrink-0">{<IconDocument />}</span>
-                          <span className="break-words" style={{ wordBreak: 'break-word' }}>{formData.billingDocumentUploaded ? (formData.billingDocumentFileName || 'Document uploaded') : (formData.billingDocumentFileName || 'No document uploaded')}</span>
-                        </div>
-
-                        {formData.billingDocumentUrl && (
-                          <div className="mt-2">
-                            {isImageUrl(formData.billingDocumentUrl) ? (
-                              <a href={formData.billingDocumentUrl} target="_blank" rel="noopener noreferrer" title="Open document">
-                                <img src={formData.billingDocumentUrl} alt={formData.billingDocumentFileName || 'Document'} className="w-24 h-16 sm:w-28 sm:h-20 object-cover rounded border cursor-pointer" />
-                              </a>
-                            ) : (
-                              <a
-                                href={formData.billingDocumentUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 text-sm text-[#0B5858] hover:underline"
-                              >
-                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                  <path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V8z"></path>
-                                  <path d="M14 3v5h5"></path>
-                                </svg>
-                                <span className="break-words" style={{ wordBreak: 'break-word' }}>{formData.billingDocumentFileName || 'View document'}</span>
-                              </a>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      {formData.poNumber && <div className="text-xs text-gray-500 mt-1 break-words" style={{ wordBreak: 'break-word' }}>PO / Ref: {formData.poNumber}</div>}
-                    </>
-                  )}
-
-                  {formData.requirePayment !== false && formData.paymentMethod === 'cash' && (
-                    <>
-                      <FieldRow
-                        icon={<IconUser />}
-                        title={safeString(formData.cashPayerName)}
-                        subtitle="Payer name"
-                      />
-
-                      <FieldRow
-                        icon={<IconPhone />}
-                        title={safeString(formData.cashPayerContact)}
-                        subtitle="Payer contact"
-                      />
-
-                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-                        <span className="flex-shrink-0">{<IconCalendar />}</span>
-                        <span className="break-words" style={{ wordBreak: 'break-word' }}>{formData.cashPayBeforeArrival ? 'Will pay before arrival' : 'Will pay on arrival / on-site'}</span>
-                      </div>
-                    </>
-                  )}
                 </div>
               </div>
 
@@ -1089,6 +1029,30 @@ const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               }
             }
           `}</style>
+        </div>
+      )}
+
+      {/* Gate Pass overlay — shown after successful booking */}
+      {showGatePass && successRef && (
+        <div className="fixed inset-0 z-[10000] bg-gray-50 overflow-y-auto">
+          <GatePass
+            bookingReference={successRef}
+            guestName={`${formData.firstName || ''} ${formData.lastName || ''}`.trim() || 'Guest'}
+            guestEmail={formData.email}
+            guestPhone={formData.preferredContactNumber}
+            propertyTitle={propertyTitle}
+            propertyAddress={propertyLocationShort}
+            checkInDate={formData.checkInDate}
+            checkOutDate={formData.checkOutDate}
+            checkInTime={listing?.check_in_time || formData.checkInTime}
+            checkOutTime={listing?.check_out_time || formData.checkOutTime}
+            totalGuests={totalGuests}
+            guests={(formData as any).guestList}
+            totalAmount={summary.totalCharges}
+            onClose={() => {
+              window.location.href = `/booking-details/${encodeURIComponent(successRef)}`;
+            }}
+          />
         </div>
       )}
     </div>

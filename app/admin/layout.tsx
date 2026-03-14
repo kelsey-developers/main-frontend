@@ -124,8 +124,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className={`${LAYOUT_NAVBAR_OFFSET} min-h-screen bg-gray-50 font-poppins`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* Mobile top bar */}
-        <div className="lg:hidden flex items-center justify-between py-4 border-b border-gray-200">
+        {/* Mobile top bar: fixed height to prevent jump when dropdown toggles */}
+        <div className="lg:hidden flex items-center justify-between h-16 min-h-[4rem] py-0 px-0 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-3">
             <div
               className="w-9 h-9 rounded-full shadow-sm flex items-center justify-center"
@@ -150,14 +150,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </button>
         </div>
 
-        {/* Mobile nav dropdown */}
-        {mobileSidebarOpen && (
-          <div className="lg:hidden bg-white border border-gray-100 rounded-2xl mt-4 shadow-lg overflow-hidden animate-fade-in-up">
+        {/* Mobile nav dropdown: absolute so it doesn't affect layout flow / cause reflow */}
+        <div className="lg:hidden relative">
+          {mobileSidebarOpen && (
+          <div className="absolute left-0 right-0 top-full z-50 mt-2 bg-white border border-gray-100 rounded-2xl shadow-lg overflow-hidden animate-fade-in-up">
             <nav className="p-3 space-y-1">
               {ADMIN_NAV.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
+                  scroll={false}
                   onClick={() => setMobileSidebarOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                     isActive(pathname, item.href)
@@ -171,15 +173,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               ))}
             </nav>
           </div>
-        )}
+          )}
+        </div>
 
-        <div className="flex flex-col lg:flex-row gap-8 py-8">
-          {/* Desktop Sidebar */}
-          <aside className="hidden lg:flex flex-col w-64 shrink-0">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden sticky top-28">
-
+        {/* Grid layout: fixed sidebar column + 1fr main to prevent track-width shifts on route change */}
+        <div className="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-8 py-8">
+          {/* Desktop Sidebar: sticky with will-change for hardware acceleration */}
+          <aside className="hidden lg:block min-h-0" aria-label="Admin navigation">
+            <div
+              className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden sticky top-28 w-full will-change-transform"
+            >
               {/* Admin profile block */}
-              <div className="p-6 border-b border-gray-50 bg-gradient-to-b from-gray-50/50 to-white">
+              <div className="p-6 border-b border-gray-50 bg-gradient-to-b from-gray-50/50 to-white shrink-0">
                 <div className="flex items-center gap-4">
                   <div
                     className="w-12 h-12 rounded-full shadow-md flex items-center justify-center shrink-0"
@@ -202,7 +207,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
               </div>
 
-              {/* Navigation */}
+              {/* Navigation: scroll={false} prevents window scroll-to-top on click (removes main jump source) */}
               <nav className="p-4 space-y-1 relative">
                 <p className="px-4 pt-2 pb-3 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
                   Navigation
@@ -211,10 +216,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all duration-300 ${
+                    scroll={false}
+                    className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-colors duration-150 ${
                       isActive(pathname, item.href)
-                        ? 'bg-[#0B5858] text-white shadow-md shadow-[#0B5858]/20 translate-x-1'
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 hover:translate-x-1'
+                        ? 'bg-[#0B5858] text-white shadow-md shadow-[#0B5858]/20'
+                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                     }`}
                   >
                     {item.icon}
@@ -225,9 +231,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
           </aside>
 
-          {/* Main content */}
-          <main className="flex-1 min-w-0">
-            <div key={pathname} className="animate-fade-in-up min-h-0">
+          {/* Main content: min-height prevents collapse during route transitions */}
+          <main className="min-w-0 min-h-[calc(100vh-8rem)]" style={{ contain: 'layout' }}>
+            <div className="min-h-0">
               {children}
             </div>
           </main>
