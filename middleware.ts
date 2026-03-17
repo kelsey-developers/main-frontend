@@ -6,6 +6,7 @@ const PROTECTED_ROUTES = [
   '/admin',
   '/booking',
   '/booking-details',
+  '/calendar',
   '/reserve',
   '/rewards',
   '/profile',
