@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Listing } from '@/types/listing';
 import { listUnitsForManage, updateUnit, createUnit, deleteUnit, getUnitById, updateUnitFull } from '@/lib/api/units';
@@ -8,14 +8,321 @@ import { useAuth } from '@/contexts/AuthContext';
 import NewListingForm, { type NewListingFormPayload } from '@/components/NewListingForms';
 import AssignAgentsModal from '@/components/AssignAgentsModal';
 
+/**
+ * DEV_USE_MOCK_DATA: Set to true to use mock data for frontend design viewing.
+ * WARNING: Set to false before deploying to production!
+ */
+const DEV_USE_MOCK_DATA = true;
+
+/** Mock listings data for design preview */
+const MOCK_LISTINGS: Listing[] = [
+  {
+    id: 'unit-001',
+    title: 'Luxury 2BR Condo with City View',
+    unit_number: '2501',
+    tower_building: 'Tower A',
+    description: 'Beautiful fully furnished 2-bedroom condo with stunning city views.',
+    price: 4500,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'BGC, Taguig City',
+    city: 'Taguig',
+    country: 'Philippines',
+    bedrooms: 2,
+    bathrooms: 2,
+    square_feet: 65,
+    property_type: 'Condo',
+    main_image_url: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=400',
+    amenities: ['WiFi', 'Pool', 'Gym', 'Parking', 'Air Conditioning'],
+    is_available: true,
+    is_featured: true,
+    has_parking: true,
+    parking_fee: 500,
+    min_pax: 2,
+    max_capacity: 4,
+    excess_pax_fee: 800,
+    created_at: '2024-01-15T10:00:00Z',
+    updated_at: '2024-03-10T14:30:00Z',
+    owner: { id: 'owner-1', fullname: 'Maria Santos', email: 'maria@example.com' },
+    bookings_count: 24,
+  },
+  {
+    id: 'unit-002',
+    title: 'Cozy Studio near Ayala',
+    unit_number: '1205',
+    tower_building: 'Citadel Tower',
+    description: 'Modern studio unit perfect for solo travelers or couples.',
+    price: 2200,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Makati City',
+    city: 'Makati',
+    country: 'Philippines',
+    bedrooms: 1,
+    bathrooms: 1,
+    square_feet: 28,
+    property_type: 'Studio',
+    main_image_url: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400',
+    amenities: ['WiFi', 'Air Conditioning', 'Kitchen'],
+    is_available: true,
+    is_featured: false,
+    has_parking: false,
+    min_pax: 1,
+    max_capacity: 2,
+    excess_pax_fee: 500,
+    created_at: '2024-02-20T08:00:00Z',
+    updated_at: '2024-03-12T09:15:00Z',
+    owner: { id: 'owner-2', fullname: 'Juan Dela Cruz', email: 'juan@example.com' },
+    bookings_count: 18,
+  },
+  {
+    id: 'unit-003',
+    title: 'Spacious 3BR Family Unit',
+    unit_number: '801',
+    tower_building: 'Garden Residences',
+    description: 'Perfect for families with kids, near schools and malls.',
+    price: 6500,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Ortigas Center, Pasig',
+    city: 'Pasig',
+    country: 'Philippines',
+    bedrooms: 3,
+    bathrooms: 2,
+    square_feet: 95,
+    property_type: 'Apartment',
+    main_image_url: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400',
+    amenities: ['WiFi', 'Pool', 'Playground', 'Parking', 'Security', 'Balcony'],
+    is_available: false,
+    is_featured: true,
+    has_parking: true,
+    parking_fee: 0,
+    min_pax: 4,
+    max_capacity: 8,
+    excess_pax_fee: 600,
+    created_at: '2024-01-05T12:00:00Z',
+    updated_at: '2024-03-15T16:45:00Z',
+    owner: { id: 'owner-3', fullname: 'Ana Reyes', email: 'ana@example.com' },
+    bookings_count: 32,
+  },
+  {
+    id: 'unit-004',
+    title: 'Beach Front Villa',
+    unit_number: 'Villa 5',
+    tower_building: 'Sunset Villas',
+    description: 'Wake up to the sound of waves in this stunning beachfront property.',
+    price: 15000,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Boracay Island',
+    city: 'Malay',
+    country: 'Philippines',
+    bedrooms: 4,
+    bathrooms: 3,
+    square_feet: 180,
+    property_type: 'Villa',
+    main_image_url: 'https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=400',
+    amenities: ['WiFi', 'Private Pool', 'Beach Access', 'BBQ Area', 'Kitchen', 'Garden'],
+    is_available: true,
+    is_featured: true,
+    has_parking: true,
+    parking_fee: 0,
+    min_pax: 6,
+    max_capacity: 12,
+    excess_pax_fee: 1500,
+    created_at: '2023-11-20T10:00:00Z',
+    updated_at: '2024-03-08T11:20:00Z',
+    owner: { id: 'owner-4', fullname: 'Carlos Mendoza', email: 'carlos@example.com' },
+    bookings_count: 56,
+  },
+  {
+    id: 'unit-005',
+    title: 'Modern Loft in QC',
+    unit_number: 'PH-1',
+    tower_building: 'Urban Lofts',
+    description: 'Industrial-chic penthouse loft with high ceilings.',
+    price: 3800,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Quezon City',
+    city: 'Quezon City',
+    country: 'Philippines',
+    bedrooms: 1,
+    bathrooms: 1,
+    square_feet: 55,
+    property_type: 'Penthouse',
+    main_image_url: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=400',
+    amenities: ['WiFi', 'Gym', 'Rooftop Access', 'Air Conditioning'],
+    is_available: true,
+    is_featured: false,
+    has_parking: true,
+    parking_fee: 300,
+    min_pax: 1,
+    max_capacity: 3,
+    excess_pax_fee: 700,
+    created_at: '2024-02-01T14:00:00Z',
+    updated_at: '2024-03-14T10:00:00Z',
+    owner: { id: 'owner-5', fullname: 'Patricia Lim', email: 'patricia@example.com' },
+    bookings_count: 12,
+  },
+  {
+    id: 'unit-006',
+    title: 'Budget-Friendly Dorm Room',
+    unit_number: 'D-203',
+    tower_building: 'Backpackers Hub',
+    description: 'Clean and affordable accommodation for budget travelers.',
+    price: 800,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Malate, Manila',
+    city: 'Manila',
+    country: 'Philippines',
+    bedrooms: 1,
+    bathrooms: 1,
+    square_feet: 15,
+    property_type: 'Studio',
+    main_image_url: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400',
+    amenities: ['WiFi', 'Shared Kitchen', 'Lockers'],
+    is_available: true,
+    is_featured: false,
+    has_parking: false,
+    min_pax: 1,
+    max_capacity: 1,
+    excess_pax_fee: 0,
+    created_at: '2024-03-01T09:00:00Z',
+    updated_at: '2024-03-16T08:30:00Z',
+    owner: { id: 'owner-6', fullname: 'Mike Tan', email: 'mike@example.com' },
+    bookings_count: 45,
+  },
+  {
+    id: 'unit-007',
+    title: 'Executive Suite at CBD',
+    unit_number: '3201',
+    tower_building: 'One Rockwell',
+    description: 'Premium executive suite with concierge services.',
+    price: 8500,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Rockwell Center, Makati',
+    city: 'Makati',
+    country: 'Philippines',
+    bedrooms: 2,
+    bathrooms: 2,
+    square_feet: 85,
+    property_type: 'Condo',
+    main_image_url: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=400',
+    amenities: ['WiFi', 'Pool', 'Gym', 'Concierge', 'Parking', 'Spa'],
+    is_available: false,
+    is_featured: true,
+    has_parking: true,
+    parking_fee: 0,
+    min_pax: 2,
+    max_capacity: 4,
+    excess_pax_fee: 1200,
+    created_at: '2023-12-10T10:00:00Z',
+    updated_at: '2024-03-11T15:00:00Z',
+    owner: { id: 'owner-7', fullname: 'Sarah Go', email: 'sarah@example.com' },
+    bookings_count: 28,
+  },
+  {
+    id: 'unit-008',
+    title: 'Tagaytay Vacation Home',
+    unit_number: 'House 12',
+    tower_building: 'Highland Views',
+    description: 'Cool climate retreat with Taal Lake views.',
+    price: 12000,
+    price_unit: 'daily',
+    currency: 'PHP',
+    location: 'Tagaytay City',
+    city: 'Tagaytay',
+    country: 'Philippines',
+    bedrooms: 5,
+    bathrooms: 4,
+    square_feet: 250,
+    property_type: 'House',
+    main_image_url: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400',
+    amenities: ['WiFi', 'Fireplace', 'Garden', 'BBQ', 'Parking', 'Kitchen', 'View Deck'],
+    is_available: true,
+    is_featured: false,
+    has_parking: true,
+    parking_fee: 0,
+    min_pax: 8,
+    max_capacity: 15,
+    excess_pax_fee: 800,
+    created_at: '2024-01-25T11:00:00Z',
+    updated_at: '2024-03-09T13:45:00Z',
+    owner: { id: 'owner-8', fullname: 'Roberto Cruz', email: 'roberto@example.com' },
+    bookings_count: 19,
+  },
+];
+
+
+
+/** Custom Dropdown — matches admin pages: rounded-2xl, shadow, click-outside close */
+function CustomDropdown({
+  value,
+  onChange,
+  options,
+  className = '',
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: { value: string; label: string }[];
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between gap-3 pl-4 pr-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm font-medium text-gray-700 hover:border-[#0B5858]/30 hover:bg-gray-50 transition-all shadow-sm"
+      >
+        <span className="truncate">{selectedOption.label}</span>
+        <svg className={`w-4 h-4 text-gray-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 top-full left-0 mt-2 w-full min-w-[140px] bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden animate-fade-in-up">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => { onChange(option.value); setTimeout(() => setIsOpen(false), 150); }}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                value === option.value ? 'bg-[#0B5858]/10 text-[#0B5858]' : 'text-gray-600 hover:bg-gray-50 hover:text-[#0B5858] active:bg-[#0B5858]/5'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ManageUnits: React.FC = () => {
   const router = useRouter();
   const { isAdmin, isAgent, roleLoading } = useAuth();
   const canAccess = isAdmin || isAgent;
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All Status');
-  const [typeFilter] = useState('All Types');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [typeFilter, setTypeFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [units, setUnits] = useState<Listing[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,12 +343,22 @@ const ManageUnits: React.FC = () => {
   const [isLoadingEdit, setIsLoadingEdit] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [unitToAssign, setUnitToAssign] = useState<Listing | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const fetchUnits = useCallback(async () => {
     if (!canAccess) return;
     try {
       setIsLoading(true);
       setError(null);
+      
+      // Use mock data for design preview
+      if (DEV_USE_MOCK_DATA) {
+        await new Promise(resolve => setTimeout(resolve, 300)); // Simulate loading
+        setUnits(MOCK_LISTINGS);
+        return;
+      }
+      
       const data = await listUnitsForManage();
       setUnits(data);
     } catch (err) {
@@ -91,16 +408,38 @@ const ManageUnits: React.FC = () => {
     }, 2200);
   };
 
-  const filteredUnits = units.filter(unit => {
-    const matchesSearch = unit.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         unit.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'All Status' || 
-                         (statusFilter === 'Available' && unit.is_available) ||
-                         (statusFilter === 'Unavailable' && !unit.is_available);
-    const matchesType = typeFilter === 'All Types' || unit.property_type === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  const filteredUnits = useMemo(() => {
+    return units.filter(unit => {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = !searchTerm || 
+        unit.title.toLowerCase().includes(searchLower) || 
+        unit.id.toLowerCase().includes(searchLower) ||
+        (unit.unit_number && unit.unit_number.toLowerCase().includes(searchLower));
+      const matchesStatus = statusFilter === 'all' || 
+                           (statusFilter === 'available' && unit.is_available) ||
+                           (statusFilter === 'unavailable' && !unit.is_available);
+      const matchesType = typeFilter === 'all' || unit.property_type.toLowerCase() === typeFilter.toLowerCase();
+      
+      return matchesSearch && matchesStatus && matchesType;
+    });
+  }, [units, searchTerm, statusFilter, typeFilter]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, typeFilter]);
+
+  const totalPages = Math.ceil(filteredUnits.length / itemsPerPage);
+  const paginatedUnits = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredUnits.slice(start, start + itemsPerPage);
+  }, [filteredUnits, currentPage, itemsPerPage]);
+
+  // Get unique property types for filter dropdown
+  const propertyTypes = useMemo(() => {
+    const types = [...new Set(units.map(u => u.property_type))].filter(Boolean);
+    return types.sort();
+  }, [units]);
 
   const formatPrice = (price: number, currency: string) => {
     return `${currency} ${price.toLocaleString()}`;
@@ -241,72 +580,53 @@ const ManageUnits: React.FC = () => {
 
   const PageSkeleton = () => (
     <>
-      <div className="flex justify-between items-center mb-6 animate-pulse">
-        <div className="flex items-center">
-          <div className="mr-4 w-10 h-10 bg-gray-200 rounded-lg"></div>
-          <div className="h-9 w-48 bg-gray-200 rounded"></div>
+      {/* Header skeleton */}
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-6 animate-pulse">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-gray-200 rounded-xl"></div>
+          <div>
+            <div className="h-7 w-40 bg-gray-200 rounded-lg mb-2"></div>
+            <div className="h-4 w-64 bg-gray-200 rounded"></div>
+          </div>
         </div>
+        <div className="h-11 w-36 bg-gray-200 rounded-xl"></div>
       </div>
 
+      {/* Search and filters skeleton */}
       <div className="mb-6 animate-pulse">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-col md:flex-row gap-4 items-center w-full">
-            <div className="relative w-full md:w-[60%] lg:w-[50%]">
-              <div className="h-12 bg-gray-200 rounded-lg"></div>
+          <div className="flex flex-col md:flex-row gap-3 items-center w-full">
+            <div className="relative w-full md:w-80">
+              <div className="h-11 bg-gray-200 rounded-2xl"></div>
             </div>
-            <div className="w-full md:w-auto min-w-[160px]">
-              <div className="h-12 bg-gray-200 rounded-lg"></div>
+            <div className="w-40">
+              <div className="h-11 bg-gray-200 rounded-2xl"></div>
             </div>
-            <div className="h-[52px] w-24 bg-gray-200 rounded-lg"></div>
+            <div className="w-40">
+              <div className="h-11 bg-gray-200 rounded-2xl"></div>
+            </div>
           </div>
-          <div className="w-full md:w-auto flex justify-end">
-            <div className="h-12 w-40 bg-gray-200 rounded-lg"></div>
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 bg-gray-200 rounded-xl"></div>
+            <div className="h-10 w-10 bg-gray-200 rounded-xl"></div>
           </div>
         </div>
       </div>
 
       {viewMode === 'list' ? (
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full table-auto min-w-[900px] md:min-w-0">
-              <thead className="sticky top-0 z-10">
-                <tr style={{backgroundColor: '#0B5858'}}>
-                  <th className="px-3 py-2.5 text-left" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-4 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-20 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-16 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-12 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-14 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-20 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-16 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-12 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap hidden md:table-cell" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-16 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-24 bg-white/30 rounded animate-pulse"></div>
-                  </th>
-                  <th className="px-3 py-2.5 text-left whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                    <div className="h-4 w-16 bg-white/30 rounded animate-pulse"></div>
-                  </th>
+            <table className="w-full text-sm min-w-[1000px]">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50/50">
+                  {['', 'Unit', 'Unit #', 'Location', 'Type', 'Capacity', 'Price', 'Status', 'Bookings', 'Updated', 'Actions'].map((h) => (
+                    <th key={h} className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap first:pl-5 last:pr-5">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-50">
                 <TableSkeleton />
               </tbody>
             </table>
@@ -321,20 +641,35 @@ const ManageUnits: React.FC = () => {
   const GridSkeleton = () => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       {Array.from({ length: 8 }).map((_, index) => (
-        <div key={index} className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden animate-pulse">
-          <div className="h-40 bg-gray-200"></div>
-          <div className="p-4">
-            <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
-            <div className="h-5 bg-gray-200 rounded w-1/2 mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-full mb-4"></div>
-            <div className="flex items-center space-x-3 mb-3">
-              <div className="h-4 bg-gray-200 rounded w-16"></div>
-              <div className="h-4 bg-gray-200 rounded w-16"></div>
-              <div className="h-4 bg-gray-200 rounded w-16"></div>
+        <div key={index} className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden animate-pulse flex flex-col">
+          {/* Image skeleton */}
+          <div className="relative h-36 bg-gray-200 shrink-0">
+            <div className="absolute top-3 left-3 w-7 h-7 bg-gray-300/50 rounded-full"></div>
+            <div className="absolute top-3 right-3 w-16 h-5 bg-gray-300/50 rounded-full"></div>
+          </div>
+          {/* Content skeleton */}
+          <div className="p-4 flex flex-col flex-1">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-4 bg-gray-200 rounded w-16 shrink-0"></div>
             </div>
-            <div className="flex items-center justify-between">
-              <div className="h-8 bg-gray-200 rounded w-20"></div>
-              <div className="h-8 bg-gray-200 rounded w-8"></div>
+            <div className="h-3 bg-gray-200 rounded w-1/2 mb-3"></div>
+            <div className="flex items-center gap-4 mb-3">
+              <div className="h-3 bg-gray-200 rounded w-12"></div>
+              <div className="h-3 bg-gray-200 rounded w-12"></div>
+              <div className="h-3 bg-gray-200 rounded w-14"></div>
+            </div>
+            <div className="h-6 bg-gray-200 rounded-full w-20 mt-auto mb-3"></div>
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <div className="flex items-center space-x-2">
+                <div className="h-5 w-5 bg-gray-200 rounded"></div>
+                <div className="h-5 w-5 bg-gray-200 rounded"></div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="h-6 w-11 bg-gray-200 rounded-full"></div>
+                <div className="h-5 w-5 bg-gray-200 rounded"></div>
+                <div className="h-5 w-5 bg-gray-200 rounded"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -344,46 +679,47 @@ const ManageUnits: React.FC = () => {
 
   const TableSkeleton = () => (
     <>
-      {Array.from({ length: 5 }).map((_, index) => (
+      {Array.from({ length: 6 }).map((_, index) => (
         <tr key={index} className="animate-pulse">
-          <td className="px-3 py-2.5 align-middle text-center">
-            <div className="h-6 w-6 bg-gray-200 rounded mx-auto"></div>
+          <td className="pl-5 pr-3 py-3 align-middle text-center">
+            <div className="h-5 w-5 bg-gray-200 rounded-full mx-auto"></div>
           </td>
-          <td className="px-3 py-2.5 align-middle">
+          <td className="px-3 py-3 align-middle">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-gray-200 rounded flex-shrink-0"></div>
               <div className="flex-1 min-w-0">
-                <div className="h-4 bg-gray-200 rounded w-32 mb-1"></div>
-                <div className="h-3 bg-gray-200 rounded w-24"></div>
+                <div className="h-4 bg-gray-200 rounded w-40 mb-1"></div>
               </div>
             </div>
           </td>
-          <td className="px-3 py-2.5 align-middle">
-            <div className="h-4 bg-gray-200 rounded w-24"></div>
-          </td>
-          <td className="px-3 py-2.5 align-middle">
-            <div className="h-4 bg-gray-200 rounded w-20"></div>
-          </td>
-          <td className="px-3 py-2.5 align-middle">
-            <div className="h-4 bg-gray-200 rounded w-16"></div>
-          </td>
-          <td className="px-3 py-2.5 align-middle">
-            <div className="h-4 bg-gray-200 rounded w-20"></div>
-          </td>
-          <td className="px-3 py-2.5 align-middle">
-            <div className="h-6 bg-gray-200 rounded-full w-20"></div>
-          </td>
-          <td className="px-3 py-2.5 align-middle">
-            <div className="h-7 bg-gray-200 rounded w-16"></div>
-          </td>
-          <td className="px-3 py-2.5 align-middle hidden md:table-cell">
+          <td className="px-3 py-3 align-middle">
             <div className="h-4 bg-gray-200 rounded w-12"></div>
           </td>
-          <td className="px-3 py-2.5 align-middle whitespace-nowrap">
+          <td className="px-3 py-3 align-middle">
             <div className="h-4 bg-gray-200 rounded w-24"></div>
           </td>
-          <td className="px-3 py-2.5 align-middle">
+          <td className="px-3 py-3 align-middle">
+            <div className="h-4 bg-gray-200 rounded w-16"></div>
+          </td>
+          <td className="px-3 py-3 align-middle">
+            <div className="h-4 bg-gray-200 rounded w-14"></div>
+          </td>
+          <td className="px-3 py-3 align-middle">
+            <div className="h-4 bg-gray-200 rounded w-16"></div>
+          </td>
+          <td className="px-3 py-3 align-middle">
+            <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+          </td>
+          <td className="px-3 py-3 align-middle">
+            <div className="h-4 bg-gray-200 rounded w-8"></div>
+          </td>
+          <td className="px-3 py-3 align-middle">
+            <div className="h-4 bg-gray-200 rounded w-20"></div>
+          </td>
+          <td className="px-3 pr-5 py-3 align-middle">
             <div className="flex items-center justify-end space-x-2">
+              <div className="h-5 w-5 bg-gray-200 rounded"></div>
+              <div className="h-5 w-5 bg-gray-200 rounded"></div>
               <div className="h-6 w-11 bg-gray-200 rounded-full"></div>
               <div className="h-5 w-5 bg-gray-200 rounded"></div>
               <div className="h-5 w-5 bg-gray-200 rounded"></div>
@@ -402,111 +738,103 @@ const ManageUnits: React.FC = () => {
             <PageSkeleton />
           ) : (
             <>
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex items-center">
+              {/* Page header — matches admin design system */}
+              <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+                <div className="flex items-center gap-4">
                   <button
                     onClick={() => router.push('/admin')}
-                    className="mr-4 p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors duration-200 cursor-pointer"
+                    className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  <h1 className="text-3xl font-bold text-black" style={{fontFamily: 'Poppins', fontWeight: 700}}>
-                    Manage Listings
-                  </h1>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Manage Listings</h1>
+                    <p className="text-sm text-gray-500 mt-1">View and manage all property listings on the platform.</p>
+                  </div>
                 </div>
+                {!showNewListing && !unitToEdit && (
+                  <button 
+                    onClick={() => setShowNewListing(true)}
+                    className="inline-flex items-center gap-2 px-5 py-3 bg-[#0B5858] text-white text-sm font-bold rounded-2xl hover:bg-[#094848] hover:shadow-lg transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add New Listing
+                  </button>
+                )}
               </div>
 
+              
+
+              {/* Search, filters, view mode — matches admin agents page */}
               {!showNewListing && !unitToEdit && (
-              <div className="mb-6">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div className="flex flex-col md:flex-row gap-4 items-center w-full">
-                    <div className="relative w-full md:w-[60%] lg:w-[50%]">
-                      <div className="relative">
-                        <svg 
-                          className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5" 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
-                          style={{ color: '#558B8B' }}
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        <input
-                          type="text"
-                          placeholder="Search by unit name or ID..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-white transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:shadow-md focus:border-transparent"
-                          style={{
-                            fontFamily: 'Poppins',
-                            '--tw-ring-color': '#549F74'
-                          } as React.CSSProperties & { '--tw-ring-color': string }}
-                        />
-                      </div>
-                    </div>
+              <div className="flex flex-col md:flex-row gap-4 mb-6">
+                {/* Search input */}
+                <div className="relative flex-1">
+                  <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search by name, unit number, or ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] bg-white transition-all shadow-sm"
+                  />
+                </div>
 
-                    <div className="w-full md:w-auto min-w-[160px]">
-                      <label className="sr-only">Status</label>
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="w-full min-w-[160px] px-4 py-3 border border-gray-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-offset-2"
-                        style={{
-                          fontFamily: 'Poppins',
-                          '--tw-ring-color': '#549F74'
-                        } as React.CSSProperties & { '--tw-ring-color': string }}
-                      >
-                        <option value="All Status">All Status</option>
-                        <option value="Available">Available</option>
-                        <option value="Unavailable">Unavailable</option>
-                      </select>
-                    </div>
+                {/* Filters and view toggle */}
+                <div className="flex gap-3 shrink-0 flex-wrap">
+                  <CustomDropdown
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                    options={[
+                      { value: 'all', label: 'All Status' },
+                      { value: 'available', label: 'Available' },
+                      { value: 'unavailable', label: 'Unavailable' },
+                    ]}
+                    className="min-w-[140px]"
+                  />
+                  <CustomDropdown
+                    value={typeFilter}
+                    onChange={setTypeFilter}
+                    options={[
+                      { value: 'all', label: 'All Types' },
+                      ...propertyTypes.map(type => ({ value: type.toLowerCase(), label: type.charAt(0).toUpperCase() + type.slice(1) }))
+                    ]}
+                    className="min-w-[140px]"
+                  />
 
-                    <div className="flex border border-gray-300 rounded-lg overflow-hidden h-[52px]">
-                      <button
-                        onClick={() => setViewMode('list')}
-                        className={`px-4 h-full flex items-center transition-colors cursor-pointer ${
-                          viewMode === 'list' 
-                            ? 'text-white' 
-                            : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                        style={{
-                          backgroundColor: viewMode === 'list' ? '#0B5858' : 'white',
-                          fontFamily: 'Poppins'
-                        }}
-                      >
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => setViewMode('grid')}
-                        className={`px-4 h-full flex items-center transition-colors cursor-pointer ${
-                          viewMode === 'grid' 
-                            ? 'text-white' 
-                            : 'text-gray-600 hover:bg-gray-50'
-                        }`}
-                        style={{
-                          backgroundColor: viewMode === 'grid' ? '#0B5858' : 'white',
-                          fontFamily: 'Poppins'
-                        }}
-                      >
-                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="w-full md:w-auto flex justify-end">
-                    <button 
-                      onClick={() => setShowNewListing(true)}
-                      className="px-6 py-3 rounded-lg text-white font-semibold transition-all duration-300 hover:opacity-90 whitespace-nowrap shrink-0 cursor-pointer"
-                      style={{backgroundColor: '#0B5858', fontFamily: 'Poppins'}}
+                  {/* View mode toggle — matches admin style */}
+                  <div className="flex bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                    <button
+                      onClick={() => setViewMode('list')}
+                      className={`px-4 py-3 flex items-center transition-all cursor-pointer ${
+                        viewMode === 'list' 
+                          ? 'bg-[#0B5858] text-white' 
+                          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                      }`}
+                      aria-label="List view"
                     >
-                      + Add new Listing
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`px-4 py-3 flex items-center transition-all cursor-pointer ${
+                        viewMode === 'grid' 
+                          ? 'bg-[#0B5858] text-white' 
+                          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                      }`}
+                      aria-label="Grid view"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -533,114 +861,70 @@ const ManageUnits: React.FC = () => {
                 </div>
               ) : viewMode === 'list' ? (
                 <>
-                  <div className="bg-gray-50 rounded-lg shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full table-auto min-w-[900px] md:min-w-0">
-                        <thead className="sticky top-0 z-10">
-                          <tr style={{backgroundColor: '#0B5858'}}>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm" style={{fontFamily: 'Poppins'}}></th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm" style={{fontFamily: 'Poppins'}}>
-                              Unit Title
+                {/* Table — matches admin agents page design system: rounded-3xl, header style */}
+                <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[1000px]">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50">
+                          {['', 'Unit', 'Unit #', 'Location', 'Type', 'Capacity', 'Price', 'Status', 'Bookings', 'Updated', 'Actions'].map((h) => (
+                            <th key={h} className="px-3 py-4 text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest whitespace-nowrap first:pl-5 last:pr-5">
+                              {h}
                             </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Location
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Type
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Capacity
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Price/Night
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Status
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Owner
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Slots
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap hidden md:table-cell" style={{fontFamily: 'Poppins'}}>
-                              Bookings
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Last Updated
-                            </th>
-                            <th className="px-3 py-2.5 text-left text-white font-semibold text-sm whitespace-nowrap" style={{fontFamily: 'Poppins'}}>
-                              Actions
-                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                        <tbody className="divide-y divide-gray-50">
+                        {!canAccess ? (
+                          <tr>
+                            <td colSpan={12} className="px-7 py-14 text-center">
+                              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                              </div>
+                              <p className="text-sm font-bold text-gray-500">Access Denied</p>
+                              <p className="text-xs font-medium text-gray-400 mt-2">You need Admin or Agent privileges to access this page.</p>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {!canAccess ? (
-                            <tr>
-                              <td className="px-6 py-8 text-center" colSpan={12}>
-                                <div className="text-red-500">
-                                  <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                                  </svg>
-                                  <p className="text-lg font-semibold mb-2" style={{fontFamily: 'Poppins'}}>
-                                    Access Denied
-                                  </p>
-                                  <p className="text-gray-600" style={{fontFamily: 'Poppins'}}>
-                                    You need Admin or Agent privileges to access the Manage Listings page.
-                                  </p>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : error ? (
-                            <tr>
-                              <td className="px-6 py-8 text-center" colSpan={12}>
-                                <div className="text-red-500">
-                                  <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                                  </svg>
-                                  <p className="text-lg font-semibold mb-2" style={{fontFamily: 'Poppins'}}>
-                                    Error Loading Units
-                                  </p>
-                                  <p className="text-gray-600" style={{fontFamily: 'Poppins'}}>
-                                    {error}
-                                  </p>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : filteredUnits.length === 0 ? (
-                            <tr>
-                              <td className="px-6 py-8 text-center" colSpan={12}>
-                                <div className="text-gray-500">
-                                  <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                  </svg>
-                                  <p className="text-xl font-semibold mb-2" style={{fontFamily: 'Poppins', fontWeight: 600}}>
-                                    No Units Found
-                                  </p>
-                                  <p className="text-gray-600" style={{fontFamily: 'Poppins', fontWeight: 400}}>
-                                    {units.length === 0 ? 'No units available. Add your first listing!' : 'No units match your current filters.'}
-                                  </p>
-                                  {units.length === 0 && (
-                                    <button
-                                      onClick={() => fetchUnits()}
-                                      className="mt-4 inline-flex items-center px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-300 hover:opacity-90 cursor-pointer"
-                                      style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}
-                                    >
-                                      Retry
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredUnits.map((unit, index) => (
-                              <tr 
-                                key={unit.id} 
-                                className={`border-b border-gray-200 ${
-                                  index % 2 === 0 ? 'bg-gray-50' : 'bg-gray-100'
-                                }`}
-                              >
-                                <td className="px-3 py-2.5 align-middle text-center">
+                        ) : error ? (
+                          <tr>
+                            <td colSpan={12} className="px-7 py-14 text-center">
+                              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                              </div>
+                              <p className="text-sm font-bold text-gray-500">Error Loading Units</p>
+                              <p className="text-xs font-medium text-gray-400 mt-2">{error}</p>
+                            </td>
+                          </tr>
+                        ) : paginatedUnits.length === 0 ? (
+                          <tr>
+                            <td colSpan={12} className="px-7 py-14 text-center">
+                              <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                                <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                              </div>
+                              <p className="text-sm font-bold text-gray-500">No Listings Found</p>
+                              <p className="text-xs font-medium text-gray-400 mt-2">
+                                {units.length === 0 ? 'Add your first listing to get started.' : 'No units match your current filters.'}
+                              </p>
+                              {units.length === 0 && (
+                                <button
+                                  onClick={() => fetchUnits()}
+                                  className="mt-4 px-4 py-2 bg-[#0B5858] text-white text-sm font-bold rounded-xl hover:bg-[#094848] transition-colors cursor-pointer"
+                                >
+                                  Retry
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedUnits.map((unit) => (
+                            <tr key={unit.id} className="hover:bg-gray-50/80 transition-colors">
+                                <td className="pl-5 pr-3 py-2.5 align-middle text-center">
                                   <button
                                     onClick={() => { 
                                       if (togglingFeatured.has(unit.id)) return; 
@@ -652,27 +936,46 @@ const ManageUnits: React.FC = () => {
                                       }), 400);
                                       toggleFeatured(unit.id, !!unit.is_featured); 
                                     }}
-                                    className="cursor-pointer"
+                                    className={`cursor-pointer p-1.5 rounded-full transition-all duration-200 ${
+                                      unit.is_featured 
+                                        ? 'bg-gradient-to-br from-amber-100 to-yellow-50 shadow-sm' 
+                                        : 'hover:bg-gray-100'
+                                    }`}
                                     aria-label="Toggle featured"
                                     title={unit.is_featured ? 'Unmark as featured' : 'Mark as featured'}
-                                    onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                                    style={{ transition: 'fill 0.2s ease, transform 0.2s ease' }}
+                                    style={{ 
+                                      boxShadow: unit.is_featured 
+                                        ? '0 2px 8px rgba(246, 214, 88, 0.4), inset 0 1px 0 rgba(255,255,255,0.8)' 
+                                        : 'none'
+                                    }}
                                   >
                                     <svg
                                       xmlns="http://www.w3.org/2000/svg"
                                       viewBox="0 0 24 24"
-                                      width="24"
-                                      height="24"
-                                      className={animatingStars.has(unit.id) ? 'star-click-animation' : ''}
-                                      style={{ transition: 'fill 0.2s ease' }}
-                                      fill={unit.is_featured ? '#F6D658' : 'none'}
-                                      stroke={'#0B5858'}
-                                      strokeWidth="1.5"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
+                                      width="20"
+                                      height="20"
+                                      className={`transition-all duration-300 ${animatingStars.has(unit.id) ? 'star-click-animation' : ''}`}
+                                      style={{ 
+                                        filter: unit.is_featured 
+                                          ? 'drop-shadow(0 1px 2px rgba(180, 140, 20, 0.5))' 
+                                          : 'none'
+                                      }}
                                     >
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499c.197-.49.843-.49 1.04 0l2.125 5.111a1 1 0 00.874.618l5.518.401c.53.038.744.706.341 1.04l-4.205 3.53a1 1 0 00-.33 1.06l1.273 5.36c.122.515-.44.93-.898.65l-4.77-2.85a1 1 0 00-1.034 0l-4.77 2.85c-.458.279-1.02-.135-.898-.65l1.273-5.36a1 1 0 00-.33-1.06l-4.205-3.53c-.402-.334-.189-1.002.341-1.04l5.518-.401a1 1 0 00.874-.618l2.125-5.111z" />
+                                      <defs>
+                                        <linearGradient id={`starGradient-${unit.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                          <stop offset="0%" stopColor="#F6D658" />
+                                          <stop offset="50%" stopColor="#F5C842" />
+                                          <stop offset="100%" stopColor="#D4A828" />
+                                        </linearGradient>
+                                      </defs>
+                                      <path 
+                                        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                                        fill={unit.is_featured ? `url(#starGradient-${unit.id})` : 'none'}
+                                        stroke={unit.is_featured ? '#C9A227' : '#9CA3AF'}
+                                        strokeWidth={unit.is_featured ? '1' : '1.5'}
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      />
                                     </svg>
                                   </button>
                                 </td>
@@ -692,7 +995,7 @@ const ManageUnits: React.FC = () => {
                                           WebkitLineClamp: 2,
                                           WebkitBoxOrient: 'vertical',
                                           overflow: 'hidden',
-                                          maxWidth: '360px'
+                                          maxWidth: '280px'
                                         } as React.CSSProperties & { WebkitLineClamp: number; WebkitBoxOrient: string }}
                                         onMouseEnter={(e) => handleTextHover(e, unit.title)}
                                         onMouseLeave={handleTextLeave}
@@ -701,6 +1004,12 @@ const ManageUnits: React.FC = () => {
                                       </div>
                                     </div>
                                   </div>
+                                </td>
+
+                                <td className="px-3 py-2.5 align-middle">
+                                  <span className="text-gray-900 text-sm" style={{fontFamily: 'Poppins'}}>
+                                    {unit.unit_number || '—'}
+                                  </span>
                                 </td>
 
                                 <td className="px-3 py-2.5 align-middle">
@@ -750,62 +1059,25 @@ const ManageUnits: React.FC = () => {
 
                                 <td className="px-3 py-2.5 align-middle">
                                   <span 
-                                    className="inline-flex px-2 py-1 rounded-full text-xs font-medium text-white"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium chip-shadow whitespace-nowrap"
                                     style={{
-                                      backgroundColor: unit.is_available ? '#558B8B' : '#B84C4C',
-                                      fontFamily: 'Poppins'
+                                      backgroundColor: unit.is_available ? 'rgba(11, 88, 88, 0.12)' : 'rgba(184, 76, 76, 0.12)',
+                                      color: unit.is_available ? '#0B5858' : '#B84C4C',
+                                      fontFamily: 'Poppins',
+                                      boxShadow: unit.is_available 
+                                        ? '0 1px 0 rgba(11, 88, 88, 0.25), 0 2px 4px rgba(11, 88, 88, 0.1)'
+                                        : '0 1px 0 rgba(184, 76, 76, 0.25), 0 2px 4px rgba(184, 76, 76, 0.1)'
                                     }}
                                   >
+                                    <span 
+                                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                                      style={{ backgroundColor: unit.is_available ? '#0B5858' : '#B84C4C' }}
+                                    />
                                     {unit.is_available ? 'Available' : 'Unavailable'}
                                   </span>
                                 </td>
 
                                 <td className="px-3 py-2.5 align-middle">
-                                  <span className="text-gray-900 text-sm" style={{fontFamily: 'Poppins'}}>
-                                    {unit.owner?.fullname ?? '—'}
-                                  </span>
-                                </td>
-
-                                <td className="px-3 py-2.5 align-middle">
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      onClick={() => router.push(`/unit-calendar/${unit.id}`)}
-                                      className="inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors border cursor-pointer"
-                                      style={{
-                                        borderColor: '#558B8B',
-                                        color: '#558B8B',
-                                        fontFamily: 'Poppins'
-                                      }}
-                                      aria-label="View availability"
-                                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F6D658'; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                    >
-                                      <span>View</span>
-                                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                      </svg>
-                                    </button>
-                                    <button
-                                      onClick={() => { setUnitToAssign(unit); setShowAssignModal(true); }}
-                                      className="inline-flex items-center px-2 py-1 rounded text-xs font-medium transition-colors border cursor-pointer"
-                                      style={{
-                                        borderColor: '#558B8B',
-                                        color: '#558B8B',
-                                        fontFamily: 'Poppins'
-                                      }}
-                                      aria-label="Assign agents"
-                                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#F6D658'; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
-                                    >
-                                      <span>Assign</span>
-                                      <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                </td>
-
-                                <td className="px-3 py-2.5 align-middle hidden md:table-cell">
                                   <span className="text-gray-900 text-sm" style={{fontFamily: 'Poppins'}}>
                                     {unit.bookings_count ?? 0}
                                   </span>
@@ -820,6 +1092,26 @@ const ManageUnits: React.FC = () => {
                                 <td className="px-3 py-2.5 align-middle">
                                   <div className="flex items-center justify-end space-x-2">
                                     <button 
+                                      onClick={() => router.push(`/unit-calendar/${unit.id}`)}
+                                      className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                      title="View Calendar"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                    </button>
+
+                                    <button 
+                                      onClick={() => { setUnitToAssign(unit); setShowAssignModal(true); }}
+                                      className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                      title="Assign Agents"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                                      </svg>
+                                    </button>
+
+                                    <button 
                                       onClick={() => toggleAvailability(unit.id, unit.is_available)}
                                       disabled={togglingUnits.has(unit.id)}
                                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -827,9 +1119,8 @@ const ManageUnits: React.FC = () => {
                                           ? 'focus:ring-gray-500 hover:opacity-80' 
                                           : 'bg-gray-200 focus:ring-gray-500 hover:bg-gray-300'
                                       }`}
-                                      style={{
-                                        backgroundColor: unit.is_available ? '#558B8B' : undefined
-                                      }}
+                                      style={{ backgroundColor: unit.is_available ? '#558B8B' : undefined }}
+                                      title={unit.is_available ? 'Mark as Unavailable' : 'Mark as Available'}
                                     >
                                       {togglingUnits.has(unit.id) ? (
                                         <div className="absolute inset-0 flex items-center justify-center">
@@ -842,7 +1133,11 @@ const ManageUnits: React.FC = () => {
                                       )}
                                     </button>
                                     
-                                    <button className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer" onClick={(e) => { e.stopPropagation(); handleEditClick(unit); }} disabled={isLoadingEdit}
+                                    <button 
+                                      className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer" 
+                                      onClick={(e) => { e.stopPropagation(); handleEditClick(unit); }} 
+                                      disabled={isLoadingEdit}
+                                      title="Edit Unit"
                                     >
                                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -852,10 +1147,10 @@ const ManageUnits: React.FC = () => {
                                     {isAdmin && (
                                     <button 
                                       className="text-gray-400 transition-colors cursor-pointer" 
-                                      style={{'--hover-color': '#B84C4C'} as React.CSSProperties} 
                                       onMouseEnter={(e) => e.currentTarget.style.color = '#B84C4C'} 
                                       onMouseLeave={(e) => e.currentTarget.style.color = '#9CA3AF'}
                                       onClick={() => openDeleteModal(unit)}
+                                      title="Delete Unit"
                                     >
                                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -868,9 +1163,67 @@ const ManageUnits: React.FC = () => {
                             ))
                           )}
                         </tbody>
-                      </table>
-                    </div>
+                    </table>
                   </div>
+
+                  {/* Pagination — matches admin agents page */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between px-7 py-4 border-t border-gray-100 bg-white gap-4">
+                    <p className="text-xs font-medium text-gray-500">
+                      Showing <span className="font-medium text-gray-900">{filteredUnits.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}</span> to <span className="font-medium text-gray-900">{Math.min(currentPage * itemsPerPage, filteredUnits.length)}</span> of <span className="font-medium text-gray-900">{filteredUnits.length}</span> results
+                    </p>
+                    {totalPages > 1 && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="inline-flex items-center justify-center p-2 rounded-xl border border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 group active:scale-95 cursor-pointer"
+                          aria-label="Previous page"
+                        >
+                          <svg className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.75 19.5L8.25 12l7.5-7.5" />
+                          </svg>
+                        </button>
+                        <div className="flex items-center gap-1 px-1">
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum = i + 1;
+                            if (totalPages > 5) {
+                              if (currentPage > 3 && currentPage < totalPages - 1) {
+                                pageNum = currentPage - 2 + i;
+                              } else if (currentPage >= totalPages - 1) {
+                                pageNum = totalPages - 4 + i;
+                              }
+                            }
+                            const isActive = currentPage === pageNum;
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => setCurrentPage(pageNum)}
+                                className={`min-w-[32px] h-8 flex items-center justify-center rounded-lg text-[13px] font-bold transition-all duration-300 cursor-pointer ${
+                                  isActive ? 'bg-[#0B5858] text-white shadow-md shadow-[#0B5858]/30 scale-105' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 active:scale-95'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={currentPage === totalPages}
+                          className="inline-flex items-center justify-center p-2 rounded-xl border border-transparent text-gray-500 hover:bg-gray-50 hover:text-gray-900 disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-all duration-200 group active:scale-95 cursor-pointer"
+                          aria-label="Next page"
+                        >
+                          <svg className="w-4 h-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 </>
               ) : (
                 <>
@@ -927,10 +1280,10 @@ const ManageUnits: React.FC = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                      {filteredUnits.map((unit) => (
+                      {paginatedUnits.map((unit) => (
                         <div
                           key={unit.id}
-                          className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer"
+                          className="bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-lg hover:border-gray-200 transition-all duration-300 overflow-hidden group cursor-pointer flex flex-col"
                           onClick={(e) => {
                             const target = e.target as HTMLElement;
                             const isClickableElement = target.closest('button, a, [role="button"]');
@@ -939,7 +1292,7 @@ const ManageUnits: React.FC = () => {
                             }
                           }}
                         >
-                          <div className="relative h-40 overflow-hidden bg-gray-200">
+                          <div className="relative h-36 overflow-hidden bg-gray-200 shrink-0">
                             <img
                               src={unit.main_image_url || '/avida.jpg'}
                               alt={unit.title}
@@ -953,7 +1306,7 @@ const ManageUnits: React.FC = () => {
                                 }
                               }}
                             />
-                            <div className="absolute top-4 left-4">
+                            <div className="absolute top-3 left-3">
                               <button
                                 onClick={() => { 
                                   if (togglingFeatured.has(unit.id)) return; 
@@ -965,193 +1318,201 @@ const ManageUnits: React.FC = () => {
                                   }), 400);
                                   toggleFeatured(unit.id, !!unit.is_featured); 
                                 }}
-                                className="cursor-pointer"
+                                className="cursor-pointer p-1.5 rounded-full transition-all duration-200"
                                 aria-label="Toggle featured"
                                 title={unit.is_featured ? 'Unmark as featured' : 'Mark as featured'}
-                                onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                                style={{ transition: 'all 0.2s ease', filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))' }}
+                                style={{ 
+                                  backgroundColor: unit.is_featured ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.5)',
+                                  backdropFilter: 'blur(8px)',
+                                  WebkitBackdropFilter: 'blur(8px)',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                                }}
                               >
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
                                   viewBox="0 0 24 24"
-                                  width="28"
-                                  height="28"
-                                  className={animatingStars.has(unit.id) ? 'star-click-animation' : ''}
-                                  style={{ transition: 'all 0.2s ease' }}
-                                  fill={unit.is_featured ? '#F1C40F' : 'rgba(0, 0, 0, 0.4)'}
-                                  stroke="rgba(255, 255, 255, 0.95)"
-                                  strokeWidth="1.5"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                                  width="16"
+                                  height="16"
+                                  className={`transition-all duration-300 ${animatingStars.has(unit.id) ? 'star-click-animation' : ''}`}
+                                  style={{ 
+                                    filter: unit.is_featured 
+                                      ? 'drop-shadow(0 1px 1px rgba(180, 140, 20, 0.5))' 
+                                      : 'none'
+                                  }}
                                 >
-                                  <path d="M11.48 3.499c.197-.49.843-.49 1.04 0l2.125 5.111a1 1 0 00.874.618l5.518.401c.53.038.744.706.341 1.04l-4.205 3.53a1 1 0 00-.33 1.06l1.273 5.36c.122.515-.44.93-.898.65l-4.77-2.85a1 1 0 00-1.034 0l-4.77 2.85c-.458.279-1.02-.135-.898-.65l1.273-5.36a1 1 0 00-.33-1.06l-4.205-3.53c-.402-.334-.189-1.002.341-1.04l5.518-.401a1 1 0 00.874-.618l2.125-5.111z" />
+                                  <defs>
+                                    <linearGradient id={`cardStarGradient-${unit.id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                      <stop offset="0%" stopColor="#F6D658" />
+                                      <stop offset="50%" stopColor="#F5C842" />
+                                      <stop offset="100%" stopColor="#D4A828" />
+                                    </linearGradient>
+                                  </defs>
+                                  <path 
+                                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                                    fill={unit.is_featured ? `url(#cardStarGradient-${unit.id})` : 'none'}
+                                    stroke={unit.is_featured ? '#C9A227' : '#9CA3AF'}
+                                    strokeWidth={unit.is_featured ? '1' : '1.5'}
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
                                 </svg>
                               </button>
                             </div>
-                            <div className="absolute top-4 right-4">
+                            <div className="absolute top-3 right-3">
                               <span
-                                className="inline-flex px-3 py-1.5 rounded-full text-xs font-normal text-white"
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium"
                                 style={{
                                   backgroundColor: unit.is_available 
-                                    ? 'rgba(85, 139, 139, 0.9)' 
-                                    : 'rgba(184, 76, 76, 0.9)',
+                                    ? 'rgba(11, 88, 88, 0.75)' 
+                                    : 'rgba(184, 76, 76, 0.75)',
+                                  color: '#ffffff',
                                   fontFamily: 'Poppins',
-                                  backdropFilter: 'blur(15px) saturate(180%)',
-                                  WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-                                  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)'
+                                  backdropFilter: 'blur(8px)',
+                                  WebkitBackdropFilter: 'blur(8px)',
+                                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
                                 }}
                               >
+                                <span 
+                                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: unit.is_available ? '#86EFAC' : '#FCA5A5' }}
+                                />
                                 {unit.is_available ? 'Available' : 'Unavailable'}
                               </span>
                             </div>
                           </div>
-                          <div className="p-4">
-                            <div className="mb-1">
-                              <div className="flex items-baseline">
-                                <span className="text-xl font-bold text-gray-900" style={{fontFamily: 'Poppins'}}>
-                                  {formatPrice(unit.price, unit.currency)}
-                                </span>
-                                <span className="text-xs text-gray-500 ml-1 font-normal" style={{fontFamily: 'Poppins'}}>
-                                  /night
-                                </span>
-                              </div>
-                            </div>
-                            <div className="mb-1.5">
-                              <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 leading-tight" style={{fontFamily: 'Poppins'}} title={unit.title}>
+                          <div className="p-4 flex flex-col h-full">
+                            {/* Header: Title + Price */}
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 leading-snug flex-1" style={{fontFamily: 'Poppins'}} title={unit.title}>
                                 {unit.title}
                               </h3>
+                              <span className="text-base font-bold text-gray-900 shrink-0" style={{fontFamily: 'Poppins'}}>
+                                ₱{unit.price.toLocaleString()}
+                              </span>
                             </div>
-                            <div className="mb-0.8">
-                              <div className="flex items-center text-xs text-gray-500" style={{fontFamily: 'Poppins'}}>
-                                <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            
+                            {/* Location */}
+                            <p className="text-xs text-gray-500 mt-0.5 mb-3 line-clamp-1" style={{fontFamily: 'Poppins'}}>
+                              {formatLocation(unit)}
+                            </p>
+
+                            {/* Specs with icons */}
+                            <div className="flex items-center gap-4 text-xs text-gray-600 mb-3" style={{fontFamily: 'Poppins'}}>
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                                 </svg>
-                                <span className="line-clamp-1">{formatLocation(unit)}</span>
+                                <span>{unit.bedrooms} {unit.bedrooms === 1 ? 'Bed' : 'Beds'}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                                </svg>
+                                <span>{unit.bathrooms} {unit.bathrooms === 1 ? 'Bath' : 'Baths'}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                <span>{unit.max_capacity || unit.bedrooms * 2} Guests</span>
                               </div>
                             </div>
-                            <div className="mb-1">
-                              <span className="text-xs text-gray-500" style={{fontFamily: 'Poppins'}}>
+
+                            {/* Property Type Badge - above divider */}
+                            <div className="mt-auto pb-3">
+                              <span 
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium chip-shadow whitespace-nowrap"
+                                style={{
+                                  backgroundColor: 'rgba(11, 88, 88, 0.12)',
+                                  color: '#0B5858',
+                                  fontFamily: 'Poppins',
+                                  boxShadow: '0 1px 0 rgba(11, 88, 88, 0.25), 0 2px 4px rgba(11, 88, 88, 0.1)'
+                                }}
+                              >
                                 {formatPropertyType(unit.property_type)}
                               </span>
                             </div>
-                            <div className="mb-2 pb-2 border-b border-gray-100">
-                              <div className="flex items-center justify-start space-x-3">
-                                <div className="flex items-center text-xs text-gray-600" style={{fontFamily: 'Poppins'}}>
-                                  <svg className="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 9V6a2 2 0 00-2-2H6a2 2 0 00-2 2v3M4 9h16v10a2 2 0 01-2 2H6a2 2 0 01-2-2V9z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9V7a2 2 0 012-2h4a2 2 0 012 2v2" />
+
+                            {/* Footer: Actions - matching table design */}
+                            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                              {/* Left: View & Assign icons */}
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    router.push(`/unit-calendar/${unit.id}`);
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                  title="View Calendar"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                   </svg>
-                                  <span className="font-normal">{unit.bedrooms} {unit.bedrooms === 1 ? 'bed' : 'beds'}</span>
-                                </div>
-                                <div className="flex items-center text-xs text-gray-600" style={{fontFamily: 'Poppins'}}>
-                                  <svg className="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setUnitToAssign(unit);
+                                    setShowAssignModal(true);
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                  title="Assign Agents"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                                   </svg>
-                                  <span className="font-normal">{unit.bathrooms} {unit.bathrooms === 1 ? 'bath' : 'baths'}</span>
-                                </div>
-                                <div className="flex items-center text-xs text-gray-600" style={{fontFamily: 'Poppins'}}>
-                                  <svg className="w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                  </svg>
-                                  <span className="font-normal">{unit.bedrooms * 2} pax</span>
-                                </div>
+                                </button>
                               </div>
-                            </div>
-                            <div className="mb-2">
-                              <div className="flex flex-col gap-0.5 text-xs">
-                                <span className="text-gray-500" style={{fontFamily: 'Poppins'}}>
-                                  Owner: <span className="font-normal text-gray-700">{unit.owner?.fullname ?? '—'}</span>
-                                </span>
-                                <span className="text-gray-500" style={{fontFamily: 'Poppins'}}>
-                                  Bookings: <span className="font-normal text-gray-700">{unit.bookings_count ?? 0}</span>
-                                </span>
-                                <span className="text-gray-500" style={{fontFamily: 'Poppins'}}>
-                                  Last Updated: <span className="font-normal text-gray-700">{new Date(unit.updated_at).toLocaleDateString()}</span>
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/unit-calendar/${unit.id}`);
-                                }}
-                                className="flex items-center px-3 py-2 rounded text-xs font-medium text-white transition-colors hover:opacity-90 cursor-pointer"
-                                style={{
-                                  backgroundColor: '#0B5858',
-                                  fontFamily: 'Poppins'
-                                }}
-                              >
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                                View Slots
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setUnitToAssign(unit);
-                                  setShowAssignModal(true);
-                                }}
-                                className="flex items-center px-3 py-2 rounded text-xs font-medium transition-colors hover:opacity-90 cursor-pointer border border-[#558B8B]"
-                                style={{
-                                  color: '#558B8B',
-                                  fontFamily: 'Poppins'
-                                }}
-                              >
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                                </svg>
-                                Assign
-                              </button>
-                              
-                              <div className="flex items-center space-x-1">
+
+                              {/* Right: Toggle, Edit, Delete */}
+                              <div className="flex items-center space-x-2">
+                                {/* Availability toggle - same as table */}
                                 <button 
-                                  onClick={() => toggleAvailability(unit.id, unit.is_available)}
+                                  onClick={(e) => { e.stopPropagation(); toggleAvailability(unit.id, unit.is_available); }}
                                   disabled={togglingUnits.has(unit.id)}
-                                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer ${
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                                     unit.is_available 
                                       ? 'focus:ring-gray-500 hover:opacity-80' 
                                       : 'bg-gray-200 focus:ring-gray-500 hover:bg-gray-300'
                                   }`}
-                                  style={{
-                                    backgroundColor: unit.is_available ? '#558B8B' : undefined
-                                  }}
+                                  style={{ backgroundColor: unit.is_available ? '#558B8B' : undefined }}
                                   title={unit.is_available ? 'Mark as Unavailable' : 'Mark as Available'}
                                 >
                                   {togglingUnits.has(unit.id) ? (
                                     <div className="absolute inset-0 flex items-center justify-center">
-                                      <div className="animate-spin rounded-full h-2.5 w-2.5 border-b-2 border-white"></div>
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white" />
                                     </div>
                                   ) : (
-                                    <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                                      unit.is_available ? 'translate-x-5' : 'translate-x-0.5'
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      unit.is_available ? 'translate-x-6' : 'translate-x-1'
                                     }`} />
                                   )}
                                 </button>
-                                
-                                <div title="Edit Unit" onClick={(e) => { e.stopPropagation(); handleEditClick(unit); }} className="cursor-pointer">
-                                  <svg className="w-5 h-5 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+                                {/* Edit button - same as table */}
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleEditClick(unit); }}
+                                  className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                  title="Edit Unit"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                   </svg>
-                                </div>
-                                
+                                </button>
+
+                                {/* Delete button - same as table */}
                                 {isAdmin && (
-                                <div title="Delete Unit" onClick={() => openDeleteModal(unit)} className="cursor-pointer">
-                                  <svg 
-                                    className="w-5 h-5 text-gray-400 transition-colors cursor-pointer" 
-                                    fill="none" 
-                                    stroke="currentColor" 
-                                    viewBox="0 0 24 24"
-                                    style={{'--hover-color': '#B84C4C'} as React.CSSProperties}
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); openDeleteModal(unit); }}
+                                    className="text-gray-400 transition-colors cursor-pointer"
                                     onMouseEnter={(e) => e.currentTarget.style.color = '#B84C4C'}
                                     onMouseLeave={(e) => e.currentTarget.style.color = '#9CA3AF'}
+                                    title="Delete Unit"
                                   >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                </div>
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                  </button>
                                 )}
                               </div>
                             </div>

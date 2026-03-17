@@ -13,7 +13,9 @@ const NewListingFormMap = dynamic(() => import('@/components/NewListingFormMap')
 export interface DiscountRule {
   id: string;
   minNights: number;
-  discountPercent: number;
+  discountType: 'percentage' | 'fixed';
+  discountPercent?: number;
+  discountAmount?: number;
   label: string;
 }
 
@@ -24,12 +26,16 @@ export interface HolidayPricingRule {
   startDate: string;
   endDate: string;
   adjustmentType: 'increase' | 'discount';
-  adjustmentPercent: number;
+  adjustmentMode: 'percentage' | 'fixed';
+  adjustmentPercent?: number;
+  adjustmentAmount?: number;
 }
 
 export interface PrefillListing {
   id: string;
   title?: string | null;
+  unit_number?: string | null;
+  tower_building?: string | null;
   description?: string | null;
   price?: number | null;
   price_unit?: string | null;
@@ -48,6 +54,8 @@ export interface PrefillListing {
   min_pax?: number | null;
   max_capacity?: number | null;
   excess_pax_fee?: number | null;
+  has_parking?: boolean | null;
+  parking_fee?: number | null;
   latitude?: number | null;
   longitude?: number | null;
   check_in_time?: string | null;
@@ -59,6 +67,8 @@ export interface PrefillListing {
 
 export interface NewListingFormPayload {
   title: string;
+  unit_number?: string;
+  tower_building?: string;
   description?: string;
   price: number;
   price_unit: string;
@@ -73,6 +83,8 @@ export interface NewListingFormPayload {
   min_pax: number;
   max_capacity: number;
   excess_pax_fee: number;
+  has_parking?: boolean;
+  parking_fee?: number;
   main_image_url?: string;
   image_urls?: string[];
   amenities?: string[];
@@ -117,6 +129,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
 
   const [formData, setFormData] = useState({
     title: '',
+    unit_number: '',
+    tower_building: '',
     description: '',
     price: '',
     price_unit: 'daily',
@@ -131,6 +145,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
     min_pax: '1',
     max_capacity: '2',
     excess_pax_fee: '0',
+    has_parking: false,
+    parking_fee: '0',
     main_image_url: '',
     image_urls: [] as string[],
     amenities: [] as string[],
@@ -142,11 +158,13 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
 
   /* ── Discount & Holiday Pricing state ────────────────────────────── */
   const [discountRules, setDiscountRules] = useState<DiscountRule[]>([
-    { id: 'weekly', minNights: 7, discountPercent: 10, label: 'Weekly (7+ nights)' },
-    { id: 'monthly', minNights: 28, discountPercent: 20, label: 'Monthly (28+ nights)' },
+    { id: 'weekly', minNights: 7, discountType: 'percentage', discountPercent: 10, label: 'Weekly (7+ nights)' },
+    { id: 'monthly', minNights: 28, discountType: 'percentage', discountPercent: 20, label: 'Monthly (28+ nights)' },
   ]);
   const [customMinNights, setCustomMinNights] = useState('');
+  const [customDiscountType, setCustomDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [customDiscountPercent, setCustomDiscountPercent] = useState('');
+  const [customDiscountAmount, setCustomDiscountAmount] = useState('');
   const [customDiscountLabel, setCustomDiscountLabel] = useState('');
 
   const [holidayRules, setHolidayRules] = useState<HolidayPricingRule[]>([]);
@@ -154,7 +172,9 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
   const [holidayStartDate, setHolidayStartDate] = useState('');
   const [holidayEndDate, setHolidayEndDate] = useState('');
   const [holidayAdjustmentType, setHolidayAdjustmentType] = useState<'increase' | 'discount'>('increase');
+  const [holidayAdjustmentMode, setHolidayAdjustmentMode] = useState<'percentage' | 'fixed'>('percentage');
   const [holidayAdjustmentPercent, setHolidayAdjustmentPercent] = useState('');
+  const [holidayAdjustmentAmount, setHolidayAdjustmentAmount] = useState('');
 
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [selectedMainImageId, setSelectedMainImageId] = useState<string | null>(null);
@@ -191,6 +211,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
     if (mode === 'edit' && initialListing) {
       setFormData({
         title: initialListing.title || '',
+        unit_number: initialListing.unit_number || '',
+        tower_building: initialListing.tower_building || '',
         description: initialListing.description || '',
         price: (initialListing.price ?? '').toString(),
         price_unit: initialListing.price_unit || 'daily',
@@ -205,6 +227,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         min_pax: (initialListing.min_pax ?? 1).toString(),
         max_capacity: (initialListing.max_capacity ?? 2).toString(),
         excess_pax_fee: (initialListing.excess_pax_fee ?? 0).toString(),
+        has_parking: initialListing.has_parking ?? false,
+        parking_fee: (initialListing.parking_fee ?? 0).toString(),
         main_image_url: initialListing.main_image_url || '',
         image_urls: initialListing.image_urls || [],
         amenities: initialListing.amenities || [],
@@ -395,6 +419,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
       const allImageUrls = uploadedImages.map(img => img.url);
       const payload: NewListingFormPayload = {
         title: formData.title,
+        unit_number: formData.unit_number?.trim() || undefined,
+        tower_building: formData.tower_building?.trim() || undefined,
         description: formData.description || undefined,
         price: parseFloat(formData.price),
         price_unit: formData.price_unit,
@@ -409,6 +435,8 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         min_pax: parseInt(formData.min_pax) || 1,
         max_capacity: parseInt(formData.max_capacity) || 2,
         excess_pax_fee: parseFloat(formData.excess_pax_fee) || 0,
+        has_parking: formData.has_parking || undefined,
+        parking_fee: formData.has_parking ? (parseFloat(formData.parking_fee) || 0) : undefined,
         main_image_url: formData.main_image_url || undefined,
         image_urls: allImageUrls.length > 0 ? allImageUrls : undefined,
         amenities: formData.amenities.length > 0 ? formData.amenities : undefined,
@@ -440,6 +468,16 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
         <div>
           <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Property Type</label>
           <Dropdown label={formData.property_type.charAt(0).toUpperCase() + formData.property_type.slice(1)} options={propertyTypes.map(type => ({ value: type, label: type.charAt(0).toUpperCase() + type.slice(1) }))} onSelect={(value) => setFormData(prev => ({ ...prev, property_type: value }))} placeholder="Select property type" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Tower / Building</label>
+          <input type="text" name="tower_building" value={formData.tower_building} onChange={handleInputChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="e.g., Tower A, Building 1" />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Unit Number</label>
+          <input type="text" name="unit_number" value={formData.unit_number} onChange={handleInputChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="e.g., 101, 2B" />
         </div>
       </div>
       <div>
@@ -477,40 +515,115 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
   const renderPricingDiscountsStep = () => {
     const handleAddCustomDiscount = () => {
       const minN = parseInt(customMinNights);
-      const pct = parseFloat(customDiscountPercent);
-      if (!minN || minN < 1 || !pct || pct <= 0 || pct > 100) return;
-      const newRule: DiscountRule = {
-        id: `custom-${Date.now()}`,
-        minNights: minN,
-        discountPercent: pct,
-        label: customDiscountLabel.trim() || `${minN}+ nights`,
-      };
-      setDiscountRules(prev => [...prev, newRule]);
+      if (!minN || minN < 1) return;
+      
+      if (customDiscountType === 'percentage') {
+        const pct = parseFloat(customDiscountPercent);
+        if (!pct || pct <= 0 || pct > 100) return;
+        const newRule: DiscountRule = {
+          id: `custom-${Date.now()}`,
+          minNights: minN,
+          discountType: 'percentage',
+          discountPercent: pct,
+          label: customDiscountLabel.trim() || `${minN}+ nights`,
+        };
+        setDiscountRules(prev => [...prev, newRule]);
+      } else {
+        const amt = parseFloat(customDiscountAmount);
+        if (!amt || amt <= 0) return;
+        const newRule: DiscountRule = {
+          id: `custom-${Date.now()}`,
+          minNights: minN,
+          discountType: 'fixed',
+          discountAmount: amt,
+          label: customDiscountLabel.trim() || `${minN}+ nights`,
+        };
+        setDiscountRules(prev => [...prev, newRule]);
+      }
       setCustomMinNights('');
       setCustomDiscountPercent('');
+      setCustomDiscountAmount('');
       setCustomDiscountLabel('');
     };
 
     const handleAddHoliday = () => {
-      if (!holidayName.trim() || !holidayStartDate || !holidayEndDate || !holidayAdjustmentPercent) return;
-      const pct = parseFloat(holidayAdjustmentPercent);
-      if (!pct || pct <= 0 || pct > 200) return;
-      const newRule: HolidayPricingRule = {
-        id: `holiday-${Date.now()}`,
-        name: holidayName.trim(),
-        startDate: holidayStartDate,
-        endDate: holidayEndDate,
-        adjustmentType: holidayAdjustmentType,
-        adjustmentPercent: pct,
-      };
-      setHolidayRules(prev => [...prev, newRule]);
+      if (!holidayName.trim() || !holidayStartDate || !holidayEndDate) return;
+      
+      if (holidayAdjustmentMode === 'percentage') {
+        const pct = parseFloat(holidayAdjustmentPercent);
+        if (!pct || pct <= 0 || pct > 200) return;
+        const newRule: HolidayPricingRule = {
+          id: `holiday-${Date.now()}`,
+          name: holidayName.trim(),
+          startDate: holidayStartDate,
+          endDate: holidayEndDate,
+          adjustmentType: holidayAdjustmentType,
+          adjustmentMode: 'percentage',
+          adjustmentPercent: pct,
+        };
+        setHolidayRules(prev => [...prev, newRule]);
+      } else {
+        const amt = parseFloat(holidayAdjustmentAmount);
+        if (!amt || amt <= 0) return;
+        const newRule: HolidayPricingRule = {
+          id: `holiday-${Date.now()}`,
+          name: holidayName.trim(),
+          startDate: holidayStartDate,
+          endDate: holidayEndDate,
+          adjustmentType: holidayAdjustmentType,
+          adjustmentMode: 'fixed',
+          adjustmentAmount: amt,
+        };
+        setHolidayRules(prev => [...prev, newRule]);
+      }
       setHolidayName('');
       setHolidayStartDate('');
       setHolidayEndDate('');
       setHolidayAdjustmentPercent('');
+      setHolidayAdjustmentAmount('');
     };
 
     const basePrice = parseFloat(formData.price) || 0;
+    const currency = formData.currency || 'PHP';
+    const currencySymbol = currency === 'PHP' ? '₱' : currency === 'USD' ? '$' : '€';
+
+    const getDiscountDisplay = (rule: DiscountRule) => {
+      if (rule.discountType === 'fixed' && rule.discountAmount) {
+        return `${currencySymbol}${rule.discountAmount.toLocaleString()}`;
+      }
+      return `${rule.discountPercent || 0}%`;
+    };
+
+    const getDiscountedPrice = (rule: DiscountRule) => {
+      if (basePrice <= 0) return rule.discountType === 'fixed' ? `${currencySymbol}${rule.discountAmount?.toLocaleString() || 0} off` : `${rule.discountPercent}% off`;
+      if (rule.discountType === 'fixed' && rule.discountAmount) {
+        return `${currencySymbol}${Math.max(0, basePrice - rule.discountAmount).toLocaleString()}/night`;
+      }
+      return `${currencySymbol}${(basePrice * (1 - (rule.discountPercent || 0) / 100)).toFixed(0)}/night`;
+    };
+
+    const getHolidayDisplay = (rule: HolidayPricingRule) => {
+      const sign = rule.adjustmentType === 'increase' ? '+' : '-';
+      if (rule.adjustmentMode === 'fixed' && rule.adjustmentAmount) {
+        return `${sign}${currencySymbol}${rule.adjustmentAmount.toLocaleString()}`;
+      }
+      return `${sign}${rule.adjustmentPercent || 0}%`;
+    };
+
+    const getHolidayPrice = (rule: HolidayPricingRule) => {
+      if (basePrice <= 0) return '';
+      if (rule.adjustmentMode === 'fixed' && rule.adjustmentAmount) {
+        const adjusted = rule.adjustmentType === 'increase' 
+          ? basePrice + rule.adjustmentAmount 
+          : Math.max(0, basePrice - rule.adjustmentAmount);
+        return ` — ${currencySymbol}${adjusted.toLocaleString()}/night`;
+      }
+      const pct = rule.adjustmentPercent || 0;
+      const adjusted = rule.adjustmentType === 'increase' 
+        ? basePrice * (1 + pct / 100) 
+        : basePrice * (1 - pct / 100);
+      return ` — ${currencySymbol}${adjusted.toFixed(0)}/night`;
+    };
 
     return (
       <div className="space-y-8">
@@ -524,32 +637,53 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
               {discountRules.map(rule => (
                 <div key={rule.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#0B5858]/10 flex items-center justify-center">
-                      <span className="text-sm font-bold text-[#0B5858]">{rule.discountPercent}%</span>
+                    <div className="w-12 h-10 rounded-full bg-[#0B5858]/10 flex items-center justify-center">
+                      <span className="text-xs font-bold text-[#0B5858]">{getDiscountDisplay(rule)}</span>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>{rule.label}</p>
                       <p className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
-                        {rule.minNights}+ nights — {basePrice > 0 ? `₱${(basePrice * (1 - rule.discountPercent / 100)).toFixed(0)}/night` : `${rule.discountPercent}% off`}
+                        {rule.minNights}+ nights — {getDiscountedPrice(rule)}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={rule.discountPercent}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (val >= 0 && val <= 100) {
-                          setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, discountPercent: val } : r));
-                        }
-                      }}
-                      className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]"
-                      style={{ fontFamily: 'Poppins' }}
-                      min={0}
-                      max={100}
-                    />
-                    <span className="text-sm text-gray-500">%</span>
+                    {rule.discountType === 'percentage' ? (
+                      <>
+                        <input
+                          type="number"
+                          value={rule.discountPercent || ''}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (val >= 0 && val <= 100) {
+                              setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, discountPercent: val } : r));
+                            }
+                          }}
+                          className="w-16 px-2 py-1 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]"
+                          style={{ fontFamily: 'Poppins' }}
+                          min={0}
+                          max={100}
+                        />
+                        <span className="text-sm text-gray-500">%</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm text-gray-500">{currencySymbol}</span>
+                        <input
+                          type="number"
+                          value={rule.discountAmount || ''}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (val >= 0) {
+                              setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, discountAmount: val } : r));
+                            }
+                          }}
+                          className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-center text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]"
+                          style={{ fontFamily: 'Poppins' }}
+                          min={0}
+                        />
+                      </>
+                    )}
                     <button
                       type="button"
                       onClick={() => setDiscountRules(prev => prev.filter(r => r.id !== rule.id))}
@@ -567,14 +701,25 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
           {/* Add custom discount */}
           <div className="bg-gray-50 border border-dashed border-gray-300 rounded-lg p-4">
             <p className="text-sm font-medium text-[#0B5858] mb-3" style={{ fontFamily: 'Poppins' }}>Add Custom Discount</p>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Min Nights</label>
                 <input type="number" value={customMinNights} onChange={(e) => setCustomMinNights(e.target.value)} min={1} placeholder="e.g., 3" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Discount %</label>
-                <input type="number" value={customDiscountPercent} onChange={(e) => setCustomDiscountPercent(e.target.value)} min={1} max={100} placeholder="e.g., 15" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Discount Type</label>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setCustomDiscountType('percentage')} className={`flex-1 px-2 py-2 rounded-lg text-xs border transition-colors cursor-pointer ${customDiscountType === 'percentage' ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`} style={{ fontFamily: 'Poppins' }}>%</button>
+                  <button type="button" onClick={() => setCustomDiscountType('fixed')} className={`flex-1 px-2 py-2 rounded-lg text-xs border transition-colors cursor-pointer ${customDiscountType === 'fixed' ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`} style={{ fontFamily: 'Poppins' }}>{currencySymbol}</button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>{customDiscountType === 'percentage' ? 'Discount %' : `Amount (${currency})`}</label>
+                {customDiscountType === 'percentage' ? (
+                  <input type="number" value={customDiscountPercent} onChange={(e) => setCustomDiscountPercent(e.target.value)} min={1} max={100} placeholder="e.g., 15" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+                ) : (
+                  <input type="number" value={customDiscountAmount} onChange={(e) => setCustomDiscountAmount(e.target.value)} min={1} placeholder="e.g., 500" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Label (optional)</label>
@@ -597,16 +742,16 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
               {holidayRules.map(rule => (
                 <div key={rule.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${rule.adjustmentType === 'increase' ? 'bg-[#B84C4C]/10' : 'bg-[#549F74]/10'}`}>
-                      <span className={`text-sm font-bold ${rule.adjustmentType === 'increase' ? 'text-[#B84C4C]' : 'text-[#549F74]'}`}>
-                        {rule.adjustmentType === 'increase' ? '+' : '-'}{rule.adjustmentPercent}%
+                    <div className={`w-14 h-10 rounded-full flex items-center justify-center ${rule.adjustmentType === 'increase' ? 'bg-[#B84C4C]/10' : 'bg-[#549F74]/10'}`}>
+                      <span className={`text-xs font-bold ${rule.adjustmentType === 'increase' ? 'text-[#B84C4C]' : 'text-[#549F74]'}`}>
+                        {getHolidayDisplay(rule)}
                       </span>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900" style={{ fontFamily: 'Poppins' }}>{rule.name}</p>
                       <p className="text-xs text-gray-500" style={{ fontFamily: 'Poppins' }}>
                         {new Date(rule.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – {new Date(rule.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {basePrice > 0 && ` — ₱${(basePrice * (rule.adjustmentType === 'increase' ? (1 + rule.adjustmentPercent / 100) : (1 - rule.adjustmentPercent / 100))).toFixed(0)}/night`}
+                        {getHolidayPrice(rule)}
                       </p>
                     </div>
                   </div>
@@ -641,6 +786,7 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
                       setHolidayStartDate(preset.start);
                       setHolidayEndDate(preset.end);
                       setHolidayAdjustmentType('increase');
+                      setHolidayAdjustmentMode('percentage');
                       setHolidayAdjustmentPercent('25');
                     }}
                     className={`px-3 py-1 rounded-full text-sm border transition-colors ${alreadyAdded ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 cursor-pointer'}`}
@@ -673,7 +819,7 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Start Date</label>
                 <input type="date" value={holidayStartDate} onChange={(e) => setHolidayStartDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
@@ -683,11 +829,24 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
                 <input type="date" value={holidayEndDate} onChange={(e) => setHolidayEndDate(e.target.value)} min={holidayStartDate} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Adjustment %</label>
-                <input type="number" value={holidayAdjustmentPercent} onChange={(e) => setHolidayAdjustmentPercent(e.target.value)} min={1} max={200} placeholder="e.g., 25" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>Mode</label>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setHolidayAdjustmentMode('percentage')} className={`flex-1 px-2 py-2 rounded-lg text-xs border transition-colors cursor-pointer ${holidayAdjustmentMode === 'percentage' ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`} style={{ fontFamily: 'Poppins' }}>%</button>
+                  <button type="button" onClick={() => setHolidayAdjustmentMode('fixed')} className={`flex-1 px-2 py-2 rounded-lg text-xs border transition-colors cursor-pointer ${holidayAdjustmentMode === 'fixed' ? 'bg-[#0B5858] text-white border-[#0B5858]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`} style={{ fontFamily: 'Poppins' }}>{currencySymbol}</button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1" style={{ fontFamily: 'Poppins' }}>{holidayAdjustmentMode === 'percentage' ? 'Adjustment %' : `Amount (${currency})`}</label>
+                {holidayAdjustmentMode === 'percentage' ? (
+                  <input type="number" value={holidayAdjustmentPercent} onChange={(e) => setHolidayAdjustmentPercent(e.target.value)} min={1} max={200} placeholder="e.g., 25" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+                ) : (
+                  <input type="number" value={holidayAdjustmentAmount} onChange={(e) => setHolidayAdjustmentAmount(e.target.value)} min={1} placeholder="e.g., 500" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#549F74]" style={{ fontFamily: 'Poppins' }} />
+                )}
+              </div>
+              <div className="flex items-end">
+                <button type="button" onClick={handleAddHoliday} className="w-full px-4 py-2 text-white rounded-lg transition-colors cursor-pointer text-sm" style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}>Add</button>
               </div>
             </div>
-            <button type="button" onClick={handleAddHoliday} className="px-4 py-2 text-white rounded-lg transition-colors cursor-pointer text-sm" style={{ backgroundColor: '#0B5858', fontFamily: 'Poppins' }}>Add Holiday Pricing</button>
           </div>
         </div>
       </div>
@@ -736,6 +895,42 @@ const NewListingForm: React.FC<NewListingFormProps> = ({
           <input type="number" name="excess_pax_fee" value={formData.excess_pax_fee} onChange={handleInputChange} min={0} step={0.01} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} placeholder="0" />
           <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>Fee per extra guest beyond min</p>
         </div>
+      </div>
+      {/* Parking Section */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-black" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>Parking</h3>
+            <p className="text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>Enable if this unit has parking available</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFormData(prev => ({ ...prev, has_parking: !prev.has_parking }))}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 cursor-pointer ${formData.has_parking ? '' : 'bg-gray-200'}`}
+            style={{ backgroundColor: formData.has_parking ? '#0B5858' : undefined, '--tw-ring-color': '#549F74' } as React.CSSProperties}
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm ${formData.has_parking ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+        {formData.has_parking && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold mb-2" style={{ fontFamily: 'Poppins', color: '#0B5858' }}>Parking Fee (₱/night)</label>
+              <input 
+                type="number" 
+                name="parking_fee" 
+                value={formData.parking_fee} 
+                onChange={handleInputChange} 
+                min={0} 
+                step={0.01} 
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:border-transparent transition-all duration-200" 
+                style={{ fontFamily: 'Poppins', '--tw-ring-color': '#549F74' } as React.CSSProperties} 
+                placeholder="0 (free parking)" 
+              />
+              <p className="text-xs text-gray-500 mt-1" style={{ fontFamily: 'Poppins' }}>Set to 0 for free parking</p>
+            </div>
+          </div>
+        )}
       </div>
       <div>
         <h3 className="text-lg font-semibold text-black mb-4" style={{ fontFamily: 'Poppins', fontWeight: 600 }}>Amenities</h3>
