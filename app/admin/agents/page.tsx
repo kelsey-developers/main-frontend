@@ -209,7 +209,7 @@ export default function AdminAgentsPage() {
   const [rejectRegReason, setRejectRegReason] = useState('');
   const [proofModalReg, setProofModalReg] = useState<PendingRegistration | null>(null);
 
-  /** Sliding tab indicator — same pattern as /lending/[loanId] */
+  /** Sliding tab indicator for tab nav */
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [tabIndicator, setTabIndicator] = useState({ left: 0, width: 0 });
   useLayoutEffect(() => {
@@ -392,7 +392,7 @@ export default function AdminAgentsPage() {
             </button>
           ))}
         </div>
-        {/* Grey baseline — same gradient as /lending/[loanId] */}
+        {/* Grey baseline for tab nav */}
         <div
           className="pointer-events-none absolute -bottom-px left-0 h-px w-[95%] z-0"
           style={{

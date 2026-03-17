@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 const ROLES = ['Guest', 'Employee', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Admin'] as const;
 type RoleType = (typeof ROLES)[number];
 
-/** Chip shadow helper — same pattern as admin/cleaning, lending */
+/** Chip shadow helper — same pattern as admin/cleaning */
 const chipShadow = (r: number, g: number, b: number, a = 0.35) => `0 1px 0 rgba(${r},${g},${b},${a})`;
 
 /** Dropdown — same as admin/commissions, admin/cleaning: rounded-2xl, shadow, click-outside close */
