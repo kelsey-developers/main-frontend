@@ -137,11 +137,18 @@ export interface GuestEntry {
   classification: 'Adult' | 'Senior' | 'Child' | 'Infant' | 'PWD';
 }
 
+export type BlockedRangeScope = 'global' | 'unit';
+export type BlockedRangeSource = 'manual' | 'airbnb' | 'booking.com' | 'agoda' | 'expedia' | 'vrbo' | 'walk-in' | 'phone' | 'other';
+
 export interface BlockedRange {
+  id?: string;
   start_date: string;
   end_date: string;
   listing_id?: string;
   reason?: string;
+  scope?: BlockedRangeScope;
+  source?: BlockedRangeSource;
+  guest_name?: string;
   created_at?: string;
 }
 
