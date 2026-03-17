@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
 
@@ -44,7 +45,7 @@ interface PayrollPeriod {
   employees?: PayrollPeriodEmployee[];
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -68,10 +69,212 @@ const STATUS_NEXT: Record<PeriodStatus, PeriodStatus | null> = {
   paid:      null,
 };
 
+// ─── Custom Date Picker ───────────────────────────────────────────────────────
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_SHORT = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function CustomDatePicker({
+  value, onChange, placeholder = 'Pick a date', minDate = '', className = '',
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  minDate?: string;
+  className?: string;
+}) {
+  const [open, setOpen]   = useState(false);
+  const [view, setView]   = useState<'days' | 'months' | 'years'>('days');
+  const ref               = useRef<HTMLDivElement>(null);
+
+  const today   = new Date();
+  const parsed  = value ? new Date(value + 'T00:00:00') : null;
+  const [cursor, setCursor] = useState({
+    year:  parsed ? parsed.getFullYear() : today.getFullYear(),
+    month: parsed ? parsed.getMonth()    : today.getMonth(),
+  });
+
+  useEffect(() => {
+    if (parsed) setCursor({ year: parsed.getFullYear(), month: parsed.getMonth() });
+  }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false); setView('days');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+  const firstDay    = (y: number, m: number) => new Date(y, m, 1).getDay();
+
+  const selectDate = (day: number) => {
+    const d = `${cursor.year}-${String(cursor.month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    onChange(d); setOpen(false); setView('days');
+  };
+
+  const isDisabled = (day: number) => {
+    if (!minDate) return false;
+    const d = `${cursor.year}-${String(cursor.month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    return d < minDate;
+  };
+
+  const isSelected = (day: number) =>
+    !!parsed && parsed.getFullYear() === cursor.year && parsed.getMonth() === cursor.month && parsed.getDate() === day;
+
+  const isToday = (day: number) =>
+    today.getFullYear() === cursor.year && today.getMonth() === cursor.month && today.getDate() === day;
+
+  const displayValue = parsed
+    ? parsed.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '';
+
+  const yearRange = Array.from({ length: 10 }, (_, i) => cursor.year - 4 + i);
+
+  const prevMonth = () => {
+    if (cursor.month === 0) setCursor({ year: cursor.year - 1, month: 11 });
+    else setCursor(c => ({ ...c, month: c.month - 1 }));
+  };
+  const nextMonth = () => {
+    if (cursor.month === 11) setCursor({ year: cursor.year + 1, month: 0 });
+    else setCursor(c => ({ ...c, month: c.month + 1 }));
+  };
+
+  return (
+    <div ref={ref} className={`relative ${className}`}>
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setView('days'); }}
+        className="w-full flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-2xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] hover:border-gray-300 transition-colors"
+      >
+        <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span className={`flex-1 text-left ${displayValue ? 'text-gray-900' : 'text-gray-400'}`}>
+          {displayValue || placeholder}
+        </span>
+        {value && (
+          <button type="button" onClick={e => { e.stopPropagation(); onChange(''); }}
+            className="text-gray-300 hover:text-gray-500 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1.5 bg-white border border-gray-100 rounded-2xl shadow-xl p-3 w-72">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3">
+            <button type="button" onClick={prevMonth}
+              className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors text-gray-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={() => setView(v => v === 'months' ? 'days' : 'months')}
+                className="px-2 py-1 rounded-lg text-sm font-bold text-gray-900 hover:bg-gray-100 transition-colors">
+                {MONTHS[cursor.month]}
+              </button>
+              <button type="button" onClick={() => setView(v => v === 'years' ? 'days' : 'years')}
+                className="px-2 py-1 rounded-lg text-sm font-bold text-gray-900 hover:bg-gray-100 transition-colors">
+                {cursor.year}
+              </button>
+            </div>
+            <button type="button" onClick={nextMonth}
+              className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 transition-colors text-gray-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Month picker */}
+          {view === 'months' && (
+            <div className="grid grid-cols-3 gap-1 mb-1">
+              {MONTHS.map((m, i) => (
+                <button key={m} type="button"
+                  onClick={() => { setCursor(c => ({ ...c, month: i })); setView('days'); }}
+                  className={`py-2 rounded-xl text-xs font-medium transition-colors ${
+                    i === cursor.month ? 'bg-[#0B5858] text-white' : 'hover:bg-gray-100 text-gray-700'
+                  }`}>
+                  {m.slice(0,3)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Year picker */}
+          {view === 'years' && (
+            <div className="grid grid-cols-3 gap-1 mb-1">
+              {yearRange.map(y => (
+                <button key={y} type="button"
+                  onClick={() => { setCursor(c => ({ ...c, year: y })); setView('days'); }}
+                  className={`py-2 rounded-xl text-xs font-medium transition-colors ${
+                    y === cursor.year ? 'bg-[#0B5858] text-white' : 'hover:bg-gray-100 text-gray-700'
+                  }`}>
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Days grid */}
+          {view === 'days' && (
+            <>
+              <div className="grid grid-cols-7 mb-1">
+                {DAYS_SHORT.map(d => (
+                  <div key={d} className="text-center text-[10px] font-bold text-gray-400 py-1">{d}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-y-0.5">
+                {Array.from({ length: firstDay(cursor.year, cursor.month) }).map((_, i) => (
+                  <div key={`e-${i}`} />
+                ))}
+                {Array.from({ length: daysInMonth(cursor.year, cursor.month) }, (_, i) => i + 1).map(day => (
+                  <button key={day} type="button" disabled={isDisabled(day)} onClick={() => selectDate(day)}
+                    className={`aspect-square flex items-center justify-center text-xs rounded-xl transition-colors font-medium ${
+                      isSelected(day)   ? 'bg-[#0B5858] text-white shadow-sm'
+                      : isToday(day)    ? 'bg-[#0B5858]/10 text-[#0B5858] font-bold'
+                      : isDisabled(day) ? 'text-gray-200 cursor-not-allowed'
+                      : 'hover:bg-gray-100 text-gray-700'
+                    }`}>
+                    {day}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Footer */}
+          <div className="flex justify-between mt-3 pt-2 border-t border-gray-100">
+            <button type="button" onClick={() => { onChange(''); setOpen(false); }}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors px-1">
+              Clear
+            </button>
+            <button type="button"
+              onClick={() => {
+                const t = new Date();
+                setCursor({ year: t.getFullYear(), month: t.getMonth() });
+                selectDate(t.getDate());
+              }}
+              className="text-xs font-semibold text-[#0B5858] hover:opacity-70 transition-opacity px-1">
+              Today
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Generate Payroll Modal ───────────────────────────────────────────────────
 function GenerateModal({
-  onClose,
-  onGenerated,
+  onClose, onGenerated,
 }: {
   onClose: () => void;
   onGenerated: (period: PayrollPeriod) => void;
@@ -85,18 +288,13 @@ function GenerateModal({
     requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
   }, []);
 
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(onClose, 300);
-  };
+  const handleClose = () => { setVisible(false); setTimeout(onClose, 300); };
 
   const handleSubmit = async () => {
     if (!form.period_start || !form.period_end) {
-      setError('Both start and end dates are required.');
-      return;
+      setError('Both start and end dates are required.'); return;
     }
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const res = await fetch(`${PAYROLL_API}/api/payroll-periods/generate`, {
         method: 'POST',
@@ -107,19 +305,15 @@ function GenerateModal({
         const e = await res.json().catch(() => ({}));
         throw new Error((e as any).error ?? `Server error (${res.status})`);
       }
-      const data = await res.json();
-      onGenerated(data);
+      onGenerated(await res.json());
       handleClose();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); }
+    finally { setLoading(false); }
   };
 
   const inp = 'w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]';
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center px-4 transition-all duration-300 ${visible ? 'bg-black/30 backdrop-blur-md' : 'bg-black/0 backdrop-blur-none'}`}
       onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
@@ -142,25 +336,20 @@ function GenerateModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-500 mb-1.5">From</label>
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <input type="date" value={form.period_start}
-                  onChange={e => setForm(f => ({ ...f, period_start: e.target.value }))}
-                  className={`${inp} pl-9`} />
-              </div>
+              <CustomDatePicker
+                value={form.period_start}
+                onChange={v => setForm(f => ({ ...f, period_start: v }))}
+                placeholder="Start date"
+              />
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1.5">To</label>
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <input type="date" value={form.period_end} min={form.period_start}
-                  onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))}
-                  className={`${inp} pl-9`} />
-              </div>
+              <CustomDatePicker
+                value={form.period_end}
+                onChange={v => setForm(f => ({ ...f, period_end: v }))}
+                placeholder="End date"
+                minDate={form.period_start}
+              />
             </div>
           </div>
         </div>
@@ -193,15 +382,14 @@ function GenerateModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
 // ─── Period Detail Modal ──────────────────────────────────────────────────────
 function PeriodDetail({
-  period,
-  onClose,
-  onStatusUpdated,
+  period, onClose, onStatusUpdated,
 }: {
   period: PayrollPeriod;
   onClose: () => void;
@@ -221,10 +409,7 @@ function PeriodDetail({
       .finally(() => setLoading(false));
   }, [period.payroll_id]);
 
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(onClose, 300);
-  };
+  const handleClose = () => { setVisible(false); setTimeout(onClose, 300); };
 
   const advanceStatus = async () => {
     if (!detail) return;
@@ -242,15 +427,13 @@ function PeriodDetail({
         setDetail(d => d ? { ...d, status: updated.status } : d);
         onStatusUpdated({ ...period, status: updated.status });
       }
-    } finally {
-      setAdvancing(false);
-    }
+    } finally { setAdvancing(false); }
   };
 
   const d = detail ?? period;
   const nextStatus = STATUS_NEXT[d.status];
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 z-50 flex items-start justify-center px-4 py-8 overflow-y-auto transition-all duration-300 ${visible ? 'bg-black/30 backdrop-blur-md' : 'bg-black/0 backdrop-blur-none'}`}
       onClick={e => { if (e.target === e.currentTarget) handleClose(); }}
@@ -289,10 +472,10 @@ function PeriodDetail({
           {/* Summary cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
             {([
-              { label: 'Employees', value: String(d.employee_count), sub: 'included in payroll', accent: false },
-              { label: 'Total Gross', value: fmtPeso(d.total_gross), sub: 'before deductions', accent: false },
-              { label: 'Total Charges', value: fmtPeso(d.total_deductions), sub: 'deducted', accent: false },
-              { label: 'Total Net Pay', value: fmtPeso(d.total_net_pay), sub: 'to be disbursed', accent: true },
+              { label: 'Employees',     value: String(d.employee_count),  sub: 'included in payroll', accent: false },
+              { label: 'Total Gross',   value: fmtPeso(d.total_gross),    sub: 'before deductions',   accent: false },
+              { label: 'Total Charges', value: fmtPeso(d.total_deductions), sub: 'deducted',           accent: false },
+              { label: 'Total Net Pay', value: fmtPeso(d.total_net_pay),  sub: 'to be disbursed',     accent: true  },
             ] as const).map(card => (
               <div key={card.label} className={`rounded-2xl p-4 ${card.accent ? 'bg-[#0B5858] text-white' : 'bg-gray-50'}`}>
                 <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${card.accent ? 'text-white/70' : 'text-gray-400'}`}>{card.label}</p>
@@ -314,7 +497,7 @@ function PeriodDetail({
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        {['Employee', 'Type', 'Effective Period', 'Days', 'OT hrs', 'Base Pay', 'OT Pay', 'Charges', 'Net Pay'].map(h => (
+                        {['Employee','Type','Effective Period','Days','OT hrs','Base Pay','OT Pay','Charges','Net Pay'].map(h => (
                           <th key={h} className="text-left py-3 px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -356,7 +539,6 @@ function PeriodDetail({
                               {fmtPeso(emp.net_pay)}
                             </td>
                           </tr>
-                          {/* Charge detail rows */}
                           {(emp.charges ?? []).length > 0 && (
                             <tr>
                               <td colSpan={9} className="pb-3 px-8">
@@ -382,7 +564,8 @@ function PeriodDetail({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -394,7 +577,6 @@ export default function PayrollPeriodsPage() {
   const [selected, setSelected]         = useState<PayrollPeriod | null>(null);
   const [deleting, setDeleting]         = useState<string | null>(null);
 
-  // Filters
   const [search, setSearch]           = useState('');
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd]     = useState('');
@@ -408,11 +590,8 @@ export default function PayrollPeriodsPage() {
       if (filterEnd)   params.set('end', filterEnd);
       const res = await fetch(`${PAYROLL_API}/api/payroll-periods?${params}`);
       if (res.ok) setPeriods(await res.json());
-    } catch {
-      /* network error — keep empty state */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* network error */ }
+    finally { setLoading(false); }
   }, [search, filterStart, filterEnd]);
 
   useEffect(() => { fetchPeriods(); }, [fetchPeriods]);
@@ -426,9 +605,7 @@ export default function PayrollPeriodsPage() {
   };
 
   const handleStatusUpdated = (updated: PayrollPeriod) => {
-    setPeriods(p =>
-      p.map(x => x.payroll_id === updated.payroll_id ? { ...x, status: updated.status } : x)
-    );
+    setPeriods(p => p.map(x => x.payroll_id === updated.payroll_id ? { ...x, status: updated.status } : x));
   };
 
   return (
@@ -439,10 +616,8 @@ export default function PayrollPeriodsPage() {
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Payroll Periods</h1>
           <p className="text-sm text-gray-400 mt-0.5">Generate and manage payroll by period</p>
         </div>
-        <button
-          onClick={() => setShowGenerate(true)}
-          className="flex items-center gap-2 bg-[#0B5858] hover:bg-[#094444] text-white px-5 py-2.5 rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-[#0B5858]/20"
-        >
+        <button onClick={() => setShowGenerate(true)}
+          className="flex items-center gap-2 bg-[#0B5858] hover:bg-[#094444] text-white px-5 py-2.5 rounded-2xl font-semibold text-sm transition-colors shadow-lg shadow-[#0B5858]/20">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
@@ -457,16 +632,23 @@ export default function PayrollPeriodsPage() {
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z" />
             </svg>
-            <input
-              type="text" value={search} onChange={e => setSearch(e.target.value)}
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search by Payroll ID…"
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858]"
-            />
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858]" />
           </div>
-          <input type="date" value={filterStart} onChange={e => setFilterStart(e.target.value)}
-            className="px-3 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30" />
-          <input type="date" value={filterEnd} min={filterStart} onChange={e => setFilterEnd(e.target.value)}
-            className="px-3 py-2.5 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30" />
+          <CustomDatePicker
+            value={filterStart}
+            onChange={setFilterStart}
+            placeholder="Start date"
+            className="sm:w-44"
+          />
+          <CustomDatePicker
+            value={filterEnd}
+            onChange={setFilterEnd}
+            placeholder="End date"
+            minDate={filterStart}
+            className="sm:w-44"
+          />
           {(search || filterStart || filterEnd) && (
             <button onClick={() => { setSearch(''); setFilterStart(''); setFilterEnd(''); }}
               className="px-4 py-2.5 border border-gray-200 text-gray-500 rounded-2xl text-sm hover:bg-gray-50 transition-colors">
@@ -495,7 +677,7 @@ export default function PayrollPeriodsPage() {
             <table className="w-full text-sm min-w-[900px]">
               <thead className="bg-gray-50/80 border-b border-gray-100">
                 <tr>
-                  {['Payroll ID', 'Period', 'Employees', 'Total Gross', 'Charges', 'Net Pay', 'Status', ''].map(h => (
+                  {['Payroll ID','Period','Employees','Total Gross','Charges','Net Pay','Status',''].map(h => (
                     <th key={h} className="text-left py-3 px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -542,19 +724,11 @@ export default function PayrollPeriodsPage() {
         )}
       </div>
 
-      {/* Modals */}
       {showGenerate && (
-        <GenerateModal
-          onClose={() => setShowGenerate(false)}
-          onGenerated={period => { setPeriods(p => [period, ...p]); }}
-        />
+        <GenerateModal onClose={() => setShowGenerate(false)} onGenerated={period => { setPeriods(p => [period, ...p]); }} />
       )}
       {selected && (
-        <PeriodDetail
-          period={selected}
-          onClose={() => setSelected(null)}
-          onStatusUpdated={handleStatusUpdated}
-        />
+        <PeriodDetail period={selected} onClose={() => setSelected(null)} onStatusUpdated={handleStatusUpdated} />
       )}
     </div>
   );

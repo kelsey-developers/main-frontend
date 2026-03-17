@@ -11,6 +11,7 @@ const PROTECTED_ROUTES = [
   '/profile',
   '/settings',
   '/chat',
+  '/dtr/scan',
 ];
 
 /** Routes only accessible when NOT logged in — redirects to / if already authenticated */
