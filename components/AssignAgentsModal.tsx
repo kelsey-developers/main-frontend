@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { listAgents, type AgentForAssign } from '@/lib/api/agents';
 import { updateUnit } from '@/lib/api/units';
 import type { AssignedAgent } from '@/types/listing';
@@ -35,7 +36,9 @@ export default function AssignAgentsModal({
       setSearchQuery('');
       setSearchResults([]);
       setError(null);
+      document.body.style.overflow = 'hidden';
     }
+    return () => { document.body.style.overflow = ''; };
   }, [isOpen, assignedAgents]);
 
   const searchAgents = useCallback(async (query: string) => {
@@ -88,45 +91,132 @@ export default function AssignAgentsModal({
 
   const filteredSearchResults = searchResults.filter((a) => !assigned.some((x) => x.id === a.id));
 
-  return (
+  const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40"
       onClick={(e) => e.target === e.currentTarget && onClose()}
+      style={{ fontFamily: 'Poppins' }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col"
-        style={{ fontFamily: 'Poppins' }}
+        className="bg-white w-full max-w-md rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] border border-gray-100 overflow-hidden flex flex-col max-h-[85vh]"
       >
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-900">Assign agents</h2>
-          <p className="text-sm text-gray-500 mt-0.5 truncate">{unitTitle}</p>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-white">
+          <div className="min-w-0 flex-1 pr-4">
+            <h2 className="text-lg font-bold text-gray-900">Assign Agents</h2>
+            <p className="text-xs text-gray-500 mt-0.5 truncate">{unitTitle}</p>
+          </div>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer shrink-0"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {/* Search Input */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Assigned agents</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Search Agents</label>
+            <div className="relative">
+              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by username or name..."
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-colors bg-white"
+              />
+              {isSearching && (
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-[#0B5858] border-t-transparent" />
+                </div>
+              )}
+            </div>
+            
+            {/* Search Results Dropdown */}
+            {searchQuery && !isSearching && filteredSearchResults.length > 0 && (
+              <div className="mt-2 border border-gray-100 rounded-xl overflow-hidden shadow-lg bg-white">
+                <div className="max-h-48 overflow-y-auto">
+                  {filteredSearchResults.map((agent, idx) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => addAgent(agent)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-[#0B5858]/5 text-left transition-colors cursor-pointer ${idx !== 0 ? 'border-t border-gray-50' : ''}`}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-[#0B5858]/10 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-bold text-[#0B5858]">
+                          {agent.fullname?.charAt(0) || agent.username.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{agent.fullname || agent.username}</p>
+                        <p className="text-xs text-gray-500">@{agent.username}</p>
+                      </div>
+                      <svg className="w-4 h-4 text-[#0B5858] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {searchQuery && !isSearching && filteredSearchResults.length === 0 && (
+              <p className="text-xs text-gray-500 mt-2 px-1">No agents found matching &quot;{searchQuery}&quot;</p>
+            )}
+          </div>
+
+          {/* Assigned Agents */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">Assigned Agents</label>
+              {assigned.length > 0 && (
+                <span className="text-xs font-medium text-[#0B5858] bg-[#0B5858]/10 px-2 py-0.5 rounded-full">
+                  {assigned.length} assigned
+                </span>
+              )}
+            </div>
+            
             {assigned.length === 0 ? (
-              <p className="text-sm text-gray-500 py-2">No agents assigned yet.</p>
+              <div className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <p className="text-sm text-gray-500 text-center">No agents assigned yet</p>
+                <p className="text-xs text-gray-400 text-center mt-1">Search above to add agents</p>
+              </div>
             ) : (
               <div className="space-y-2">
                 {assigned.map((agent) => (
                   <div
                     key={agent.id}
-                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-50 border border-gray-100"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white border border-gray-100 shadow-sm hover:border-gray-200 transition-colors group"
                   >
-                    <span className="text-sm font-medium text-gray-900">
-                      @{agent.username}
-                      {agent.fullname && <span className="text-gray-500 ml-1">({agent.fullname})</span>}
-                    </span>
+                    <div className="w-8 h-8 rounded-full bg-[#0B5858] flex items-center justify-center shrink-0">
+                      <span className="text-xs font-bold text-white">
+                        {agent.fullname?.charAt(0) || agent.username.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{agent.fullname || agent.username}</p>
+                      <p className="text-xs text-gray-500">@{agent.username}</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeAgent(agent.id)}
-                      className="text-gray-400 hover:text-red-600 transition-colors p-1"
-                      aria-label="Remove"
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                      aria-label="Remove agent"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                     </button>
                   </div>
@@ -135,48 +225,23 @@ export default function AssignAgentsModal({
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Search by username</label>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Type username to search..."
-              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858]"
-            />
-            {isSearching && (
-              <p className="text-xs text-gray-500 mt-1">Searching...</p>
-            )}
-            {searchQuery && !isSearching && filteredSearchResults.length > 0 && (
-              <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
-                {filteredSearchResults.map((agent) => (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    onClick={() => addAgent(agent)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 border border-gray-100 text-left"
-                  >
-                    <span className="text-sm font-medium">@{agent.username}</span>
-                    <span className="text-xs text-gray-500">{agent.fullname}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {searchQuery && !isSearching && filteredSearchResults.length === 0 && (
-              <p className="text-xs text-gray-500 mt-1">No agents found.</p>
-            )}
-          </div>
-
+          {/* Error Message */}
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-red-50 border border-red-100">
+              <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-100 bg-gray-50/50 flex gap-3">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50"
+            className="flex-1 py-2.5 px-4 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-100 transition-colors cursor-pointer"
           >
             Cancel
           </button>
@@ -184,12 +249,22 @@ export default function AssignAgentsModal({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-[#0B5858] text-white font-medium hover:bg-[#094848] disabled:opacity-50"
+            className="flex-1 py-2.5 px-4 rounded-xl bg-[#0B5858] text-white text-sm font-semibold hover:bg-[#094848] hover:shadow-lg hover:shadow-[#0B5858]/20 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                Saving...
+              </span>
+            ) : (
+              'Save Changes'
+            )}
           </button>
         </div>
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(modal, document.body);
 }
