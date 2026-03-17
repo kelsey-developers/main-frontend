@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 import type { BookingLinkedRow } from '../../types';
 import { formatPHP, formatDateLong, formatTime, getNights, getBasePrice, getBookingTotal } from '../../lib/format';
+import { fetchFinanceBookingById } from '../../lib/financeDataService';
 
 function BookingDetailSkeleton() {
   return (
@@ -56,6 +58,8 @@ function BookingDetailSkeleton() {
 export default function BookingDetailPage() {
   const params = useParams();
   const id = params?.id as string | undefined;
+  const { user } = useAuth();
+  const currentUser = user ? { userId: user.id, email: user.email, role: user.roles?.[0] } : null;
   const [isLoading, setIsLoading] = useState(true);
   const [booking, setBooking] = useState<BookingLinkedRow | null>(null);
 
@@ -65,17 +69,18 @@ export default function BookingDetailPage() {
       return;
     }
     let mounted = true;
-    const timer = setTimeout(() => {
-      if (mounted) {
-        setBooking(null);
+    (async () => {
+      try {
+        const data = await fetchFinanceBookingById(id, currentUser);
+        if (mounted) setBooking(data);
+      } finally {
+        if (mounted) setIsLoading(false);
       }
-      if (mounted) setIsLoading(false);
-    }, 350);
+    })();
     return () => {
       mounted = false;
-      clearTimeout(timer);
     };
-  }, [id]);
+  }, [id, currentUser?.userId ?? null, currentUser?.email ?? null, currentUser?.role ?? null]);
 
   if (isLoading) {
     return <BookingDetailSkeleton />;
@@ -140,7 +145,7 @@ export default function BookingDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-[#0B5858] uppercase tracking-wide">
-                  {booking.guestType}
+                  {booking.unitType ?? '—'}
                 </span>
               </div>
               <h3 className="text-lg font-semibold text-gray-800 mt-1">
@@ -254,7 +259,13 @@ export default function BookingDetailPage() {
               <div className="border-t border-gray-200 mt-4 pt-3">
                 <div className="flex justify-between items-center">
                   <span className="font-semibold">Grand Total</span>
-                  <span className="font-bold text-lg">{formatPHP(getBookingTotal(booking.rate, booking.checkIn, booking.checkOut, booking.discounts, booking.extraHeads, booking.extraHours, booking.addOnsAmount))}</span>
+                  <span className="font-bold text-lg">
+                    {formatPHP(
+                      booking.totalAmount != null
+                        ? booking.totalAmount
+                        : getBookingTotal(booking.rate, booking.checkIn, booking.checkOut, booking.discounts, booking.extraHeads, booking.extraHours, booking.addOnsAmount)
+                    )}
+                  </span>
                 </div>
               </div>
             </div>
@@ -284,8 +295,8 @@ export default function BookingDetailPage() {
                     <rect x="3" y="4" width="18" height="16" rx="2" />
                   </svg>
                   <div className="min-w-0">
-                    <div className="font-medium capitalize">{booking.guestType}</div>
-                    <div className="text-xs text-gray-500">Guest type</div>
+                    <div className="font-medium capitalize">{booking.unitType ?? '—'}</div>
+                    <div className="text-xs text-gray-500">Property type</div>
                   </div>
                 </div>
               </div>
@@ -300,18 +311,12 @@ export default function BookingDetailPage() {
                   style={{ background: 'linear-gradient(to bottom right, #14b8a6, #0d9488)' }}
                 >
                   <span className="text-white text-sm font-bold">
-                    {booking.agent
-                      .split(/\s+/)
-                      .filter(Boolean)
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join('')
-                      .toUpperCase() || '—'}
+                    {((booking.agent ?? '—').split(/\s+/).filter(Boolean).map((n) => n[0]).slice(0, 2).join('').toUpperCase()) || '—'}
                   </span>
                 </div>
                 <div className="flex-1 text-sm">
                   <div className="font-medium break-words" style={{ wordBreak: 'break-word' }}>
-                    {booking.agent}
+                    {booking.agent ?? '—'}
                   </div>
                   <div className="text-xs text-gray-500 mt-1">Booking Agent</div>
                 </div>

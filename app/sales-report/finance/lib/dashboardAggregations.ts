@@ -13,6 +13,7 @@ import type {
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] as const;
 
 export function computeBookingRevenue(row: BookingLinkedRow): number {
+  if (row.totalAmount != null) return row.totalAmount;
   return row.basePrice - row.discounts + row.extraHeads + row.extraHours + row.addOnsAmount;
 }
 

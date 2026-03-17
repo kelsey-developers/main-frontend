@@ -83,7 +83,7 @@ const HorizontalFilter: React.FC<HorizontalFilterProps> = ({
             className="text-sm font-medium text-gray-700"
             style={{ fontFamily: 'Poppins' }}
           >
-            Property Type
+            Unit type
           </label>
           <select
             id="horizontal-filter-unit-type"

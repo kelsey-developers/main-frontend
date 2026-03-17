@@ -139,6 +139,8 @@ export interface BookingLinkedRow {
   addOnsWithPrice?: { name: string; amount: number }[];
   /** Amount for add-ons (e.g. pool, towels). Used to compute total. */
   addOnsAmount: number;
+  /** Actual total from backend (e.g. getBookingById). When set, use for Grand Total instead of computing from rate × nights. */
+  totalAmount?: number;
   /** @deprecated Use computed total from rate × nights - discounts + extras + addOnsAmount instead. */
   total?: number;
 }
