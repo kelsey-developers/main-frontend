@@ -9,6 +9,7 @@ const HIDE_FOOTER_PREFIXES = [
   '/sales-report/finance',
   '/sales-report/inventory',
   '/cleaning/', // Job detail and cleaning workflow — private dashboard, no marketing footer
+  '/scan',
 ];
 
 export default function ConditionalFooter() {

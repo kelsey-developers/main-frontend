@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_COLORS } from '@/lib/constants';
 
-const HIDE_NAVBAR_ROUTES = ['/login', '/signup'];
+const HIDE_NAVBAR_ROUTES = ['/login', '/signup', '/scan'];
 
 /**
  * Navbar - Matches oop-dev design exactly.
@@ -17,7 +17,7 @@ const HIDE_NAVBAR_ROUTES = ['/login', '/signup'];
 export default function Navbar() {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
-  const { user, signOut, userRole, userProfile, isAdmin, isAgent, isGuest, isFinance, isInventory, isHousekeeping, roleLoading } =
+  const { user, signOut, userRole, userProfile, isAdmin, isAgent, isGuest, isFinance, isInventory, isHousekeeping, isEmployee, roleLoading } =
     useAuth();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -428,6 +428,16 @@ export default function Navbar() {
                           My Jobs
                         </Link>
                       )}
+                      {isEmployee && (
+                        <Link
+                          href="/attendance"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          My Attendance
+                        </Link>
+                      )}
                     {(isAdmin || isAgent) && (
                         <Link
                           href="/booking"
@@ -466,6 +476,16 @@ export default function Navbar() {
                           style={{ fontFamily: 'var(--font-poppins)' }}
                         >
                           Become an Agent
+                        </Link>
+                      )}
+                      {isGuest && (
+                        <Link
+                          href="/register-as-employee"
+                          onClick={() => setIsDropdownOpen(false)}
+                          className="block py-1.5 text-sm font-semibold text-[#0B5858] hover:opacity-70 transition-opacity cursor-pointer"
+                          style={{ fontFamily: 'var(--font-poppins)' }}
+                        >
+                          Register as Employee
                         </Link>
                       )}
                       <Link
@@ -807,6 +827,16 @@ export default function Navbar() {
                     My Jobs
                   </Link>
                 )}
+                {isEmployee && (
+                  <Link
+                    href="/attendance"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm font-semibold text-[#0B5858] hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    My Attendance
+                  </Link>
+                )}
                 {isAgent && (
                   <Link
                     href="/agent"
@@ -855,6 +885,16 @@ export default function Navbar() {
                     style={{ fontFamily: 'var(--font-poppins)' }}
                   >
                     Become an Agent
+                  </Link>
+                )}
+                {isGuest && (
+                  <Link
+                    href="/register-as-employee"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block px-3 py-2 text-sm font-semibold text-[#0B5858] hover:bg-gray-50 rounded-md transition-colors text-left"
+                    style={{ fontFamily: 'var(--font-poppins)' }}
+                  >
+                    Register as Employee
                   </Link>
                 )}
                 <Link

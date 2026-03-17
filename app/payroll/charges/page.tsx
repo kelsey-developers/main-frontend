@@ -178,15 +178,17 @@ function CustomDatePicker({
           {displayValue || placeholder}
         </span>
         {value && (
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); onChange(''); }}
-            className="ml-auto text-gray-300 hover:text-gray-500 transition-colors"
+          <span
+            role="button"
+            tabIndex={0}
+            onPointerDown={e => { e.stopPropagation(); e.preventDefault(); onChange(''); }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onChange(''); }}
+            className="ml-auto text-gray-300 hover:text-gray-500 transition-colors cursor-pointer"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </button>
+          </span>
         )}
       </button>
 
@@ -484,6 +486,45 @@ function ChargeModal({
   );
 }
 
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+function ConfirmModal({
+  title, message, confirmLabel = 'Confirm', variant = 'danger', onConfirm, onCancel,
+}: {
+  title: string; message: string; confirmLabel?: string;
+  variant?: 'danger' | 'warning'; onConfirm: () => void; onCancel: () => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }, []);
+  const close = (cb: () => void) => { setVisible(false); setTimeout(cb, 200); };
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[60] flex items-center justify-center px-4 transition-all duration-200 ${visible ? 'bg-black/40 backdrop-blur-sm' : 'bg-black/0'}`}
+      onClick={e => { if (e.target === e.currentTarget) close(onCancel); }}
+    >
+      <div className={`bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-sm p-6 transition-all duration-200 ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${variant === 'danger' ? 'bg-red-100' : 'bg-amber-100'}`}>
+          <svg className={`w-6 h-6 ${variant === 'danger' ? 'text-red-500' : 'text-amber-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="font-bold text-gray-900 text-base mb-1">{title}</h3>
+        <p className="text-sm text-gray-500 mb-5">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={() => close(onCancel)}
+            className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => close(onConfirm)}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors ${variant === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-amber-500 hover:bg-amber-600'}`}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ChargesPage() {
   const [charges, setCharges]     = useState<Charge[]>([]);
@@ -492,6 +533,7 @@ export default function ChargesPage() {
   const [modalChg, setModalChg]   = useState<Charge | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [deleting, setDeleting]   = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const [search, setSearch]           = useState('');
   const [filterEmp, setFilterEmp]     = useState('');
@@ -529,7 +571,6 @@ export default function ChargesPage() {
   const totalVisible = filtered.reduce((sum, c) => sum + Number(c.amount), 0);
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Delete this charge? This cannot be undone.')) return;
     setDeleting(id);
     await payrollFetch(`${PAYROLL_API_BASE}/api/charges/${id}`, { method: 'DELETE' });
     setCharges(c => c.filter(x => x.charge_id !== id));
@@ -685,7 +726,7 @@ export default function ChargesPage() {
                           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors">
                           Edit
                         </button>
-                        <button onClick={() => handleDelete(c.charge_id)} disabled={deleting === c.charge_id}
+                        <button onClick={() => setConfirmDeleteId(c.charge_id)} disabled={deleting === c.charge_id}
                           className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-medium transition-colors disabled:opacity-50">
                           {deleting === c.charge_id ? '…' : 'Delete'}
                         </button>
@@ -714,6 +755,17 @@ export default function ChargesPage() {
           employees={employees}
           onClose={() => setShowModal(false)}
           onSaved={c => { handleSaved(c); setShowModal(false); }}
+        />
+      )}
+
+      {confirmDeleteId !== null && (
+        <ConfirmModal
+          title="Delete Charge"
+          message="Delete this charge? This cannot be undone."
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={() => { handleDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+          onCancel={() => setConfirmDeleteId(null)}
         />
       )}
     </div>

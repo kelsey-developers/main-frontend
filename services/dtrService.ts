@@ -1,6 +1,5 @@
-// PATH: main-frontend-mock/services/dtrService.ts
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+// Payroll backend — public DTR endpoints (no auth required)
+const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? '';
 
 export interface DTRRecord {
   dtr_id: number;
@@ -10,6 +9,7 @@ export interface DTRRecord {
   time_out?: string;
   hours_worked?: number;
   status: 'OPEN' | 'CLOSED';
+  // Legacy fields kept for interface compat — payroll backend doesn't return these
   proof_photo?: string;
   tasks_completed?: string;
   shift_start?: string;
@@ -28,34 +28,25 @@ export interface TaskLog {
 // GET today's DTR record for an employee
 export async function getTodayDTR(
   employeeId: number,
-  date: string
+  _date: string
 ): Promise<DTRRecord | null> {
-  const res = await fetch(
-    `${API_BASE}/api/dtr/employee/${employeeId}/today`
-  );
+  const res = await fetch(`${PAYROLL_API}/api/dtr/public/today/${employeeId}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Failed to fetch DTR record');
-  const data = await res.json();
-  if (Array.isArray(data)) return data[0] ?? null;
-  return data ?? null;
+  return res.json();
 }
 
-// POST clock in
+// POST clock in by employee_id (public endpoint — no auth)
 export async function timeIn(
   employeeId: number,
-  date: string,
+  _date: string,
   shiftStart?: string,
   shiftEnd?: string
 ): Promise<DTRRecord> {
-  const res = await fetch(`${API_BASE}/api/dtr/clock-in`, {
+  const res = await fetch(`${PAYROLL_API}/api/dtr/public/clock-in`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      employeeId,
-      work_date:   date,
-      shift_start: shiftStart,
-      shift_end:   shiftEnd,
-    }),
+    body: JSON.stringify({ employee_id: employeeId, shift_start: shiftStart ?? null, shift_end: shiftEnd ?? null }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -64,15 +55,15 @@ export async function timeIn(
   return res.json();
 }
 
-// PATCH clock out
+// POST clock out by employee_id (public endpoint — no auth)
 export async function timeOut(
   employeeId: number,
-  dtrId: number
+  _dtrId: number
 ): Promise<DTRRecord> {
-  const res = await fetch(`${API_BASE}/api/dtr/${dtrId}/clock-out`, {
-    method: 'PATCH',
+  const res = await fetch(`${PAYROLL_API}/api/dtr/public/clock-out`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ employeeId, hoursWorked: 0 }),
+    body: JSON.stringify({ employee_id: employeeId }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -81,43 +72,20 @@ export async function timeOut(
   return res.json();
 }
 
-// GET task logs for an employee
+// Not supported in payroll backend — kept for interface compat
 export async function getTodayTasks(
-  employeeId: number,
-  date: string
+  _employeeId: number,
+  _date: string
 ): Promise<TaskLog[]> {
-  const res = await fetch(
-    `${API_BASE}/api/dtr/employee/${employeeId}/tasks`
-  );
-  if (!res.ok) return [];
-  return res.json();
+  return [];
 }
 
-// POST upload task proof photo
 export async function uploadTaskPhoto(
-  employeeId: number,
-  dtrId: number,
-  file: File,
-  taskType: string,
-  location: string
+  _employeeId: number,
+  _dtrId: number,
+  _file: File,
+  _taskType: string,
+  _location: string
 ): Promise<TaskLog> {
-  const formData = new FormData();
-  formData.append('photo', file);
-  formData.append('employee_id', String(employeeId));
-  formData.append('dtr_id', String(dtrId));
-  formData.append('task_type', taskType);
-  formData.append('location', location);
-
-  const res = await fetch(
-    `${API_BASE}/api/dtr/${dtrId}/employee/${employeeId}/proof`,
-    {
-      method: 'POST',
-      body: formData,
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? 'Failed to upload task photo');
-  }
-  return res.json();
+  throw new Error('Task photo upload is not supported');
 }

@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { PAYROLL_API_BASE, payrollFetch } from '@/lib/api/payroll';
 
-const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? '';
+const PAYROLL_API = PAYROLL_API_BASE;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type PeriodStatus = 'pending' | 'approved' | 'processed' | 'paid';
@@ -47,7 +48,9 @@ interface PayrollPeriod {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  // Parse as local midnight to avoid UTC-offset date shift
+  const s = d.length === 10 ? d + 'T00:00:00' : d;
+  return new Date(s).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 function fmtPeso(n: number | string) {
   const v = typeof n === 'string' ? parseFloat(n) : n;
@@ -156,12 +159,17 @@ function CustomDatePicker({
           {displayValue || placeholder}
         </span>
         {value && (
-          <button type="button" onClick={e => { e.stopPropagation(); onChange(''); }}
-            className="text-gray-300 hover:text-gray-500 transition-colors">
+          <span
+            role="button"
+            tabIndex={0}
+            onPointerDown={e => { e.stopPropagation(); e.preventDefault(); onChange(''); }}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onChange(''); }}
+            className="text-gray-300 hover:text-gray-500 transition-colors cursor-pointer"
+          >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </button>
+          </span>
         )}
       </button>
 
@@ -272,6 +280,45 @@ function CustomDatePicker({
   );
 }
 
+// ─── Confirm Modal ────────────────────────────────────────────────────────────
+function ConfirmModal({
+  title, message, confirmLabel = 'Confirm', onConfirm, onCancel,
+}: {
+  title: string; message: string; confirmLabel?: string;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }, []);
+  const close = (cb: () => void) => { setVisible(false); setTimeout(cb, 200); };
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[60] flex items-center justify-center px-4 transition-all duration-200 ${visible ? 'bg-black/40 backdrop-blur-sm' : 'bg-black/0'}`}
+      onClick={e => { if (e.target === e.currentTarget) close(onCancel); }}
+    >
+      <div className={`bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-sm p-6 transition-all duration-200 ${visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
+        <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="font-bold text-gray-900 text-base mb-1">{title}</h3>
+        <p className="text-sm text-gray-500 mb-5">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={() => close(onCancel)}
+            className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => close(onConfirm)}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors">
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Generate Payroll Modal ───────────────────────────────────────────────────
 function GenerateModal({
   onClose, onGenerated,
@@ -296,7 +343,7 @@ function GenerateModal({
     }
     setLoading(true); setError(null);
     try {
-      const res = await fetch(`${PAYROLL_API}/api/payroll-periods/generate`, {
+      const res = await payrollFetch(`${PAYROLL_API}/api/payroll-periods/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -402,7 +449,7 @@ function PeriodDetail({
 
   useEffect(() => {
     requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    fetch(`${PAYROLL_API}/api/payroll-periods/${period.payroll_id}`)
+    payrollFetch(`${PAYROLL_API}/api/payroll-periods/${period.payroll_id}`)
       .then(r => r.json())
       .then(d => setDetail(d))
       .catch(() => setDetail(period))
@@ -417,7 +464,7 @@ function PeriodDetail({
     if (!next) return;
     setAdvancing(true);
     try {
-      const res = await fetch(`${PAYROLL_API}/api/payroll-periods/${detail.payroll_id}`, {
+      const res = await payrollFetch(`${PAYROLL_API}/api/payroll-periods/${detail.payroll_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: next }),
@@ -573,9 +620,10 @@ function PeriodDetail({
 export default function PayrollPeriodsPage() {
   const [periods, setPeriods]           = useState<PayrollPeriod[]>([]);
   const [loading, setLoading]           = useState(true);
-  const [showGenerate, setShowGenerate] = useState(false);
-  const [selected, setSelected]         = useState<PayrollPeriod | null>(null);
-  const [deleting, setDeleting]         = useState<string | null>(null);
+  const [showGenerate, setShowGenerate]     = useState(false);
+  const [selected, setSelected]             = useState<PayrollPeriod | null>(null);
+  const [deleting, setDeleting]             = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [search, setSearch]           = useState('');
   const [filterStart, setFilterStart] = useState('');
@@ -588,7 +636,7 @@ export default function PayrollPeriodsPage() {
       if (search)      params.set('payroll_id', search);
       if (filterStart) params.set('start', filterStart);
       if (filterEnd)   params.set('end', filterEnd);
-      const res = await fetch(`${PAYROLL_API}/api/payroll-periods?${params}`);
+      const res = await payrollFetch(`${PAYROLL_API}/api/payroll-periods?${params}`);
       if (res.ok) setPeriods(await res.json());
     } catch { /* network error */ }
     finally { setLoading(false); }
@@ -597,9 +645,8 @@ export default function PayrollPeriodsPage() {
   useEffect(() => { fetchPeriods(); }, [fetchPeriods]);
 
   const handleDelete = async (payrollId: string) => {
-    if (!confirm(`Delete payroll period ${payrollId}? This cannot be undone.`)) return;
     setDeleting(payrollId);
-    await fetch(`${PAYROLL_API}/api/payroll-periods/${payrollId}`, { method: 'DELETE' });
+    await payrollFetch(`${PAYROLL_API}/api/payroll-periods/${payrollId}`, { method: 'DELETE' });
     setPeriods(p => p.filter(x => x.payroll_id !== payrollId));
     setDeleting(null);
   };
@@ -710,7 +757,7 @@ export default function PayrollPeriodsPage() {
                           className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors">
                           View
                         </button>
-                        <button onClick={() => handleDelete(p.payroll_id)} disabled={deleting === p.payroll_id}
+                        <button onClick={() => setConfirmDeleteId(p.payroll_id)} disabled={deleting === p.payroll_id}
                           className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-medium transition-colors disabled:opacity-50">
                           {deleting === p.payroll_id ? '…' : 'Delete'}
                         </button>
@@ -729,6 +776,15 @@ export default function PayrollPeriodsPage() {
       )}
       {selected && (
         <PeriodDetail period={selected} onClose={() => setSelected(null)} onStatusUpdated={handleStatusUpdated} />
+      )}
+      {confirmDeleteId && (
+        <ConfirmModal
+          title="Delete Payroll Period"
+          message={`Delete ${confirmDeleteId}? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => { handleDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
       )}
     </div>
   );

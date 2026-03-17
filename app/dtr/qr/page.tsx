@@ -83,7 +83,7 @@ export default function DTRQRPage() {
   // Generate QR whenever token changes
   useEffect(() => {
     if (!token || typeof window === 'undefined') return;
-    const url = `${window.location.origin}/dtr/scan/${token}`;
+    const url = `${window.location.origin}/scan/${token}`;
     setScanUrl(url);
     setIsGenerating(true);
     QRCode.toDataURL(url, {
