@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { loginAction } from '@/lib/actions/auth';
 
 export default function LoginPage() {
@@ -13,13 +14,21 @@ export default function LoginPage() {
 
   const [isPending, startTransition] = useTransition();
 
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const redirectTo = searchParams.get('redirect') || '/';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     startTransition(async () => {
       const result = await loginAction(email, password);
-      if (result?.error) setError(result.error);
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        router.push(redirectTo);
+      }
     });
   };
 

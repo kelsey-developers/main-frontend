@@ -4,17 +4,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { getTodayDTR, timeIn, timeOut, getTodayTasks, uploadTaskPhoto } from '@/services/dtrService';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
+const PAYROLL_API = process.env.NEXT_PUBLIC_PAYROLL_API_URL ?? '';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type EmployeeRole = 'HOUSEKEEPING' | 'ADMIN';
-
 interface Cleaner {
   employee_id: number;
   full_name: string;
   position: string;
   employee_code: string;
-  role: EmployeeRole;
+  role: string;
 }
 
 interface DTRRecord {
@@ -58,6 +56,13 @@ const SHIFT_OPTIONS = [
   { label: '12:00 PM – 6:00 PM', start: '12:00', end: '18:00' },
 ];
 
+/** Parse a MySQL UTC datetime string ("2026-03-17 12:00:00") as UTC so it
+ *  displays correctly in the user's local timezone. */
+function parseUTC(dt: string): Date {
+  // Replace space with T and append Z to mark as UTC
+  return new Date(dt.includes('Z') || dt.includes('+') ? dt : dt.replace(' ', 'T') + 'Z');
+}
+
 function getShiftStatus() {
   const now = new Date();
   const earliest = new Date(now); earliest.setHours(9, 0, 0, 0);
@@ -94,9 +99,6 @@ function EmployeePicker({ employees, onSelect, isLoading }: {
     e.position.toLowerCase().includes(search.toLowerCase())
   );
 
-  const housekeeping = filtered.filter(e => e.role === 'HOUSEKEEPING');
-  const admins       = filtered.filter(e => e.role === 'ADMIN');
-
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -118,17 +120,11 @@ function EmployeePicker({ employees, onSelect, isLoading }: {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Total Employees', value: isLoading ? '—' : String(employees.length), color: 'text-[#0B5858]', bg: 'bg-white', border: 'border-gray-200' },
-          { label: 'Housekeeping',    value: isLoading ? '—' : String(employees.filter(e => e.role === 'HOUSEKEEPING').length), color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200' },
-          { label: 'Admin Staff',     value: isLoading ? '—' : String(employees.filter(e => e.role === 'ADMIN').length), color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
-        ].map(s => (
-          <div key={s.label} className={`${CARD.base} ${CARD.padding} border ${s.border} ${s.bg}`}>
-            <p className={`${CARD.label} mb-2`}>{s.label}</p>
-            <p className={`text-3xl font-bold ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 gap-4">
+        <div className={`${CARD.base} ${CARD.padding} border border-gray-200 bg-white`}>
+          <p className={`${CARD.label} mb-2`}>Total Employees</p>
+          <p className="text-3xl font-bold text-[#0B5858]">{isLoading ? '—' : String(employees.length)}</p>
+        </div>
       </div>
 
       {/* Employee list card — full width */}
@@ -188,27 +184,13 @@ function EmployeePicker({ employees, onSelect, isLoading }: {
               <p className="text-xs text-gray-400 mt-1">Try a different search term</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {housekeeping.length > 0 && (
-                <div>
-                  <p className={`${CARD.label} mb-3`}>Housekeeping · {housekeeping.length}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {housekeeping.map(emp => (
-                      <EmployeeCard key={emp.employee_id} emp={emp} onSelect={onSelect} />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {admins.length > 0 && (
-                <div>
-                  <p className={`${CARD.label} mb-3`}>Admin Staff · {admins.length}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {admins.map(emp => (
-                      <EmployeeCard key={emp.employee_id} emp={emp} onSelect={onSelect} />
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div>
+              <p className={`${CARD.label} mb-3`}>Employees · {filtered.length}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {filtered.map(emp => (
+                  <EmployeeCard key={emp.employee_id} emp={emp} onSelect={onSelect} />
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -231,8 +213,8 @@ function EmployeeCard({ emp, onSelect }: { emp: Cleaner; onSelect: (e: Cleaner) 
         <p className="font-bold text-sm text-gray-900 group-hover:text-[#0B5858] transition-colors truncate">{emp.full_name}</p>
         <p className="text-xs text-gray-500 mt-0.5 truncate">{emp.position}</p>
       </div>
-      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${emp.role === 'ADMIN' ? 'bg-purple-100 text-purple-700' : 'bg-teal-100 text-teal-700'}`}>
-        {emp.role === 'ADMIN' ? 'Admin' : 'HK'}
+      <span className="text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 bg-gray-100 text-gray-600">
+        Employee
       </span>
       <svg className="w-4 h-4 text-gray-300 group-hover:text-[#0B5858] group-hover:translate-x-0.5 transition-all shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -312,10 +294,10 @@ function DTRDetail({
   const isTimedIn   = currentDTR?.status === 'OPEN';
   const shiftStatus = getShiftStatus();
   const hoursWorked = currentDTR?.time_in && isTimedIn
-    ? ((Date.now() - new Date(currentDTR.time_in).getTime()) / 3_600_000).toFixed(1)
-    : (currentDTR?.hours_worked ?? 0).toFixed(1);
-  const timeInFmt  = currentDTR?.time_in  ? new Date(currentDTR.time_in).toLocaleTimeString('en-US',  { hour: '2-digit', minute: '2-digit', hour12: true }) : null;
-  const timeOutFmt = currentDTR?.time_out ? new Date(currentDTR.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : null;
+    ? ((Date.now() - parseUTC(currentDTR.time_in).getTime()) / 3_600_000).toFixed(1)
+    : (parseFloat(String(currentDTR?.hours_worked ?? 0))).toFixed(1);
+  const timeInFmt  = currentDTR?.time_in  ? parseUTC(currentDTR.time_in).toLocaleTimeString('en-US',  { hour: '2-digit', minute: '2-digit', hour12: true }) : null;
+  const timeOutFmt = currentDTR?.time_out ? parseUTC(currentDTR.time_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : null;
 
   const handleTimeIn = async () => {
     setIsLoading(true);
@@ -610,7 +592,7 @@ function DTRDetail({
                               {task.status === 'VERIFIED' ? 'Verified' : 'Pending'}
                             </span>
                             <span className="text-xs text-gray-400">
-                              {new Date(task.completed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                              {parseUTC(task.completed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
                             </span>
                           </div>
                         </div>
@@ -659,8 +641,8 @@ export default function CleanerDTRPage() {
   };
 
   useEffect(() => {
-    if (!API_BASE) { setLoadingEmp(false); return; }
-    fetch(`${API_BASE}/api/employees`)
+    if (!PAYROLL_API) { setLoadingEmp(false); return; }
+    fetch(`${PAYROLL_API}/api/dtr/public/employees`)
       .then(r => r.json())
       .then((data: Cleaner[]) => setEmployees(data))
       .catch(() => {})

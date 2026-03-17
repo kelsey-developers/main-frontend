@@ -42,6 +42,7 @@ function UnauthorizedScreen({
     frontdesk: 'Front Desk',
     cleaner: 'Housekeeping',
     user: 'User',
+    employee: 'Employee',
   };
 
   return (

@@ -54,6 +54,7 @@ const ROLE_LABELS: Record<NormalizedRole, string> = {
   operations: 'Operations',
   frontdesk: 'Front Desk',
   cleaner: 'Housekeeping',
+  employee: 'Employee',
   user: 'User',
 };
 

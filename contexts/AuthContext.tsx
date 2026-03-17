@@ -21,6 +21,7 @@ export type NormalizedRole =
   | 'operations'
   | 'frontdesk'
   | 'cleaner'
+  | 'employee'
   | 'user';
 
 export interface AuthUserRole {
@@ -46,6 +47,7 @@ interface AuthContextValue {
   isHousekeeping: boolean;
   isOperations: boolean;
   isFrontdesk: boolean;
+  isEmployee: boolean;
   /** Returns true if the user has ANY of the given roles (admin always passes). */
   hasAnyRole: (...roles: NormalizedRole[]) => boolean;
   signOut: () => Promise<void>;
@@ -64,6 +66,7 @@ function normalizeRole(role: string): NormalizedRole {
   if (lower === 'frontdesk' || lower === 'front desk' || lower === 'front_desk') return 'frontdesk';
   if (lower === 'cleaner') return 'cleaner';
   if (lower === 'housekeeping') return 'housekeeping';
+  if (lower === 'employee') return 'employee';
   return 'user';
 }
 
@@ -121,6 +124,7 @@ export function AuthProvider({
     isHousekeeping: primaryRole === 'housekeeping',
     isOperations: primaryRole === 'operations',
     isFrontdesk: primaryRole === 'frontdesk',
+    isEmployee: primaryRole === 'employee',
     hasAnyRole,
     signOut,
   };
@@ -144,6 +148,7 @@ export function useAuth(): AuthContextValue {
       isHousekeeping: false,
       isOperations: false,
       isFrontdesk: false,
+      isEmployee: false,
       hasAnyRole: () => false,
       signOut: async () => {},
     };

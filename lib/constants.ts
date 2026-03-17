@@ -35,4 +35,5 @@ export const ROLE_COLORS: Record<string, { bg: string; text: string }> = {
   housekeeping: { bg: '#059669', text: 'white' },
   user:        { bg: '#558B8B', text: 'white' },
   cleaner:     { bg: '#6366F1', text: 'white' },
+  employee:    { bg: '#0B5858', text: 'white' },
 };

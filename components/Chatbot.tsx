@@ -23,7 +23,7 @@ const BOT_GREETINGS = [
 const BOT_GREETING_LOGGED_IN = "Hi! I can help you find units, including ones near your location. Try asking 'find units near my location' or 'show me available apartments in Manila'.";
 
 /** Hide on cleaning job detail so the sticky "Mark as Done" is the only CTA and no visual distraction */
-const HIDE_CHATBOT_PREFIX = '/cleaning/';
+const HIDE_CHATBOT_PREFIXES = ['/cleaning/', '/scan'];
 
 /** Check if message suggests user wants location-based results */
 function wantsNearMe(text: string): boolean {
@@ -180,7 +180,7 @@ export default function Chatbot() {
     }
   };
 
-  if (pathname?.startsWith(HIDE_CHATBOT_PREFIX)) return null;
+  if (HIDE_CHATBOT_PREFIXES.some(p => pathname?.startsWith(p))) return null;
 
   return (
     <>

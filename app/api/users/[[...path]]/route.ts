@@ -7,6 +7,9 @@ const AUTH_SERVICE_ROLES = new Set(['Guest', 'Agent', 'Admin']);
 // Roles that can be stored in market-backend when MARKET_API_URL is set; otherwise Auth Service handles them
 const INTERNAL_ROLES = new Set(['Finance', 'Inventory', 'Housekeeping', 'Operations', 'Frontdesk']);
 
+// Roles managed by the payroll backend — never forwarded to the Auth Service
+const PAYROLL_ROLES = new Set(['Employee']);
+
 async function getToken(): Promise<string | null> {
   const cookieStore = await cookies();
   return cookieStore.get('accessToken')?.value ?? null;
@@ -70,6 +73,35 @@ async function patchInternalRole(email: string, name: string, role: string): Pro
   }, { status: 200 });
 }
 
+/** Assign Employee role via the payroll backend (no auth service call). */
+async function patchPayrollRole(email: string, name: string, role: string): Promise<NextResponse> {
+  const payrollApiUrl = process.env.PAYROLL_API_URL?.replace(/\/$/, '');
+  if (!payrollApiUrl) {
+    return NextResponse.json({ error: 'PAYROLL_API_URL not configured' }, { status: 503 });
+  }
+
+  const res = await fetch(`${payrollApiUrl}/api/employees/roles`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, name, role }),
+  });
+
+  const text = await res.text();
+  let data: unknown = {};
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { message: text }; }
+  }
+
+  if (!res.ok) return NextResponse.json(data, { status: res.status });
+
+  return NextResponse.json({
+    message: 'Payroll role updated',
+    email,
+    role,
+    roles: [role],
+  }, { status: 200 });
+}
+
 /** Remove an internal role from market-backend when the user is moved to an Auth Service role. */
 async function deleteInternalRole(email: string): Promise<void> {
   const marketApiUrl = process.env.MARKET_API_URL?.replace(/\/$/, '');
@@ -100,6 +132,19 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ path?
   try { parsedBody = JSON.parse(bodyText) as Record<string, unknown>; } catch { /* ignore */ }
 
   const role = typeof parsedBody.role === 'string' ? parsedBody.role : null;
+
+  if (role && PAYROLL_ROLES.has(role)) {
+    const email = typeof parsedBody.email === 'string' ? parsedBody.email : null;
+    const firstName = typeof parsedBody.firstName === 'string' ? parsedBody.firstName : '';
+    const lastName  = typeof parsedBody.lastName  === 'string' ? parsedBody.lastName  : '';
+    const name = [firstName, lastName].filter(Boolean).join(' ') || (email ?? 'Unknown');
+
+    if (!email) {
+      return NextResponse.json({ error: 'email is required when assigning a payroll role' }, { status: 400 });
+    }
+
+    return patchPayrollRole(email, name, role);
+  }
 
   if (role && INTERNAL_ROLES.has(role)) {
     const email = typeof parsedBody.email === 'string' ? parsedBody.email : null;

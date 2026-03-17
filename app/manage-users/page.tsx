@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-const ROLES = ['Guest', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Admin'] as const;
+const ROLES = ['Guest', 'Employee', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Admin'] as const;
 type RoleType = (typeof ROLES)[number];
 
 /** Chip shadow helper — same pattern as admin/cleaning, lending */
@@ -96,12 +96,13 @@ interface EditForm {
 
 /** Role chip styles — design-system: chipStyle (backgroundColor, color, boxShadow) for chip-shadow pills */
 const roleColors: Record<string, { bg: string; text: string; label: string; chipStyle: { backgroundColor: string; color: string; boxShadow: string } }> = {
-  Admin:        { bg: '#B84C4C', text: '#fff', label: 'Admin',        chipStyle: { backgroundColor: '#B84C4C', color: '#fff',     boxShadow: chipShadow(184, 76, 76, 0.35) } },
-  Agent:        { bg: '#FACC15', text: '#92400e', label: 'Agent',      chipStyle: { backgroundColor: '#FACC15', color: '#92400e', boxShadow: chipShadow(250, 204, 21, 0.4) } },
-  Guest:        { bg: '#0B5858', text: '#fff', label: 'Guest',        chipStyle: { backgroundColor: '#0B5858', color: '#fff',     boxShadow: chipShadow(11, 88, 88, 0.35) } },
-  Finance:      { bg: '#6366F1', text: '#fff', label: 'Finance',      chipStyle: { backgroundColor: '#6366F1', color: '#fff',     boxShadow: chipShadow(99, 102, 241, 0.35) } },
-  Inventory:    { bg: '#0891B2', text: '#fff', label: 'Inventory',    chipStyle: { backgroundColor: '#0891B2', color: '#fff',     boxShadow: chipShadow(8, 145, 178, 0.35) } },
-  Housekeeping: { bg: '#059669', text: '#fff', label: 'Housekeeping', chipStyle: { backgroundColor: '#059669', color: '#fff',     boxShadow: chipShadow(5, 150, 105, 0.35) } },
+  Admin:        { bg: '#B84C4C', text: '#fff',     label: 'Admin',        chipStyle: { backgroundColor: '#B84C4C', color: '#fff',     boxShadow: chipShadow(184, 76, 76, 0.35) } },
+  Agent:        { bg: '#FACC15', text: '#92400e', label: 'Agent',        chipStyle: { backgroundColor: '#FACC15', color: '#92400e', boxShadow: chipShadow(250, 204, 21, 0.4) } },
+  Guest:        { bg: '#0B5858', text: '#fff',     label: 'Guest',        chipStyle: { backgroundColor: '#0B5858', color: '#fff',     boxShadow: chipShadow(11, 88, 88, 0.35) } },
+  Employee:     { bg: '#7C3AED', text: '#fff',     label: 'Employee',     chipStyle: { backgroundColor: '#7C3AED', color: '#fff',     boxShadow: chipShadow(124, 58, 237, 0.35) } },
+  Finance:      { bg: '#6366F1', text: '#fff',     label: 'Finance',      chipStyle: { backgroundColor: '#6366F1', color: '#fff',     boxShadow: chipShadow(99, 102, 241, 0.35) } },
+  Inventory:    { bg: '#0891B2', text: '#fff',     label: 'Inventory',    chipStyle: { backgroundColor: '#0891B2', color: '#fff',     boxShadow: chipShadow(8, 145, 178, 0.35) } },
+  Housekeeping: { bg: '#059669', text: '#fff',     label: 'Housekeeping', chipStyle: { backgroundColor: '#059669', color: '#fff',     boxShadow: chipShadow(5, 150, 105, 0.35) } },
 };
 
 /** Convert a Prisma/market-backend role string to the display name used in ROLES. */
@@ -110,15 +111,16 @@ function toDisplayRole(role: string): RoleType {
     finance:      'Finance',
     inventory:    'Inventory',
     operations:   'Housekeeping',
-    frontdesk:    'Agent', // closest public-facing role
+    frontdesk:    'Agent',
     admin:        'Admin',
     agent:        'Agent',
+    employee:     'Employee',
   };
   return map[role.toLowerCase()] ?? 'Guest';
 }
 
 function getRoleDisplay(roles: string[]) {
-  for (const r of ['Admin', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Operations', 'Guest']) {
+  for (const r of ['Admin', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Employee', 'Operations', 'Guest']) {
     if (roles.map((x) => x.toLowerCase()).includes(r.toLowerCase())) {
       // Normalize "Operations" → "Housekeeping" for display
       return r === 'Operations' ? 'Housekeeping' : r;
@@ -508,6 +510,7 @@ export default function ManageUsers() {
               {(
                 [
                   { role: 'Guest',        desc: 'Can browse and make bookings' },
+                  { role: 'Employee',     desc: 'Staff member — can record attendance and view own DTR' },
                   { role: 'Agent',        desc: 'Can manage bookings and clients' },
                   { role: 'Finance',      desc: 'Access to Finance section of Sales Report' },
                   { role: 'Inventory',    desc: 'Access to Inventory section of Sales Report' },
@@ -641,7 +644,7 @@ export default function ManageUsers() {
                   })}
                 </div>
                 <p className="mt-2 text-[11px] text-gray-400" style={{ fontFamily: 'Poppins' }}>
-                  Finance, Inventory, and Housekeeping roles grant access to the Sales Report dashboard.
+                  Employee grants access to Attendance. Finance, Inventory, and Housekeeping grant access to Sales Report.
                 </p>
               </div>
 
