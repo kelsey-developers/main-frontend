@@ -7,7 +7,7 @@ import InventoryDropdown from './InventoryDropdown';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { useToast } from '../hooks/useToast';
 import { useMockAuth } from '@/contexts/MockAuthContext';
-import { processStockAdjustment } from '../lib/inventoryLedger';
+import { processStockAdjustment, processUnitAllocationAdjustment } from '../lib/inventoryLedger';
 import { inventoryItems, inventoryWarehouseDirectory, inventoryUnits, isWarehouseActive } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 import { fetchFinanceBookings } from '@/app/sales-report/finance/lib/financeDataService';
@@ -47,31 +47,41 @@ function Field({ label, required, children, style }: { label: string; required?:
   );
 }
 
+type InOut = 'in' | 'out';
+
 interface LineItem {
   productId: string;
   quantity: string;
+  direction: InOut;
 }
+
+type CycleCountMode = 'warehouse' | 'unit';
 
 interface CycleCountModalProps {
   onClose: () => void;
   returnTo?: string;
   warehousePrefill?: string;
+  /** When set, open in unit cycle count mode. */
+  unitPrefill?: string;
+  /** When true, only unit cycle count is shown (no warehouse mode / no mode toggle). Used for housekeeping. */
+  unitOnly?: boolean;
 }
 
-export default function CycleCountModal({ onClose, returnTo = '/sales-report/inventory/items', warehousePrefill }: CycleCountModalProps) {
+export default function CycleCountModal({ onClose, returnTo = '/sales-report/inventory/items', warehousePrefill, unitPrefill, unitOnly = false }: CycleCountModalProps) {
   const router = useRouter();
-  const { error, success } = useToast();
+  const { error } = useToast();
   const authState = useMockAuth();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
+  const [cycleCountMode, setCycleCountMode] = useState<CycleCountMode>(unitOnly || unitPrefill ? 'unit' : 'warehouse');
   const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
   const [warehouse, setWarehouse] = useState(warehousePrefill || '');
-  const [unitId, setUnitId] = useState('');
+  const [unitId, setUnitId] = useState(unitPrefill || '');
   const [bookingId, setBookingId] = useState('');
   const [date, setDate] = useState(getTodayInPhilippineTime());
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
+  const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '', direction: 'in' }]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookings, setBookings] = useState<{ bookingId: string; unit: string; checkIn: string; checkOut: string }[]>([]);
@@ -81,6 +91,10 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
   useEffect(() => {
     if (warehousePrefill && !warehouse) setWarehouse(warehousePrefill);
   }, [warehousePrefill, warehouse]);
+  useEffect(() => {
+    if (unitPrefill && !unitId) setUnitId(unitPrefill);
+    if (unitPrefill || unitOnly) setCycleCountMode('unit');
+  }, [unitPrefill, unitOnly, unitId]);
 
   useEffect(() => {
     void fetchFinanceBookings().then((rows) => {
@@ -112,40 +126,66 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
   };
 
   const handleSubmit = async () => {
-    if (!warehouse || !date) {
-      error('Please fill warehouse and date.');
+    if (!date) {
+      error('Please select date.');
       return;
     }
-    const validItems = items.filter((e) => e.productId && Number(e.quantity) > 0);
+    const validItems = items.filter((e) => e.productId && e.quantity !== '' && Number(e.quantity) > 0);
     if (!validItems.length) {
-      error('Add at least one item with quantity.');
+      error('Add at least one item with a quantity greater than 0.');
       return;
+    }
+
+    if (cycleCountMode === 'warehouse') {
+      if (!warehouse) {
+        error('Please select warehouse.');
+        return;
+      }
+    } else {
+      if (!unitId) {
+        error('Please select unit.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
       const refId = bookingId || reference || undefined;
       const refType = bookingId ? ('BOOKING' as const) : undefined;
-      for (const entry of validItems) {
-        const qty = Number(entry.quantity);
-        await processStockAdjustment({
-          productId: entry.productId,
-          warehouseId: warehouse,
-          quantity: qty,
-          reason: 'Cycle Count / Manual Adjustment (additions only)',
-          date,
-          reference: refId,
-          referenceType: refType,
-          unitId: unitId || undefined,
-          notes: notes || undefined,
-          createdBy: confirmedBy || undefined,
-        });
+      if (cycleCountMode === 'unit') {
+        for (const entry of validItems) {
+          const qty = entry.direction === 'out' ? -Number(entry.quantity) : Number(entry.quantity);
+          await processUnitAllocationAdjustment({
+            productId: entry.productId,
+            unitId,
+            quantity: qty,
+            reason: 'Unit Cycle Count / Manual Adjustment',
+            date,
+            reference: refId,
+            referenceType: refType,
+            notes: notes || undefined,
+            createdBy: confirmedBy || undefined,
+          });
+        }
+      } else {
+        for (const entry of validItems) {
+          const qty = entry.direction === 'out' ? -Number(entry.quantity) : Number(entry.quantity);
+          await processStockAdjustment({
+            productId: entry.productId,
+            warehouseId: warehouse,
+            quantity: qty,
+            reason: 'Cycle Count / Manual Adjustment',
+            date,
+            reference: reference || undefined,
+            notes: notes || undefined,
+            createdBy: confirmedBy || undefined,
+          });
+        }
       }
       setShowSuccess(true);
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') console.error(err);
-      error('Could not complete adjustment. Please try again.');
-      handleClose();
+      error(err instanceof Error ? err.message : 'Could not complete adjustment. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -232,7 +272,7 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
                     Cycle Count / Inventory Adjustment
                   </h2>
                   <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', margin: '4px 0 0', fontFamily: 'Poppins' }}>
-                    Add stock (e.g. items returned from a booking). Less found physically = loss.
+                    {cycleCountMode === 'unit' ? 'Adjust stock in a unit (room). Choose IN (add) or OUT (remove), then enter quantity.' : 'Add or remove stock to match physical count. Choose IN or OUT per item, then enter quantity.'}
                   </p>
                 </div>
                 <button
@@ -244,9 +284,60 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
               </div>
 
               <div style={{ padding: 24, overflowY: 'auto', flex: 1 }}>
+                {/* Mode: Warehouse vs Unit (hidden when unitOnly, e.g. housekeeping) */}
+                {!unitOnly && (
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: C.darkGray, fontFamily: 'Poppins', display: 'block', marginBottom: 8 }}>Adjust</label>
+                  <div style={{ display: 'flex', gap: 0, background: '#f1f5f9', borderRadius: 10, padding: 4 }}>
+                    <button
+                      type="button"
+                      onClick={() => setCycleCountMode('warehouse')}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        borderRadius: 8,
+                        border: 'none',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'Poppins',
+                        background: cycleCountMode === 'warehouse' ? C.white : 'transparent',
+                        color: cycleCountMode === 'warehouse' ? C.darkTeal : C.midGray,
+                        boxShadow: cycleCountMode === 'warehouse' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                      }}
+                    >
+                      Warehouse stock
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCycleCountMode('unit')}
+                      style={{
+                        flex: 1,
+                        padding: '10px 16px',
+                        borderRadius: 8,
+                        border: 'none',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        fontFamily: 'Poppins',
+                        background: cycleCountMode === 'unit' ? C.white : 'transparent',
+                        color: cycleCountMode === 'unit' ? C.darkTeal : C.midGray,
+                        boxShadow: cycleCountMode === 'unit' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                      }}
+                    >
+                      Unit (room) stock
+                    </button>
+                  </div>
+                </div>
+                )}
+
                 <div style={{ padding: '12px 14px', background: '#eff6ff', borderRadius: 12, borderLeft: '3px solid #0369a1', marginBottom: 20 }}>
                   <p style={{ fontSize: 12, color: '#475569', margin: 0, fontFamily: 'Poppins', lineHeight: 1.45 }}>
-                    Use for adding stock (e.g. items returned from a unit/booking). Link to the booking if transferred from checkout. <strong>Less found physically = loss</strong> (track separately). Do not use for receiving goods — create a Goods Receipt from the Purchase Order instead.
+                    {cycleCountMode === 'unit' ? (
+                      <>Correct unit (room) inventory: choose <strong>IN</strong> (add) or <strong>OUT</strong> (remove) per item, then enter quantity. Changes are saved to allocations and stock movements. Do not use for receiving goods — use Goods Receipt from Purchase Order.</>
+                    ) : (
+                      <>Use for cycle count corrections: choose <strong>IN</strong> (add stock) or <strong>OUT</strong> (remove stock) per item, then enter quantity. Link to the booking if transferred from checkout. Do not use for receiving goods — create a Goods Receipt from the Purchase Order instead.</>
+                    )}
                   </p>
                 </div>
 
@@ -254,57 +345,62 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
                   <Field label="Confirmed By" required>
                     <input type="text" value={confirmedBy} readOnly style={{ ...inputStyle, background: '#f3f4f6', cursor: 'not-allowed' }} />
                   </Field>
-                  <Field label="Warehouse" required>
-                    <InventoryDropdown
-                      value={warehouse}
-                      onChange={setWarehouse}
-                      options={[{ value: '', label: 'Select warehouse…' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
-                      placeholder="Select warehouse…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
-                  <Field label="Unit (transferred to)">
-                    <InventoryDropdown
-                      value={unitId}
-                      onChange={setUnitId}
-                      options={[
-                        { value: '', label: unitOptions.length === 0 ? 'Select warehouse first' : 'Select unit…' },
-                        ...unitOptions,
-                      ]}
-                      placeholder="Select unit…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
-                  <Field label="Transferred from booking">
-                    <InventoryDropdown
-                      value={bookingId}
-                      onChange={setBookingId}
-                      options={bookingOptions}
-                      placeholder="Select booking…"
-                      placeholderWhen=""
-                      hideIcon={true}
-                      fullWidth={true}
-                      minWidthClass="min-w-0"
-                      align="left"
-                      backdropZIndexClass="z-[10005]"
-                      menuZIndexClass="z-[10010]"
-                      useFixedPosition={true}
-                    />
-                  </Field>
+                  {cycleCountMode === 'unit' ? (
+                    <>
+                      <Field label="Unit" required>
+                        <InventoryDropdown
+                          value={unitId}
+                          onChange={setUnitId}
+                          options={[
+                            { value: '', label: unitOptions.length === 0 ? 'No units' : 'Select unit…' },
+                            ...unitOptions,
+                          ]}
+                          placeholder="Select unit…"
+                          placeholderWhen=""
+                          hideIcon={true}
+                          fullWidth={true}
+                          minWidthClass="min-w-0"
+                          align="left"
+                          backdropZIndexClass="z-[10005]"
+                          menuZIndexClass="z-[10010]"
+                          useFixedPosition={true}
+                        />
+                      </Field>
+                      <Field label="Transferred from booking">
+                        <InventoryDropdown
+                          value={bookingId}
+                          onChange={setBookingId}
+                          options={bookingOptions}
+                          placeholder="Select booking…"
+                          placeholderWhen=""
+                          hideIcon={true}
+                          fullWidth={true}
+                          minWidthClass="min-w-0"
+                          align="left"
+                          backdropZIndexClass="z-[10005]"
+                          menuZIndexClass="z-[10010]"
+                          useFixedPosition={true}
+                        />
+                      </Field>
+                    </>
+                  ) : (
+                    <Field label="Warehouse" required>
+                      <InventoryDropdown
+                        value={warehouse}
+                        onChange={setWarehouse}
+                        options={[{ value: '', label: 'Select warehouse…' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
+                        placeholder="Select warehouse…"
+                        placeholderWhen=""
+                        hideIcon={true}
+                        fullWidth={true}
+                        minWidthClass="min-w-0"
+                        align="left"
+                        backdropZIndexClass="z-[10005]"
+                        menuZIndexClass="z-[10010]"
+                        useFixedPosition={true}
+                      />
+                    </Field>
+                  )}
                   <Field label="Date" required>
                     <SingleDatePicker value={date} onChange={setDate} placeholder="Select date" calendarZIndex={10020} />
                   </Field>
@@ -314,7 +410,7 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
                 </div>
 
                 <div style={{ fontSize: 10, fontWeight: 700, color: C.midGray, letterSpacing: 1.8, marginBottom: 14, fontFamily: 'Poppins' }}>
-                  ITEMS TO ADD
+                  ITEMS (ADD OR REMOVE)
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -323,7 +419,7 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
                       key={i}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 110px 36px',
+                        gridTemplateColumns: '1fr 90px 90px 36px',
                         gap: 10,
                         alignItems: 'start',
                         padding: 14,
@@ -353,10 +449,55 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
                         />
                       </div>
                       <div>
+                        {i === 0 && <label style={{ fontSize: 12, fontWeight: 600, color: C.darkGray, fontFamily: 'Poppins' }}>Action</label>}
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={it.direction === 'out'}
+                          onClick={() => upd(i, 'direction', it.direction === 'in' ? 'out' : 'in')}
+                          title={it.direction === 'in' ? 'Add stock (IN). Click to switch to OUT.' : 'Remove stock (OUT). Click to switch to IN.'}
+                          style={{
+                            marginTop: i === 0 ? 0 : 22,
+                            width: '100%',
+                            height: 34,
+                            borderRadius: 17,
+                            border: '1.5px solid #e2e8f0',
+                            background: '#e2e8f0',
+                            cursor: 'pointer',
+                            padding: 3,
+                            position: 'relative',
+                          }}
+                        >
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: 2,
+                              left: it.direction === 'in' ? 2 : 'calc(50% + 1px)',
+                              width: 'calc(50% - 4px)',
+                              height: 26,
+                              borderRadius: 13,
+                              background: it.direction === 'in' ? `linear-gradient(135deg, ${C.darkTeal}, ${C.teal})` : 'linear-gradient(135deg, #b91c1c, #dc2626)',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                              transition: 'left 0.2s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: C.white,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              fontFamily: 'Poppins',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {it.direction === 'in' ? 'IN' : 'OUT'}
+                          </span>
+                        </button>
+                      </div>
+                      <div>
                         {i === 0 && <label style={{ fontSize: 12, fontWeight: 600, color: C.darkGray, fontFamily: 'Poppins' }}>Qty <span style={{ color: C.red }}>*</span></label>}
                         <input
                           type="number"
-                          min="1"
+                          min={1}
                           value={it.quantity}
                           onChange={(e) => upd(i, 'quantity', e.target.value)}
                           placeholder="0"
@@ -384,7 +525,7 @@ export default function CycleCountModal({ onClose, returnTo = '/sales-report/inv
                 </div>
 
                 <button
-                  onClick={() => setItems((p) => [...p, { productId: '', quantity: '' }])}
+                  onClick={() => setItems((p) => [...p, { productId: '', quantity: '', direction: 'in' as InOut }])}
                   style={{
                     width: '100%',
                     padding: 11,

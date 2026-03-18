@@ -216,11 +216,13 @@ const StockCell = ({
 const ShortfallCell = ({
   item,
   onStartOrder,
+  onRestockClick,
   isUnitView = false,
   warehouseId = null,
 }: {
   item: ReplenishmentItem;
   onStartOrder: (item: ReplenishmentItem) => void;
+  onRestockClick?: (item: ReplenishmentItem) => void;
   isUnitView?: boolean;
   warehouseId?: string | null;
 }) => {
@@ -242,15 +244,29 @@ const ShortfallCell = ({
     }
     const status = getStockStatus(item.currentStock, min);
     const cfg = STATUS_CONFIG[status];
+    // Same layout as main inventory: shortfall badge + action button (Restock / Stock Out)
     return (
-      <div className="px-2 py-3 sm:px-3 sm:py-4 flex justify-center">
+      <div className="px-2 py-3 sm:px-3 sm:py-4 flex flex-col items-center gap-2">
         <span
-          className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11.5px] font-semibold rounded-full px-2.5 sm:px-3 py-1"
+          className="inline-flex items-center gap-1.5 text-[10.5px] sm:text-[11.5px] font-semibold rounded-full px-2.5 sm:px-3 py-1 whitespace-nowrap"
           style={{ color: cfg.color, background: cfg.bg }}
         >
           <ArrowDownIcon color={cfg.color} size={12} />
           {shortfall} {item.unit}
         </span>
+        {onRestockClick && (status === 'low' || status === 'critical' || status === 'out') && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRestockClick(item);
+            }}
+            className="text-[10.5px] font-semibold px-2.5 py-1 rounded-md bg-[#0B5858] text-white hover:bg-[#05807e] transition-colors whitespace-nowrap"
+            style={{ fontFamily: 'Poppins' }}
+            title="Restock / Stock out for this unit"
+          >
+            Restock
+          </button>
+        )}
       </div>
     );
   }
@@ -405,8 +421,8 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
 
   return (
     <div>
-      {/* ── Restock Alert ────────────────────────────────────────────── */}
-      {!isUnitView && <RestockAlert count={needsRestockCount} />}
+      {/* ── Restock Alert (main inventory and unit view: show per-item restock count) ────────────────────────────────────────────── */}
+      {needsRestockCount > 0 && <RestockAlert count={needsRestockCount} />}
 
       {/* ── Search + Sort ────────────────────────────────────────────── */}
       <div className="flex gap-2.5 mb-3.5 items-center">
@@ -566,8 +582,14 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                       {/* Stock — bar + count + unit, threshold in hover tooltip */}
                       <StockCell item={item} isUnitView={isUnitView} warehouseId={warehouseId} />
 
-                      {/* Shortfall */}
-                      <ShortfallCell item={item} onStartOrder={handleStartOrder} isUnitView={isUnitView} warehouseId={warehouseId} />
+                      {/* Shortfall — same as main: OK or ↓ X unit + Restock/Start Order button */}
+                      <ShortfallCell
+                        item={item}
+                        onStartOrder={handleStartOrder}
+                        onRestockClick={isUnitView ? onRestockClick : undefined}
+                        isUnitView={isUnitView}
+                        warehouseId={warehouseId}
+                      />
 
                       {/* Actions */}
                       {!hideEditButton && (
@@ -584,24 +606,9 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                           </button>
                         </div>
                       )}
-                      {hideEditButton && isUnitView && (onEditThreshold || onRestockClick) && (
+                      {/* Unit view: restock action is in SHORTFALL column (same as main "Start Order"); only show extra column for edit threshold */}
+                      {hideEditButton && isUnitView && onEditThreshold && (
                         <div className="px-2 sm:px-3 py-3 sm:py-5 flex items-center justify-center gap-1">
-                          {onRestockClick && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRestockClick(item);
-                              }}
-                              className="text-[#05807e] hover:text-[#0b5858] transition-all duration-150 p-1.5 rounded hover:bg-[#e8f4f4] hover:scale-105 active:scale-95"
-                              title="Restock / Stock out"
-                              aria-label="Restock"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                <path d="M8 2v6m0 0l3-3m-3 3L5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                <path d="M2 10v2a2 2 0 002 2h8a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                              </svg>
-                            </button>
-                          )}
                           {onEditThreshold && (
                             <button
                               onClick={(e) => {

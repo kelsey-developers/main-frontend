@@ -36,13 +36,32 @@ function normalizeIncident<T>(raw: T | null): T | null {
   return toCamelCase(raw) as T;
 }
 
+/** Ensure reportedByUserId/resolvedByUserId are set from API reportedBy/resolvedBy (object with id or string id). */
+function ensureReporterIds(inc: DamageIncident): DamageIncident {
+  const out = { ...inc };
+  const rb = (out as Record<string, unknown>).reportedBy;
+  if (!out.reportedByUserId && rb != null) {
+    if (typeof rb === 'object' && rb !== null && 'id' in rb)
+      out.reportedByUserId = String((rb as { id: string | number }).id);
+    else if (typeof rb === 'string') out.reportedByUserId = rb;
+  }
+  const resb = (out as Record<string, unknown>).resolvedBy;
+  if (out.resolvedByUserId == null && resb != null) {
+    if (typeof resb === 'object' && resb !== null && 'id' in resb)
+      out.resolvedByUserId = (resb as { id: string | number }).id;
+    else if (typeof resb === 'string') out.resolvedByUserId = resb;
+  }
+  return out;
+}
+
 /** Damage incident (DamageReport) from API - matches expected JSON schema */
 export interface DamageIncident {
   id: string;
   bookingId?: string;
   unitId?: string;
   reportedByUserId?: string;
-  resolvedByUserId?: string;
+  /** Backend returns camelCase resolvedByUserId; value may be string or number */
+  resolvedByUserId?: string | number;
   reportedAt?: string;
   resolvedAt?: string;
   description?: string;
@@ -56,6 +75,9 @@ export interface DamageIncident {
   dateReported?: string;
   cause?: string;
   reportedBy?: string;
+  /** Backend may return display name when user id is not available */
+  reportedByName?: string;
+  resolvedByName?: string;
   estimatedCost?: number;
   actualCost?: number;
   createdAt?: string;
@@ -63,6 +85,10 @@ export interface DamageIncident {
   referenceId?: string;
   warehouseId?: string;
   items?: LostBrokenItem[];
+  /** write_off = deduct from inventory (do Stock Out); record_only = no deduction (e.g. reusable damaged but stays in place). */
+  inventoryAction?: 'write_off' | 'record_only';
+  /** Per-unit damage charge (PHP). When no items: only this applies. With write-off items: cost = assignedCharge + raw cost of items. */
+  assignedCharge?: number | null;
 }
 
 /** Line item (LostBrokenItem) for a damage incident */
@@ -80,16 +106,11 @@ export interface LostBrokenItem {
 /**
  * Payload to create a damage incident.
  * Send camelCase; the market API proxy forwards the body as-is.
- *
- * Create must NOT send reportedByUserId in the body: createDamageIncident() drops it (_dropped) so Prisma never
- * inserts an FK that fails. Pass auth user id via createDamageIncident(payload, { reporterUserId }) only — that
- * sets header X-Reporter-User-Id. Backend then sets reportedByUserId when the id matches a market User row, or
- * reportedByExternalId when it does not.
+ * No localStorage — create/update go only via POST/PATCH to the API.
  */
 export interface CreateDamageIncidentPayload {
   bookingId?: string;
   unitId?: string;
-  /** Stripped before POST — use options.reporterUserId (header) instead */
   reportedByUserId?: string;
   /** Display label for reporter when API stores or returns string only */
   reportedBy?: string;
@@ -101,7 +122,7 @@ export interface CreateDamageIncidentPayload {
   cost?: number;
   chargedToGuest?: number;
   absorbedAmount?: number;
-  status?: 'open' | 'charged_to_guest' | 'absorbed' | 'settled';
+  status?: 'open' | 'resolved';
   /** Optional: backend may accept for warehouse write-off context */
   warehouseId?: string;
   /** Optional: line items if backend supports nested create */
@@ -111,6 +132,10 @@ export interface CreateDamageIncidentPayload {
     quantity: number;
     itemCost?: number;
   }>;
+  /** write_off = will deduct from inventory (complete Stock Out after); record_only = no stock deduction (e.g. reusable damaged but in place). */
+  inventoryAction?: 'write_off' | 'record_only';
+  /** Per-unit damage charge (PHP). Record-only: cost = this. Write-off: cost = this + raw cost of items. */
+  assignedCharge?: number | null;
 }
 
 /** Payload to update a damage incident */
@@ -129,9 +154,13 @@ export interface UpdateDamageIncidentPayload {
   actualCost?: number;
   absorbedAmount?: number;
   chargedToGuest?: number;
-  status?: string;
+  status?: 'open' | 'resolved';
   /** Required for warehouse write-off; omit for unit write-off */
   warehouseId?: string;
+  /** write_off | record_only — see CreateDamageIncidentPayload. */
+  inventoryAction?: 'write_off' | 'record_only';
+  /** Per-unit damage charge (PHP). */
+  assignedCharge?: number | null;
 }
 
 /** Attachment metadata from API */
@@ -169,56 +198,64 @@ function extractOne<T>(res: unknown, keys: string[]): T | null {
 export async function listDamageIncidents(): Promise<DamageIncident[]> {
   const res = await apiClient.get<unknown>('/api/damage-incidents');
   const list = extractList<DamageIncident>(res, ['data', 'damageIncidents', 'incidents']);
-  return list.map((inc) => (normalizeIncident(inc) ?? inc) as DamageIncident);
+  return list.map((inc) =>
+    ensureReporterIds((normalizeIncident(inc) ?? inc) as DamageIncident)
+  );
 }
 
 /** Get a single damage incident by ID */
 export async function getDamageIncident(id: string): Promise<DamageIncident | null> {
   const res = await apiClient.get<unknown>(`/api/damage-incidents/${id}`);
   const incident = extractOne<DamageIncident>(res, ['data', 'damageIncident', 'incident']);
-  return incident ? (normalizeIncident(incident) as DamageIncident) : null;
+  if (!incident) return null;
+  return ensureReporterIds(normalizeIncident(incident) as DamageIncident);
 }
 
 /**
- * Second argument for createDamageIncident.
- * When reporterUserId is set, the request is sent with header X-Reporter-User-Id (body reportedByUserId is _dropped).
+ * Create damage incident. POST to /api/damage-incidents only — no localStorage.
+ * Include reportedByUserId in the payload when provided (e.g. from options).
  */
 export type CreateDamageIncidentOptions = {
   reporterUserId?: string;
 };
 
-/**
- * Create damage incident. Body never includes reportedByUserId — it is removed before send so no FK violation.
- * Backend uses X-Reporter-User-Id (and auth fallback) to set reportedByUserId or reportedByExternalId.
- */
 export async function createDamageIncident(
   payload: CreateDamageIncidentPayload,
   options?: CreateDamageIncidentOptions
 ): Promise<DamageIncident> {
-  const { reportedByUserId: _dropped, ...body } = payload;
-  void _dropped;
-  const headers: Record<string, string> = {};
-  if (options?.reporterUserId) {
-    headers['X-Reporter-User-Id'] = options.reporterUserId;
+  const reporterId =
+    (options?.reporterUserId != null && String(options.reporterUserId).trim() !== '')
+      ? String(options.reporterUserId).trim()
+      : (payload.reportedByUserId != null && String(payload.reportedByUserId).trim() !== '')
+        ? String(payload.reportedByUserId).trim()
+        : undefined;
+  if (!reporterId) {
+    throw new Error('Cannot create damage report: reporter user id is required (user must be logged in).');
   }
-  const res = await apiClient.post<unknown>('/api/damage-incidents', body, {
-    ...(Object.keys(headers).length > 0 ? { headers } : {}),
-  });
+  const body: CreateDamageIncidentPayload = {
+    ...payload,
+    reportedByUserId: reporterId,
+  };
+  // Backend may expect snake_case (e.g. reported_by_user_id) to persist; send converted body so it returns the value.
+  const bodySnake = toSnakeCase(body) as Record<string, unknown>;
+  const res = await apiClient.post<unknown>('/api/damage-incidents', bodySnake);
   const incident = extractOne<DamageIncident>(res, ['data', 'damageIncident', 'incident']);
-  if (incident) return normalizeIncident(incident) as DamageIncident;
+  if (incident) return ensureReporterIds(normalizeIncident(incident) as DamageIncident);
   const list = extractList<DamageIncident>(res, ['data', 'damageIncidents', 'incidents']);
-  if (list.length > 0) return normalizeIncident(list[0]) as DamageIncident;
+  if (list.length > 0) return ensureReporterIds(normalizeIncident(list[0]) as DamageIncident);
   throw new Error('Invalid create response: missing damage incident');
 }
 
-/** Update an existing damage incident */
+/** Update an existing damage incident. PATCH to API only — no localStorage. */
 export async function updateDamageIncident(
   id: string,
   payload: UpdateDamageIncidentPayload
 ): Promise<DamageIncident> {
-  const res = await apiClient.patch<unknown>(`/api/damage-incidents/${id}`, payload);
+  // Backend may expect snake_case so it persists and returns fields (e.g. resolved_by_user_id).
+  const payloadSnake = toSnakeCase(payload) as Record<string, unknown>;
+  const res = await apiClient.patch<unknown>(`/api/damage-incidents/${id}`, payloadSnake);
   const incident = extractOne<DamageIncident>(res, ['data', 'damageIncident', 'incident']);
-  if (incident) return normalizeIncident(incident) as DamageIncident;
+  if (incident) return ensureReporterIds(normalizeIncident(incident) as DamageIncident);
   throw new Error('Invalid update response: missing damage incident');
 }
 

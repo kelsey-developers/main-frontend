@@ -1128,7 +1128,14 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
         }
         let effectiveDamageIncidentId = warehouseDraft.damageIncidentId;
         if (warehouseDraft.reason === 'Damaged / Write-off' && warehouseDraft.damageIncidentId === CREATE_DAMAGE_INCIDENT_OPTION) {
-          // No reportedByUserId in body — dropped in createDamageIncident; reporter via X-Reporter-User-Id when set
+          const reporterId =
+            authState.user?.id != null && String(authState.user.id).trim() !== ''
+              ? String(authState.user.id).trim()
+              : undefined;
+          if (!reporterId) {
+            error('You must be logged in to create a damage report for this write-off.');
+            return;
+          }
           const created = await createDamageIncident(
             {
               warehouseId: warehouseDraft.warehouse,
@@ -1139,9 +1146,7 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
               chargedToGuest: 0,
               absorbedAmount: 0,
             },
-            authState.user?.id != null
-              ? { reporterUserId: String(authState.user.id) }
-              : undefined
+            { reporterUserId: reporterId }
           );
           effectiveDamageIncidentId = created.id;
         }
@@ -1442,6 +1447,22 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
           <>
             {/* ── Scrollable form body ── */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '26px 28px' }}>
+              {isDamageMode && (
+                <div
+                  style={{
+                    marginBottom: 16,
+                    padding: '12px 14px',
+                    background: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: 10,
+                    fontSize: 12,
+                    color: '#92400e',
+                    fontFamily: 'Poppins',
+                  }}
+                >
+                  <strong>Reusables (e.g. furniture, appliances):</strong> If the item is damaged but not removed (e.g. repair in place, cosmetic damage), record it in <strong>Damage Reports</strong> with <strong>Record only</strong> and skip Stock Out. Use this form only when actually removing items from inventory.
+                </div>
+              )}
               {isWH ? (
                 <WarehouseForm
                   prefill={warehousePrefill}

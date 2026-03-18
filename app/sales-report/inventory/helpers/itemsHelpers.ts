@@ -1,5 +1,5 @@
 import type { InventoryDropdownOption } from '../components/InventoryDropdown';
-import { inventoryWarehouseDirectory, isWarehouseActive } from '../lib/inventoryDataStore';
+import { getUnitCountForProduct, inventoryWarehouseDirectory, isWarehouseActive } from '../lib/inventoryDataStore';
 import type { ReplenishmentItem } from '../types';
 
 type WarehouseLike = { id: string; name: string; deletedAt?: string | null };
@@ -25,13 +25,16 @@ export const getItemQuantityForWarehouse = (
 
 /**
  * Reorder level for status calculation.
- * Min stock is inventory threshold (product-level), not per unit/warehouse.
+ * Warehouse: min threshold × number of units that have this item (so warehouse must cover all units).
+ * Unit view uses item.minStock per unit; this is for main/warehouse inventory.
  */
 export const getItemReorderForWarehouse = (
   item: ReplenishmentItem,
   _warehouseId: string | null
 ): number => {
-  return item.minStock ?? 0;
+  const min = item.minStock ?? 0;
+  const unitCount = getUnitCountForProduct(item.id);
+  return min * unitCount;
 };
 
 export const filterItemsByWarehouse = <T extends ItemLike>(

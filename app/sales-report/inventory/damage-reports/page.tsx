@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import SummaryCard from '../components/SummaryCard';
 import DamageReportModal from '../components/DamageReportModal';
+import DamageReportEditModal from '../components/DamageReportEditModal';
+import DamageReportViewModal from '../components/DamageReportViewModal';
 import InventoryDropdown, { type InventoryDropdownOption } from '../components/InventoryDropdown';
 import { useToast } from '../hooks/useToast';
 import NoneBadge, { isNoneLike } from '../components/NoneBadge';
@@ -26,13 +27,16 @@ import {
   type DamageIncident,
 } from '@/lib/api/damageIncidents';
 import { inventoryUnits, loadInventoryDataset } from '../lib/inventoryDataStore';
-import { formatPhp } from '../helpers/purchaseOrderHelpers';
-import DamageReportEvidenceImages from '../components/DamageReportEvidenceImages';
 import {
   DAMAGE_STATUS_LABELS,
+  SETTLEMENT_LABELS,
+  getSettlementFromAmounts,
   normalizeDamageStatus,
+  getInventoryActionLabel,
+  parseInventoryActionFromDescription,
   type DamageIncidentStatus,
 } from '../helpers/damageIncidentHelpers';
+import { useAuth } from '@/contexts/AuthContext';
 import { useUserDisplayNames } from '../hooks/useUserDisplayNames';
 
 type ReportType = 'unit' | 'warehouse';
@@ -45,6 +49,8 @@ type DamageReportRow = {
   unitName?: string;
   reportedBy?: string;
   reportedByUserId?: string;
+  /** Backend may return this when user id is not available */
+  reportedByName?: string;
   reportedAt: string;
   /** When the record was created (API createdAt); falls back to reportedAt */
   createdAt: string;
@@ -55,23 +61,8 @@ type DamageReportRow = {
 
 const STATUS_CLASSES: Record<string, string> = {
   open: 'bg-amber-50 text-amber-700 border border-amber-200',
-  charged_to_guest: 'bg-blue-50 text-blue-700 border border-blue-200',
-  absorbed: 'bg-violet-50 text-violet-700 border border-violet-200',
-  settled: 'bg-green-50 text-green-700 border border-green-200',
+  resolved: 'bg-green-50 text-green-700 border border-green-200',
 };
-
-function formatDate(value: string): string {
-  if (!value) return '—';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 function formatDateShort(value: string): string {
   if (!value) return '—';
@@ -80,361 +71,14 @@ function formatDateShort(value: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 }
 
-// ─── Detail Drawer ────────────────────────────────────────────────────
-function DamageReportDetailDrawer({
-  incident,
-  unitName,
-  reportType,
-  reportedByDisplayName,
-  resolvedByDisplayName,
-  onClose,
-  onEdit,
-}: {
-  incident: DamageIncident;
-  unitName?: string;
-  reportType: ReportType;
-  /** Resolved from user id via frontend fetch */
-  reportedByDisplayName?: string;
-  resolvedByDisplayName?: string;
-  onClose: () => void;
-  onEdit: (inc: DamageIncident) => void;
-}) {
-  const [visible, setVisible] = useState(false);
-  const [evidencePreview, setEvidencePreview] = useState<{ path: string; label: string } | null>(null);
-  const [previewImageFailed, setPreviewImageFailed] = useState(false);
-
-  useEffect(() => {
-    requestAnimationFrame(() => setVisible(true));
-  }, []);
-  useEffect(() => {
-    setPreviewImageFailed(false);
-  }, [evidencePreview]);
-  useEffect(() => {
-    const modalCount = Number(document.body.dataset.modalCount ?? '0') + 1;
-    document.body.dataset.modalCount = String(modalCount);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-      const nextModalCount = Math.max(0, Number(document.body.dataset.modalCount ?? '1') - 1);
-      if (nextModalCount === 0) delete document.body.dataset.modalCount;
-      else document.body.dataset.modalCount = String(nextModalCount);
-    };
-  }, []);
-
-  const handleClose = () => {
-    setVisible(false);
-    setTimeout(onClose, 260);
-  };
-
-  const reportedAt = incident.reportedAt ?? incident.reportDate ?? incident.dateReported ?? incident.createdAt ?? '';
-  const createdAt = incident.createdAt ?? reportedAt;
-  const resolvedAt = incident.resolvedAt ?? '';
-  const cost = incident.cost ?? incident.estimatedCost ?? incident.actualCost;
-  const statusKey = normalizeDamageStatus(incident.status);
-
-  return createPortal(
-    <div
-      onClick={handleClose}
-      className="fixed inset-0 z-[10000] flex justify-end overflow-hidden"
-      style={{
-        background: 'rgba(17, 24, 39, 0.38)',
-        opacity: visible ? 1 : 0,
-        transition: 'opacity 0.25s ease',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="h-full flex flex-col bg-white"
-        style={{
-          width: 'min(680px, 96vw)',
-          boxShadow: '-8px 0 48px rgba(0,0,0,0.14)',
-          transform: visible ? 'translateX(0)' : 'translateX(100%)',
-          transition: 'transform 0.28s cubic-bezier(0.32,0.72,0,1)',
-          fontFamily: 'Poppins',
-        }}
-      >
-        {/* Drawer header - PO style */}
-        <div
-          className="flex-shrink-0 px-7 py-6 text-white"
-          style={{ background: 'linear-gradient(135deg, #0b5858 0%, #05807e 100%)' }}
-        >
-          <div className="flex justify-between items-start gap-3">
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold tracking-widest mb-1.5" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                DAMAGE REPORT
-              </div>
-              <div className="text-[18px] sm:text-2xl font-black mb-1 break-all">{incident.id}</div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <ReportTypeBadge reportType={reportType} />
-              <span
-                className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
-                  STATUS_CLASSES[statusKey] ?? 'bg-gray-100 text-gray-700'
-                }`}
-              >
-                {DAMAGE_STATUS_LABELS[statusKey]}
-              </span>
-              <button
-                onClick={handleClose}
-                className="rounded-full border-0 text-2xl flex items-center justify-center flex-shrink-0 transition-colors"
-                style={{
-                  width: 34,
-                  height: 34,
-                  background: 'rgba(255,255,255,0.15)',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                ×
-              </button>
-            </div>
-          </div>
-
-          {/* Meta row - PO style (user ids for reported/resolved) */}
-          <div className="flex gap-6 mt-5 flex-wrap" style={{ fontFamily: 'Poppins' }}>
-            {[
-              { label: 'Created at', val: formatDateShort(createdAt) },
-              { label: 'Reported at', val: formatDateShort(reportedAt) },
-              {
-                label: 'Reported by',
-                val:
-                  reportedByDisplayName ??
-                  (incident.reportedByUserId != null && String(incident.reportedByUserId).trim() !== ''
-                    ? `User ID: ${incident.reportedByUserId}`
-                    : incident.reportedBy ?? '—'),
-              },
-              ...(resolvedAt || incident.resolvedByUserId
-                ? [
-                    { label: 'Resolved at', val: resolvedAt ? formatDateShort(resolvedAt) : '—' },
-                    {
-                      label: 'Resolved by',
-                      val:
-                        resolvedByDisplayName ??
-                        (incident.resolvedByUserId != null &&
-                        String(incident.resolvedByUserId).trim() !== ''
-                          ? `User ID: ${incident.resolvedByUserId}`
-                          : '—'),
-                    },
-                  ]
-                : []),
-            ].map((m) => (
-              <div key={m.label}>
-                <div className="text-[10px] font-semibold tracking-wider mb-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                  {m.label}
-                </div>
-                <div className="text-sm font-semibold">{m.val}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Body - PO style sections */}
-        <div className="flex-1 overflow-y-auto px-7 py-6" style={{ fontFamily: 'Poppins' }}>
-          {/* Overview + identifiers - all reference fields */}
-          <div className="mb-5 rounded-xl border border-[#cce8e8] bg-[#f0f9f9] p-4">
-            <div className="mb-2 text-[10px] font-bold tracking-wider uppercase text-gray-500">Overview &amp; IDs</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12.5px]">
-              <div>
-                <div className="text-gray-500">Report ID</div>
-                <div className="font-mono text-[11px] font-semibold text-gray-900 break-all">{incident.id}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Status</div>
-                <div className="font-semibold text-gray-900">{DAMAGE_STATUS_LABELS[statusKey]}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Booking ID</div>
-                <div className="font-semibold text-gray-900 font-mono text-[11px] break-all">
-                  {isNoneLike(incident.bookingId) ? '—' : incident.bookingId ?? '—'}
-                </div>
-              </div>
-              {incident.unitId ? (
-                <>
-                  <div>
-                    <div className="text-gray-500">Unit</div>
-                    <div className="font-semibold text-gray-900">{unitName ?? incident.unitId ?? '—'}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Unit ID</div>
-                    <div className="font-mono text-[11px] text-gray-800 break-all">{incident.unitId}</div>
-                  </div>
-                </>
-              ) : null}
-              {incident.warehouseId ? (
-                <div>
-                  <div className="text-gray-500">Warehouse</div>
-                  <div className="font-mono text-[11px] text-gray-800 break-all">{incident.warehouseId}</div>
-                </div>
-              ) : null}
-              <div>
-                <div className="text-gray-500">Reported by</div>
-                <div className="font-semibold text-gray-900">
-                  {reportedByDisplayName ?? incident.reportedBy ?? (incident.reportedByUserId ? `User ID: ${incident.reportedByUserId}` : '—')}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500">Resolved by</div>
-                <div className="font-semibold text-gray-900">
-                  {resolvedByDisplayName ?? (incident.resolvedByUserId ? `User ID: ${incident.resolvedByUserId}` : '—')}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500">Updated at</div>
-                <div className="font-semibold text-gray-900">
-                  {incident.updatedAt ? formatDate(incident.updatedAt) : '—'}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Description - always show */}
-          <div className="mb-5">
-            <div className="mb-2 text-[10px] font-bold tracking-wider uppercase text-gray-500">Description</div>
-            <div className="text-[13px] text-gray-800 whitespace-pre-wrap">
-              {incident.description?.trim() ? incident.description : '—'}
-            </div>
-          </div>
-
-          {/* Costs - show all amount fields */}
-          <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4">
-            <div className="mb-2 text-[10px] font-bold tracking-wider uppercase text-gray-500">Costs &amp; amounts</div>
-            <div className="grid gap-2 text-[12.5px]">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Cost</span>
-                <span className="font-semibold text-[#0b5858]">
-                  {cost != null ? formatPhp(Number(cost)) : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Estimated cost</span>
-                <span className="font-semibold">
-                  {incident.estimatedCost != null ? formatPhp(Number(incident.estimatedCost)) : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Actual cost</span>
-                <span className="font-semibold">
-                  {incident.actualCost != null ? formatPhp(Number(incident.actualCost)) : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Charged to guest</span>
-                <span className="font-semibold">
-                  {incident.chargedToGuest != null ? formatPhp(Number(incident.chargedToGuest)) : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Absorbed</span>
-                <span className="font-semibold">
-                  {incident.absorbedAmount != null ? formatPhp(Number(incident.absorbedAmount)) : '—'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Resolution - always show block; notes may be — */}
-          <div className="mb-5 rounded-xl border border-[#cce8e8] bg-[#f0f9f9] p-4">
-            <div className="mb-2 text-[10px] font-bold tracking-wider uppercase text-gray-500">Resolution</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[12.5px] mb-3">
-              <div>
-                <div className="text-gray-500">Resolved by</div>
-                <div className="font-semibold text-gray-900">
-                  {resolvedByDisplayName ?? (incident.resolvedByUserId ? `User ID: ${incident.resolvedByUserId}` : '—')}
-                </div>
-              </div>
-              <div>
-                <div className="text-gray-500">Resolved at</div>
-                <div className="font-semibold text-gray-900">
-                  {resolvedAt ? formatDate(resolvedAt) : '—'}
-                </div>
-              </div>
-            </div>
-            <div className="pt-3 border-t border-[#cce8e8]">
-              <div className="text-gray-500 mb-1">Resolution notes</div>
-              <div className="text-[13px] text-gray-800 whitespace-pre-wrap">
-                {incident.resolutionNotes?.trim() ? incident.resolutionNotes : '—'}
-              </div>
-            </div>
-          </div>
-
-          {/* Submitted images */}
-          <DamageReportEvidenceImages
-            incidentId={incident.id}
-            onPreview={(path, label) => setEvidencePreview({ path, label })}
-          />
-        </div>
-
-        {/* Footer */}
-        <div
-          className="px-7 py-4 border-t border-[#e5e7eb] flex gap-2 flex-shrink-0 bg-white"
-          style={{ fontFamily: 'Poppins' }}
-        >
-          <button
-            onClick={() => onEdit(incident)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#0b5858] to-[#05807e] text-white font-semibold text-sm rounded-lg transition-all duration-150 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
-            style={{ boxShadow: '0 2px 8px rgba(11,88,88,0.2)' }}
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-              <path
-                d="M11.333 2.00004C11.5084 1.82463 11.7163 1.68648 11.9451 1.59347C12.1738 1.50046 12.4191 1.45435 12.6663 1.45435C12.9136 1.45435 13.1589 1.50046 13.3876 1.59347C13.6164 1.68648 13.8243 1.82463 13.9997 2.00004C14.1751 2.17546 14.3132 2.38334 14.4062 2.61209C14.4992 2.84084 14.5453 3.08618 14.5453 3.33337C14.5453 3.58057 14.4992 3.82591 14.4062 4.05466C14.3132 4.28341 14.1751 4.49129 13.9997 4.66671L4.99967 13.6667L1.33301 14.6667L2.33301 11L11.333 2.00004Z"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Edit report
-          </button>
-        </div>
-      </div>
-
-      {/* Image preview overlay - PO style */}
-      {evidencePreview && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            setEvidencePreview(null);
-            setPreviewImageFailed(false);
-          }}
-          className="fixed inset-0 z-[10001] bg-[rgba(17,24,39,0.55)] flex items-center justify-center p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-[980px] rounded-2xl overflow-hidden border border-white/15 bg-[#0f172a] shadow-2xl"
-          >
-            <div className="flex justify-between items-center px-4 py-3 border-b border-white/10 text-white">
-              <div className="text-[12px] font-semibold">{evidencePreview.label}</div>
-              <button
-                type="button"
-                onClick={() => { setEvidencePreview(null); setPreviewImageFailed(false); }}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
-                aria-label="Close image preview"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-3 bg-black/20 min-h-[200px] flex items-center justify-center">
-              {previewImageFailed ? (
-                <div className="flex flex-col items-center gap-2 py-8 text-white/80">
-                  <svg className="w-14 h-14 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  <span className="text-[14px] font-medium">Image was not present in submission</span>
-                </div>
-              ) : (
-                <img
-                  src={evidencePreview.path}
-                  alt={evidencePreview.label}
-                  className="w-full max-h-[76vh] object-contain rounded-lg bg-white"
-                  onError={() => setPreviewImageFailed(true)}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>,
-    document.body
-  );
+/** Get reporter user id from incident (API may send reportedByUserId or reportedBy.id / reportedBy string). */
+function getReportedByUserId(inc: DamageIncident): string | undefined {
+  if (inc.reportedByUserId != null && inc.reportedByUserId !== '') return String(inc.reportedByUserId);
+  const rb = (inc as unknown as Record<string, unknown>).reportedBy;
+  if (rb == null) return undefined;
+  if (typeof rb === 'object' && rb !== null && 'id' in rb) return String((rb as { id: string | number }).id);
+  if (typeof rb === 'string') return rb;
+  return undefined;
 }
 
 function flattenIncidentsToRows(incidents: DamageIncident[]): DamageReportRow[] {
@@ -452,7 +96,8 @@ function flattenIncidentsToRows(incidents: DamageIncident[]): DamageReportRow[] 
       unitId: inc.unitId,
       unitName: inc.unitId ? (byUnit.get(inc.unitId) ?? inc.unitId) : undefined,
       reportedBy: inc.reportedBy,
-      reportedByUserId: inc.reportedByUserId,
+      reportedByUserId: getReportedByUserId(inc),
+      reportedByName: inc.reportedByName,
       reportedAt,
       createdAt,
       updatedAt,
@@ -472,7 +117,8 @@ export default function DamageReportsPage() {
   const [refreshTick, setRefreshTick] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editIncident, setEditIncident] = useState<DamageIncident | null>(null);
-  const [drawerIncident, setDrawerIncident] = useState<DamageIncident | null>(null);
+  const [editModalIncident, setEditModalIncident] = useState<DamageIncident | null>(null);
+  const [viewModalIncident, setViewModalIncident] = useState<DamageIncident | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -481,7 +127,7 @@ export default function DamageReportsPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isServerDown, setIsServerDown] = useState(false);
 
-  const { error: showError } = useToast();
+  const { error: showError, success: showSuccess } = useToast();
 
   useEffect(() => {
     void loadInventoryDataset().then(() => setRefreshTick((t) => t + 1));
@@ -520,15 +166,39 @@ export default function DamageReportsPage() {
     [incidents, refreshTick]
   );
 
+  const auth = useAuth();
   const userIdsForNames = useMemo(
     () =>
       [
         ...rows.map((r) => r.reportedByUserId),
         ...rows.map((r) => r.incident.resolvedByUserId),
+        ...(viewModalIncident
+          ? [
+              viewModalIncident.reportedByUserId,
+              (viewModalIncident as { resolvedByUserId?: string | number | null }).resolvedByUserId,
+            ]
+          : []),
       ].filter(Boolean) as string[],
-    [rows]
+    [rows, viewModalIncident]
   );
   const userDisplayNames = useUserDisplayNames(userIdsForNames);
+
+  /** Name display: prefer id lookup (auth + useUserDisplayNames), else "User ID: {id}". When no id, use backend reportedByName. */
+  const getDisplayNameForUserId = (userId: string | number | undefined | null, nameFromApi?: string | null): string => {
+    if (userId != null && userId !== '') {
+      const idStr = String(userId);
+      if (auth?.user && String(auth.user.id) === idStr) {
+        const fromAuth =
+          auth.userProfile?.fullname?.trim() ||
+          [auth.user.firstName, auth.user.lastName].filter(Boolean).join(' ').trim();
+        if (fromAuth) return fromAuth;
+      }
+      const fromMap = userDisplayNames[idStr]?.trim();
+      if (fromMap) return fromMap;
+      return `User ID: ${idStr}`;
+    }
+    return (nameFromApi?.trim()) || '—';
+  };
 
   const filteredRows = useMemo(() => {
     let list = rows;
@@ -545,7 +215,7 @@ export default function DamageReportsPage() {
           r.incident.resolutionNotes?.toLowerCase().includes(q) ||
           r.reportedBy?.toLowerCase().includes(q) ||
           r.reportedByUserId?.toLowerCase().includes(q) ||
-          r.incident.resolvedByUserId?.toLowerCase().includes(q)
+          String(r.incident.resolvedByUserId ?? '').toLowerCase().includes(q)
       );
     }
     if (dateFrom || dateTo) {
@@ -566,8 +236,8 @@ export default function DamageReportsPage() {
   const totals = useMemo(() => {
     const total = rows.length;
     const open = rows.filter((r) => normalizeDamageStatus(r.incident.status) === 'open').length;
-    const settled = rows.filter((r) => normalizeDamageStatus(r.incident.status) === 'settled').length;
-    return { total, open, settled };
+    const resolved = rows.filter((r) => normalizeDamageStatus(r.incident.status) === 'resolved').length;
+    return { total, open, resolved };
   }, [rows]);
 
   const statusOptions = useMemo<InventoryDropdownOption<string>[]>(() => {
@@ -576,7 +246,7 @@ export default function DamageReportsPage() {
       const s = normalizeDamageStatus(r.incident.status);
       seen.add(s);
     }
-    const order: DamageIncidentStatus[] = ['open', 'charged_to_guest', 'absorbed', 'settled'];
+    const order: DamageIncidentStatus[] = ['open', 'resolved'];
     return [
       { value: 'all', label: 'All statuses' },
       ...order.filter((s) => seen.has(s)).map((s) => ({ value: s, label: DAMAGE_STATUS_LABELS[s] })),
@@ -641,8 +311,8 @@ export default function DamageReportsPage() {
             gradient: 'from-[#05807e] to-[#0B5858]',
           },
           {
-            label: 'Settled',
-            value: totals.settled,
+            label: 'Resolved',
+            value: totals.resolved,
             gradient: 'from-amber-500 to-amber-600',
           },
         ].map((stat, i) => (
@@ -824,9 +494,9 @@ export default function DamageReportsPage() {
             {/* Table header - Desktop (PO style) */}
             <div
               className="hidden md:grid px-5 py-3 bg-gradient-to-r from-[#0b5858] to-[#05807e]"
-              style={{ gridTemplateColumns: '0.85fr 0.85fr 0.9fr 1fr 1.1fr 1.2fr 1fr 1fr' }}
+              style={{ gridTemplateColumns: '0.85fr 0.85fr 0.75fr 0.85fr 1fr 1.1fr 1.2fr 1fr' }}
             >
-              {['REPORT ID', 'TYPE', 'STATUS', 'BOOKING', 'UNIT', 'REPORTED BY', 'CREATED AT', 'UPDATED AT'].map((h) => (
+              {['REPORT ID', 'TYPE', 'ACTION', 'STATUS', 'BOOKING', 'UNIT', 'REPORTED BY', 'CREATED AT'].map((h) => (
                 <div key={h} className="text-xs font-bold tracking-wide text-white/75">
                   {h}
                 </div>
@@ -841,13 +511,13 @@ export default function DamageReportsPage() {
                   onClick={async () => {
                     try {
                       const full = await getDamageIncident(row.incident.id);
-                      setDrawerIncident(full ?? row.incident);
+                      setViewModalIncident(full ?? row.incident);
                     } catch {
-                      setDrawerIncident(row.incident);
+                      setViewModalIncident(row.incident);
                     }
                   }}
                   className="hidden md:grid px-5 py-3 border-b border-gray-200 last:border-b-0 cursor-pointer transition-colors hover:bg-gray-50"
-                  style={{ gridTemplateColumns: '0.85fr 0.85fr 0.9fr 1fr 1.1fr 1.2fr 1fr 1fr' }}
+                  style={{ gridTemplateColumns: '0.85fr 0.85fr 0.75fr 0.85fr 1fr 1.1fr 1.2fr 1fr' }}
                 >
                   <div
                     className="text-[11px] text-gray-400 break-all font-mono max-w-[180px]"
@@ -862,11 +532,29 @@ export default function DamageReportsPage() {
                   <div className="text-[12px]">
                     <span
                       className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
+                        parseInventoryActionFromDescription(row.incident.description) === 'record_only'
+                          ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}
+                      title={parseInventoryActionFromDescription(row.incident.description) === 'record_only' ? 'No stock deduction' : 'Deduct stock via Stock Out'}
+                    >
+                      {getInventoryActionLabel(parseInventoryActionFromDescription(row.incident.description))}
+                    </span>
+                  </div>
+                  <div className="text-[12px] flex flex-col gap-0.5">
+                    <span
+                      className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-medium w-fit ${
                         STATUS_CLASSES[normalizeDamageStatus(row.incident.status)] ?? 'bg-gray-100 text-gray-700'
                       }`}
                     >
                       {DAMAGE_STATUS_LABELS[normalizeDamageStatus(row.incident.status)]}
                     </span>
+                    {normalizeDamageStatus(row.incident.status) === 'resolved' && (() => {
+                      const settlement = getSettlementFromAmounts(row.incident.chargedToGuest, row.incident.absorbedAmount);
+                      return settlement ? (
+                        <span className="text-[10px] text-gray-500">{SETTLEMENT_LABELS[settlement]}</span>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="text-[12.5px] text-gray-700">
                     {isNoneLike(row.bookingId) ? <NoneBadge /> : row.bookingId ?? '—'}
@@ -876,17 +564,12 @@ export default function DamageReportsPage() {
                   </div>
                   <div>
                     <div className="text-[12.5px] font-medium text-gray-900">
-                      {row.reportedByUserId
-                        ? (userDisplayNames[row.reportedByUserId] ?? row.reportedBy ?? '—')
-                        : (row.reportedBy ?? '—')}
+                      {getDisplayNameForUserId(row.reportedByUserId, row.incident.reportedByName)}
                     </div>
                     <div className="text-[11px] text-gray-500">{formatDateShort(row.reportedAt)}</div>
                   </div>
                   <div className="text-[12px] text-gray-700">
                     {formatDateShort(row.createdAt)}
-                  </div>
-                  <div className="text-[12px] text-gray-700">
-                    {row.updatedAt ? formatDateShort(row.updatedAt) : '—'}
                   </div>
                 </div>
 
@@ -895,9 +578,9 @@ export default function DamageReportsPage() {
                   onClick={async () => {
                     try {
                       const full = await getDamageIncident(row.incident.id);
-                      setDrawerIncident(full ?? row.incident);
+                      setViewModalIncident(full ?? row.incident);
                     } catch {
-                      setDrawerIncident(row.incident);
+                      setViewModalIncident(row.incident);
                     }
                   }}
                   className="md:hidden px-4 py-4 border-b border-gray-200 last:border-b-0 cursor-pointer transition-colors active:bg-gray-50"
@@ -913,11 +596,26 @@ export default function DamageReportsPage() {
                       <ReportTypeBadge reportType={row.reportType} />
                       <span
                         className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
+parseInventoryActionFromDescription(row.incident.description) === 'record_only'
+                            ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}
+                        >
+                          {getInventoryActionLabel(parseInventoryActionFromDescription(row.incident.description))}
+                      </span>
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
                           STATUS_CLASSES[normalizeDamageStatus(row.incident.status)] ?? 'bg-gray-100 text-gray-700'
                         }`}
                       >
                         {DAMAGE_STATUS_LABELS[normalizeDamageStatus(row.incident.status)]}
                       </span>
+                      {normalizeDamageStatus(row.incident.status) === 'resolved' && (() => {
+                        const settlement = getSettlementFromAmounts(row.incident.chargedToGuest, row.incident.absorbedAmount);
+                        return settlement ? (
+                          <span className="text-[9.5px] text-gray-500">{SETTLEMENT_LABELS[settlement]}</span>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
@@ -939,18 +637,10 @@ export default function DamageReportsPage() {
                         {formatDateShort(row.createdAt)}
                       </div>
                     </div>
-                    <div className="bg-[#e8f4f4] rounded-lg p-2">
-                      <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1">Updated at</div>
-                      <div className="text-[13px] font-bold text-gray-700">
-                        {row.updatedAt ? formatDateShort(row.updatedAt) : '—'}
-                      </div>
-                    </div>
                     <div className="col-span-2 bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1">Reported by</div>
                       <div className="text-[12px] font-semibold text-gray-900">
-                        {row.reportedByUserId
-                          ? (userDisplayNames[row.reportedByUserId] ?? row.reportedBy ?? '—')
-                          : (row.reportedBy ?? '—')}
+                        {getDisplayNameForUserId(row.reportedByUserId, row.incident.reportedByName)}
                       </div>
                       <div className="text-[11px] text-gray-500 mt-0.5">{formatDateShort(row.reportedAt)}</div>
                     </div>
@@ -989,35 +679,42 @@ export default function DamageReportsPage() {
         />
       )}
 
-      {drawerIncident && (
-        <DamageReportDetailDrawer
-          incident={drawerIncident}
-          reportType={drawerIncident.unitId ? 'unit' : 'warehouse'}
+      {editModalIncident && (
+        <DamageReportEditModal
+          incident={editModalIncident}
+          onClose={() => setEditModalIncident(null)}
+          onSuccess={() => {
+            setEditModalIncident(null);
+            setRefreshTick((t) => t + 1);
+          }}
+        />
+      )}
+
+      {viewModalIncident && (
+        <DamageReportViewModal
+          incident={viewModalIncident}
           unitName={
-            drawerIncident.unitId
-              ? inventoryUnits.find((u) => u.id === drawerIncident.unitId)?.name ?? drawerIncident.unitId
+            viewModalIncident.unitId
+              ? inventoryUnits.find((u) => u.id === viewModalIncident.unitId)?.name ?? viewModalIncident.unitId
               : undefined
           }
-          reportedByDisplayName={
-            drawerIncident.reportedByUserId
-              ? userDisplayNames[drawerIncident.reportedByUserId] ?? drawerIncident.reportedBy
-              : drawerIncident.reportedBy
-          }
-          resolvedByDisplayName={
-            drawerIncident.resolvedByUserId
-              ? userDisplayNames[drawerIncident.resolvedByUserId]
-              : undefined
-          }
-          onClose={() => setDrawerIncident(null)}
-          onEdit={async (inc) => {
-            setDrawerIncident(null);
-            try {
-              const full = await getDamageIncident(inc.id);
-              setEditIncident(full ?? inc);
-            } catch {
-              setEditIncident(inc);
-            }
-            setModalOpen(true);
+          reportedByDisplayName={getDisplayNameForUserId(viewModalIncident.reportedByUserId, viewModalIncident.reportedByName)}
+          resolvedByDisplayName={getDisplayNameForUserId(
+            viewModalIncident.resolvedByUserId ?? null,
+            (viewModalIncident as { resolvedByName?: string }).resolvedByName
+          )}
+          onClose={() => setViewModalIncident(null)}
+          onEdit={() => {
+            void (async () => {
+              const inc = viewModalIncident;
+              setViewModalIncident(null);
+              try {
+                const full = await getDamageIncident(inc.id);
+                setEditModalIncident(full ?? inc);
+              } catch {
+                setEditModalIncident(inc);
+              }
+            })();
           }}
         />
       )}

@@ -8,8 +8,25 @@ type UserRecord = {
   fullname?: string;
   firstName?: string;
   lastName?: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
   user?: UserRecord;
+  data?: { user?: UserRecord };
 };
+
+function extractDisplayName(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const obj = data as Record<string, unknown>;
+  const user = (obj.user as UserRecord) ?? (obj.data as { user?: UserRecord })?.user ?? obj;
+  const u = user as UserRecord;
+  const fullname =
+    u?.fullname ??
+    u?.name ??
+    ([u?.firstName, u?.lastName].filter(Boolean).join(' ').trim() ||
+      [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim());
+  return typeof fullname === 'string' ? fullname.trim() : '';
+}
 
 /**
  * Fetches display names for the given user IDs via GET /api/users/:id.
@@ -33,11 +50,8 @@ export function useUserDisplayNames(userIds: (string | number | undefined | null
       await Promise.all(
         idsToFetch.map(async (id) => {
           try {
-            const data = await apiClient.get<UserRecord>(`/api/users/${encodeURIComponent(id)}`);
-            const user = (data as UserRecord)?.user ?? data;
-            const fullname =
-              user?.fullname ??
-              [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+            const data = await apiClient.get<unknown>(`/api/users/${encodeURIComponent(id)}`);
+            const fullname = extractDisplayName(data);
             if (fullname) next[id] = fullname;
           } catch {
             // leave unresolved

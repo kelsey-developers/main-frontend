@@ -9,6 +9,8 @@ export default function CycleCountPage() {
   const searchParams = useSearchParams();
   const [modalOpen, setModalOpen] = useState(false);
   const warehousePrefill = searchParams.get('warehouseId') || undefined;
+  const unitPrefill = searchParams.get('unitId') || undefined;
+  const unitOnly = searchParams.get('unitOnly') === '1' || searchParams.get('unitOnly') === 'true';
   const returnTo = searchParams.get('returnTo') ?? '/sales-report/inventory/items';
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export default function CycleCountPage() {
           Cycle Count / Inventory Adjustment
         </h1>
         <p className="text-gray-600 mt-1" style={{ fontFamily: 'Poppins' }}>
-          Add or remove stock to correct warehouse inventory discrepancies
+          Add or remove stock to correct warehouse or unit (room) inventory discrepancies
         </p>
       </div>
 
@@ -54,6 +56,8 @@ export default function CycleCountPage() {
           onClose={() => setModalOpen(false)}
           returnTo={returnTo}
           warehousePrefill={warehousePrefill}
+          unitPrefill={unitPrefill}
+          unitOnly={unitOnly}
         />
       )}
     </>
