@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookingFormData, AdditionalService } from '@/types/booking';
+import type { Listing } from '@/types/listing';
 import { BookingSummarySidebar } from './BookingSummarySidebar';
 import { NeedHelpCard } from './NeedHelpCard';
 import {
@@ -10,6 +11,7 @@ import {
 interface AdditionalServicesStepProps {
   formData: BookingFormData;
   listingId?: string;
+  listing?: Listing | null;
   onUpdate: (data: Partial<BookingFormData>) => void;
   onNext: () => void;
   onBack: () => void;
@@ -19,6 +21,7 @@ interface AdditionalServicesStepProps {
 const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
   formData,
   listingId,
+  listing,
   onUpdate,
   onNext,
   onBack,
@@ -354,7 +357,7 @@ const AdditionalServicesStep: React.FC<AdditionalServicesStepProps> = ({
 
         <aside className="lg:col-span-1">
           <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
-            <BookingSummarySidebar formData={formData} listingId={listingId} />
+            <BookingSummarySidebar formData={formData} listingId={listingId} listing={listing} />
             <NeedHelpCard />
           </div>
         </aside>

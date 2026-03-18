@@ -17,6 +17,7 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/admin',
   '/api/agents',
   '/api/upload',
+  '/api/calendar',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -49,6 +50,7 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (endpoint.startsWith('/api/agents/payouts')) return true;
   if (endpoint.startsWith('/api/admin/payouts')) return true;
   if (endpoint.startsWith('/api/upload')) return true;
+  if (endpoint.startsWith('/api/calendar')) return true;
   return false;
 }
 

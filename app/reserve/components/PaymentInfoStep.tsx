@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { BookingFormData, BookingSummary } from '@/types/booking';
+import type { Listing } from '@/types/listing';
+import { computePriceWithUnitPricing } from '@/lib/utils/unitPricing';
 import { BookingSummarySidebar } from './BookingSummarySidebar';
 import { NeedHelpCard } from './NeedHelpCard';
 
 interface PaymentInfoStepProps {
   formData: BookingFormData;
   listingId?: string;
+  listing?: Listing | null;
   onUpdate: (data: Partial<BookingFormData>) => void;
   onNext: () => void;
   onBack: () => void;
@@ -38,6 +41,7 @@ type PaymentMethod = 'gcash' | 'bank_transfer' | '';
 const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
   formData,
   listingId,
+  listing,
   onUpdate,
   onNext,
   onBack,
@@ -331,33 +335,57 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
   const serviceCharge = formData.serviceCharge ?? 100.0;
   const discount = formData.discount ?? 0.0;
 
-  const start = toDateOnly(parseYMD(formData.checkInDate));
-  const end = toDateOnly(parseYMD(formData.checkOutDate));
-  const nights =
-    start && end
-      ? Math.max(0, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
-      : 0;
+  const pricingResult = useMemo(() => {
+    if (!formData.checkInDate || !formData.checkOutDate) {
+      return {
+        baseSubtotal: 0,
+        holidayAdjustmentAmount: 0,
+        subtotalBeforeDiscount: 0,
+        stayLengthDiscountAmount: 0,
+        subtotal: 0,
+        nights: 0,
+      };
+    }
+    return computePriceWithUnitPricing(
+      pricePerNight,
+      formData.checkInDate,
+      formData.checkOutDate,
+      listing?.discount_rules,
+      listing?.holiday_pricing_rules
+    );
+  }, [
+    formData.checkInDate,
+    formData.checkOutDate,
+    pricePerNight,
+    listing?.discount_rules,
+    listing?.holiday_pricing_rules,
+  ]);
+
+  const nights = pricingResult.nights;
+  const subtotalBeforeDiscount = nights > 0 ? pricingResult.subtotalBeforeDiscount : 0;
+  const stayLengthDiscountAmount = nights > 0 ? pricingResult.stayLengthDiscountAmount : 0;
+  const subtotal = nights > 0 ? pricingResult.subtotal : 0;
 
   const primaryGuests = formData.numberOfGuests ?? 1;
   const extraGuests = formData.extraGuests ?? 0;
 
-  const subtotal = Math.max(1, nights) * pricePerNight;
   const extraGuestFees = extraGuests * extraGuestRate;
 
   const calculateSummary = (): BookingSummary => {
     const unitCharge = pricePerNight;
     const amenitiesCharge = (formData.additionalServices || []).reduce((total, svc) => total + svc.quantity * svc.charge, 0);
 
-    const totalCharges = subtotal + amenitiesCharge + serviceCharge + extraGuestFees - discount;
+    const stayDiscount = stayLengthDiscountAmount;
+    const totalCharges = subtotalBeforeDiscount + amenitiesCharge + serviceCharge + extraGuestFees - stayDiscount - discount;
 
     return {
       unitCharge,
       amenitiesCharge,
       serviceCharge,
-      discount,
+      discount: discount + stayDiscount,
       totalCharges,
       nights,
-      subtotal,
+      subtotal: subtotalBeforeDiscount,
       extraGuestFees,
       primaryGuests,
       extraGuests,
@@ -373,7 +401,7 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
     baseGuests: summary.baseGuests ?? baseGuests,
     extraGuests: summary.extraGuests ?? extraGuests,
     nights: actualCharges?.nights ?? summary.nights ?? nights,
-    subtotal: actualCharges?.subtotal ?? (summary as any).subtotal ?? subtotal,
+    subtotal: actualCharges?.subtotal ?? (summary as any).subtotal ?? subtotalBeforeDiscount,
     amenitiesCharge: actualCharges?.amenitiesCharge ?? summary.amenitiesCharge,
     extraGuestFees: actualCharges?.extraGuestFees ?? (summary as any).extraGuestFees ?? extraGuestFees,
     serviceCharge: actualCharges?.serviceCharge ?? summary.serviceCharge,
@@ -826,7 +854,7 @@ const PaymentInfoStep: React.FC<PaymentInfoStepProps> = ({
         {/* Right Panel - Booking Summary + Need Help only (like Stay Details) */}
         <aside className="lg:col-span-1">
           <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
-            <BookingSummarySidebar formData={formData} listingId={listingId} />
+            <BookingSummarySidebar formData={formData} listingId={listingId} listing={listing} />
             <NeedHelpCard />
           </div>
         </aside>

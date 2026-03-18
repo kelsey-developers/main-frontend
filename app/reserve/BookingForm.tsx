@@ -162,6 +162,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
           <ClientInfoStep
             formData={formData}
             listingId={listingId}
+            listing={listing}
             onUpdate={updateFormData}
             onNext={nextStep}
             onBack={prevStep}
@@ -174,6 +175,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
           <AdditionalServicesStep
             formData={formData}
             listingId={listingId}
+            listing={listing}
             onUpdate={updateFormData}
             onNext={nextStep}
             onBack={prevStep}
@@ -186,6 +188,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ listingId, listing, pricePerN
           <PaymentInfoStep
             formData={formData}
             listingId={listingId}
+            listing={listing}
             onUpdate={updateFormData}
             onNext={nextStep}
             onBack={prevStep}

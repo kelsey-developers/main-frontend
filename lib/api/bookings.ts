@@ -9,6 +9,7 @@ export interface BookingListItem {
 
 export interface MyBookingItem {
   id: string;
+  unit_id?: string;
   reference_code?: string;
   check_in_date: string;
   check_out_date: string;

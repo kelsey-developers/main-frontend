@@ -5,13 +5,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 
-const PRICING_UNITS = [
-  { id: 'unit-1', title: 'Ocean View Villa', imageUrl: '/heroimage.png', basePrice: 8500 },
-  { id: 'unit-2', title: 'Mountain Cabin', imageUrl: undefined, basePrice: 6500 },
-  { id: 'unit-3', title: 'City Apartment', imageUrl: undefined, basePrice: 5500 },
-  { id: 'unit-4', title: 'Beach House', imageUrl: '/heroimage.png', basePrice: 12000 },
-  { id: 'unit-5', title: 'Lakeside Retreat', imageUrl: undefined, basePrice: 7000 },
-];
+type PricingUnit = { id: string; title: string; imageUrl?: string; basePrice?: number };
 
 const PRICING_PRESETS: { id: string; label: string; description: string; pct: number; icon: ReactNode }[] = [
   {
@@ -77,19 +71,23 @@ export type SpecialPricingRule = {
   end_date: string;
   price: number;
   note?: string;
+  name?: string;
   scope?: 'global' | 'unit';
   unit_id?: string;
+  adjustmentMode?: 'percentage' | 'fixed';
+  adjustmentPercent?: number;
 };
 
 interface SpecialPricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   existingRules?: SpecialPricingRule[];
-  onSave: (rule: Omit<SpecialPricingRule, 'id'>) => void;
+  onSave: (rule: Omit<SpecialPricingRule, 'id'> & { name?: string; adjustmentMode?: 'percentage' | 'fixed'; adjustmentPercent?: number }) => void;
   onRemove?: (id: string) => void;
   preselectedUnitId?: string | null;
   startDate?: string;
   endDate?: string;
+  units?: { id: string; title: string; imageUrl?: string; basePrice?: number }[];
 }
 
 const inputClass = 'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-colors bg-white';
@@ -120,21 +118,29 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
   preselectedUnitId,
   startDate = '',
   endDate = '',
+  units = [],
 }) => {
   const [step, setStep] = useState<1 | 2>(1);
   const [localStart, setLocalStart] = useState(startDate);
   const [localEnd, setLocalEnd] = useState(endDate);
   const [preset, setPreset] = useState('weekend');
   const [customPrice, setCustomPrice] = useState('');
+  const [customPercent, setCustomPercent] = useState('');
+  const [customMode, setCustomMode] = useState<'price' | 'percentage'>('price');
+  const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [scope, setScope] = useState<'global' | 'unit'>('global');
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(preselectedUnitId ?? null);
+  const pricingUnits: PricingUnit[] = units.length > 0 ? units : [];
   const resetForm = useCallback(() => {
     setStep(1);
     setLocalStart(startDate);
     setLocalEnd(endDate);
     setPreset('weekend');
     setCustomPrice('');
+    setCustomPercent('');
+    setCustomMode('price');
+    setName('');
     setNote('');
     setScope(preselectedUnitId ? 'unit' : 'global');
     setSelectedUnitId(preselectedUnitId ?? null);
@@ -154,26 +160,38 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
 
   const selectedPreset = PRICING_PRESETS.find((p) => p.id === preset);
   const dayCount = countDays(localStart, localEnd);
-  const canProceed = !!localStart && !!localEnd && localStart <= localEnd && (preset !== 'custom' || (!!customPrice && parseFloat(customPrice) > 0));
+  const customValid = preset !== 'custom' || (
+    customMode === 'price' ? (!!customPrice && parseFloat(customPrice) > 0) : (!!customPercent && !Number.isNaN(parseFloat(customPercent)))
+  );
+  const canProceed = !!localStart && !!localEnd && localStart <= localEnd && customValid && (!!name.trim() || preset !== 'custom');
 
+  const baseForUnit = pricingUnits.find((u) => u.id === selectedUnitId)?.basePrice ?? (pricingUnits.length > 0 ? pricingUnits.reduce((sum, u) => sum + (u.basePrice ?? 0), 0) / pricingUnits.length : 5000);
   const computedPrice = (() => {
-    if (preset === 'custom') return parseFloat(customPrice) || 0;
-    const baseUnit = PRICING_UNITS.find((u) => u.id === selectedUnitId);
-    const base = baseUnit?.basePrice ?? PRICING_UNITS.reduce((sum, u) => sum + u.basePrice, 0) / PRICING_UNITS.length;
-    return Math.round(base * (1 + (selectedPreset?.pct ?? 0) / 100));
+    if (preset === 'custom') {
+      if (customMode === 'price') return parseFloat(customPrice) || 0;
+      const pct = parseFloat(customPercent) || 0;
+      return Math.round(baseForUnit * (1 + pct / 100));
+    }
+    return Math.round(baseForUnit * (1 + (selectedPreset?.pct ?? 0) / 100));
   })();
 
   const handleSave = () => {
-    if (!localStart || !localEnd || computedPrice <= 0) return;
+    if (!localStart || !localEnd) return;
+    if (preset === 'custom' && customMode === 'price' && computedPrice <= 0) return;
     const [s, e] = [localStart, localEnd].sort();
-    const autoNote = preset !== 'custom' ? (selectedPreset?.label ?? (note.trim() || undefined)) : (note.trim() || undefined);
+    const ruleName = name.trim() || (preset !== 'custom' ? selectedPreset?.label : 'Custom pricing') || 'Special pricing';
+    const isFixed = preset === 'custom' ? customMode === 'price' : false;
+    const pct = preset === 'custom' && customMode === 'percentage' ? parseFloat(customPercent) || 0 : (selectedPreset?.pct ?? 0);
     onSave({
       start_date: s,
       end_date: e,
-      price: computedPrice,
-      note: autoNote,
+      price: isFixed ? computedPrice : 0,
+      note: note.trim() || ruleName,
+      name: ruleName,
       scope,
       unit_id: scope === 'unit' && selectedUnitId ? selectedUnitId : undefined,
+      adjustmentMode: isFixed ? 'fixed' : 'percentage',
+      adjustmentPercent: isFixed ? undefined : pct,
     });
     onClose();
   };
@@ -279,23 +297,72 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Custom price input */}
+                  {/* Custom price: fixed or percentage */}
                   {preset === 'custom' && (
-                    <div>
-                      <label className={labelClass}>Nightly Rate</label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
-                        <input
-                          type="number"
-                          value={customPrice}
-                          onChange={(e) => setCustomPrice(e.target.value)}
-                          placeholder="0"
-                          min={0}
-                          className={inputClass + ' pl-8'}
-                        />
+                    <div className="space-y-4">
+                      <div>
+                        <label className={labelClass}>Custom Type</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setCustomMode('price')}
+                            className={`px-4 py-2.5 rounded-xl border-2 text-sm font-medium transition-all cursor-pointer ${customMode === 'price' ? 'border-[#0B5858] bg-[#0B5858]/5 text-[#0B5858]' : 'border-gray-200 hover:border-gray-300'}`}
+                          >
+                            Fixed Price
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCustomMode('percentage')}
+                            className={`px-4 py-2.5 rounded-xl border-2 text-sm font-medium transition-all cursor-pointer ${customMode === 'percentage' ? 'border-[#0B5858] bg-[#0B5858]/5 text-[#0B5858]' : 'border-gray-200 hover:border-gray-300'}`}
+                          >
+                            Percentage
+                          </button>
+                        </div>
                       </div>
+                      {customMode === 'price' ? (
+                        <div>
+                          <label className={labelClass}>Nightly Rate</label>
+                          <div className="relative">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">₱</span>
+                            <input
+                              type="number"
+                              value={customPrice}
+                              onChange={(e) => setCustomPrice(e.target.value)}
+                              placeholder="0"
+                              min={0}
+                              className={inputClass + ' pl-8'}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className={labelClass}>Adjustment Percentage</label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              value={customPercent}
+                              onChange={(e) => setCustomPercent(e.target.value)}
+                              placeholder="e.g. 20 for +20%, -15 for -15%"
+                              className={inputClass + ' pr-8'}
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">%</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
+
+                  {/* Name (required for rule) */}
+                  <div>
+                    <label className={labelClass}>Name / Title</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g., Christmas, Peak Season, Long Weekend..."
+                      className={inputClass}
+                    />
+                  </div>
 
                   {/* Note */}
                   <div>
@@ -304,7 +371,7 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
                       type="text"
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="e.g., Christmas week, Long weekend..."
+                      placeholder="Additional notes..."
                       className={inputClass}
                     />
                   </div>
@@ -341,7 +408,7 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
 
                     {scope === 'unit' && (
                       <div className="space-y-2">
-                        {PRICING_UNITS.map((unit) => {
+                        {pricingUnits.map((unit) => {
                           const isSelected = selectedUnitId === unit.id;
                           const projectedPrice = Math.round(unit.basePrice * (1 + (selectedPreset?.pct ?? 0) / 100));
                           return (
@@ -391,7 +458,7 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
                         { label: 'Duration', value: `${dayCount} day${dayCount !== 1 ? 's' : ''}` },
                         { label: 'Strategy', value: selectedPreset?.label || 'Custom' },
                         { label: 'Rate per night', value: computedPrice > 0 ? fmtCurrency(computedPrice) : '—' },
-                        { label: 'Applies to', value: scope === 'global' ? 'All units' : PRICING_UNITS.find((u) => u.id === selectedUnitId)?.title || 'Select a unit' },
+                        { label: 'Applies to', value: scope === 'global' ? 'All units' : pricingUnits.find((u) => u.id === selectedUnitId)?.title || 'Select a unit' },
                       ].map((row) => (
                         <div key={row.label} className="flex items-center justify-between">
                           <span className="text-xs text-gray-500">{row.label}</span>

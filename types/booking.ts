@@ -138,7 +138,7 @@ export interface GuestEntry {
 }
 
 export type BlockedRangeScope = 'global' | 'unit';
-export type BlockedRangeSource = 'manual' | 'airbnb' | 'booking.com' | 'agoda' | 'expedia' | 'vrbo' | 'walk-in' | 'phone' | 'other';
+export type BlockedRangeSource = 'manual' | 'airbnb' | 'booking.com' | 'agoda' | 'expedia' | 'vrbo' | 'walk_in' | 'walk-in' | 'phone' | 'other';
 
 export interface BlockedRange {
   id?: string;
