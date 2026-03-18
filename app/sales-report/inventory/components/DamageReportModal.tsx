@@ -46,6 +46,46 @@ const STATUS_OPTIONS: { value: DamageIncidentStatus; label: string; dot: string 
   { value: 'resolved', label: 'Resolved', dot: '#10b981' },
 ];
 
+function looksLikeOpaqueUserId(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) return true;
+  if (/^c[a-z0-9]{20,}$/i.test(v)) return true;
+  return false;
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function nameFromEmail(value: string): string | null {
+  const email = value.trim().toLowerCase();
+  if (!looksLikeEmail(email)) return null;
+  const local = email.split('@')[0] ?? '';
+  const words = local
+    .replace(/[._-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim();
+  return words || null;
+}
+
+function normalizeKnownName(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '—') return null;
+  if (/^unknown(?:\s+reporter)?$/i.test(trimmed)) return null;
+  if (/^user\s*id\s*:/i.test(trimmed)) return null;
+  const suffix = trimmed.match(/^(.*)\s+\(id:\s*([^)]+)\)\s*$/i);
+  if (suffix) {
+    const nameOnly = suffix[1]?.trim();
+    return nameOnly || null;
+  }
+  if (looksLikeEmail(trimmed)) return nameFromEmail(trimmed) ?? trimmed;
+  return trimmed;
+}
+
 // ─── Shared UI primitives ────────────────────────────────────────────────────
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
@@ -261,18 +301,32 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
   const mockAuth = useMockAuth();
   const reporterUserId = incident?.reportedByUserId ?? auth.user?.id;
   const userDisplayNames = useUserDisplayNames(reporterUserId != null ? [reporterUserId] : []);
-  /** Name from id only (reportedByUserId or current user). Auth or useUserDisplayNames, else "User ID: {id}". */
+  /** Prefer known display names; avoid exposing opaque ids in the UI. */
   const reportedByDisplay = (() => {
     const uid = incident?.reportedByUserId ?? auth.user?.id;
+    if (uid != null) {
+      const idStr = String(uid).trim();
+      if (idStr) {
+        const fromAuth =
+          auth.user && String(auth.user.id) === idStr
+            ? (auth.userProfile?.fullname ?? [auth.user.firstName, auth.user.lastName].filter(Boolean).join(' ').trim())
+            : null;
+        if (fromAuth) return fromAuth;
+
+        const fromMap = userDisplayNames[idStr]?.trim();
+        if (fromMap) return fromMap;
+      }
+    }
+
+    const fromIncidentName =
+      normalizeKnownName(incident?.reportedByName) ??
+      normalizeKnownName(incident?.reportedBy);
+    if (fromIncidentName) return fromIncidentName;
+
     if (uid == null) return '—';
-    const idStr = String(uid);
-    const name =
-      (auth.user && String(auth.user.id) === idStr
-        ? (auth.userProfile?.fullname ?? [auth.user.firstName, auth.user.lastName].filter(Boolean).join(' ').trim())
-        : null) ??
-      userDisplayNames[idStr]?.trim() ??
-      `User ID: ${idStr}`;
-    return name;
+    const idStr = String(uid).trim();
+    if (!idStr || idStr === '—') return 'Unknown user';
+    return looksLikeOpaqueUserId(idStr) ? 'Unknown user' : idStr;
   })();
   const { error, success } = useToast();
   const productIdsForNames = incident?.items?.map((i) => i.productId).filter(Boolean) ?? [];
@@ -615,6 +669,14 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
           auth.user?.id != null && String(auth.user.id).trim() !== ''
             ? String(auth.user.id).trim()
             : undefined;
+        const reporterDisplayName =
+          auth.userProfile?.fullname?.trim() ||
+          [auth.user?.firstName, auth.user?.lastName].filter(Boolean).join(' ').trim() ||
+          undefined;
+        const reporterEmail =
+          auth.user?.email != null && String(auth.user.email).trim() !== ''
+            ? String(auth.user.email).trim()
+            : undefined;
         if (!reporterUserId) {
           error('You must be logged in to create a damage report.');
           return;
@@ -629,6 +691,9 @@ export default function DamageReportModal({ onClose, onSuccess, incident }: Dama
         const payload: CreateDamageIncidentPayload = {
           description: buildDescription(reason, validLineItems, inventoryAction).trim(),
           reportedAt: reportedAtIso,
+          reportedByUserId: reporterUserId,
+          reportedByName: reporterDisplayName,
+          reportedByEmail: reporterEmail,
           status,
           cost,
           absorbedAmount: initialAbsorbedAmount,

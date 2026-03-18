@@ -44,12 +44,6 @@ export default function InventoryDashboardPage() {
   );
   const unitsSnapshot = useMemo(() => [...inventoryUnits], [refreshTick]);
   const unitItemsSnapshot = useMemo(() => [...inventoryUnitItems], [refreshTick]);
-  const unitsWithAllocations = useMemo(() => {
-    const unitIdsWithItems = new Set(
-      inventoryUnitItems.filter((i) => i.assignedToUnit).map((i) => i.assignedToUnit!)
-    );
-    return inventoryUnits.filter((u) => unitIdsWithItems.has(u.id));
-  }, [refreshTick]);
 
   useEffect(() => {
     let isMounted = true;
@@ -217,7 +211,7 @@ export default function InventoryDashboardPage() {
           {isLoading && !initialLoadDone ? (
             <div className="inventory-panel-skeleton animate-pulse h-24" />
           ) : (
-            <SearchUnits units={unitsWithAllocations} />
+            <SearchUnits units={unitsSnapshot} />
           )}
           <div className="mt-6">
             <InventoryDashboardLinks />

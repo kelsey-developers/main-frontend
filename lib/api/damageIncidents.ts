@@ -1,21 +1,5 @@
 import { apiClient } from './client';
 
-/** Convert camelCase keys to snake_case for backend APIs (Rails/Django). */
-function toSnakeCase(obj: unknown): unknown {
-  if (obj === null || obj === undefined) return obj;
-  if (Array.isArray(obj)) return obj.map(toSnakeCase);
-  if (typeof obj === 'object') {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === undefined) continue;
-      const snake = key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
-      result[snake] = toSnakeCase(value);
-    }
-    return result;
-  }
-  return obj;
-}
-
 /** Convert snake_case keys to camelCase for frontend consumption. */
 function toCamelCase(obj: unknown): unknown {
   if (obj === null || obj === undefined) return obj;
@@ -112,6 +96,10 @@ export interface CreateDamageIncidentPayload {
   bookingId?: string;
   unitId?: string;
   reportedByUserId?: string;
+  /** Preferred reporter display name to persist on backend records. */
+  reportedByName?: string;
+  /** Optional reporter email used by backend identity resolution fallback. */
+  reportedByEmail?: string;
   /** Display label for reporter when API stores or returns string only */
   reportedBy?: string;
   resolvedByUserId?: string;
@@ -236,9 +224,8 @@ export async function createDamageIncident(
     ...payload,
     reportedByUserId: reporterId,
   };
-  // Backend may expect snake_case (e.g. reported_by_user_id) to persist; send converted body so it returns the value.
-  const bodySnake = toSnakeCase(body) as Record<string, unknown>;
-  const res = await apiClient.post<unknown>('/api/damage-incidents', bodySnake);
+  // market-backend damage incident routes validate camelCase keys (unitId/warehouseId/reportedByUserId).
+  const res = await apiClient.post<unknown>('/api/damage-incidents', body);
   const incident = extractOne<DamageIncident>(res, ['data', 'damageIncident', 'incident']);
   if (incident) return ensureReporterIds(normalizeIncident(incident) as DamageIncident);
   const list = extractList<DamageIncident>(res, ['data', 'damageIncidents', 'incidents']);
@@ -251,9 +238,7 @@ export async function updateDamageIncident(
   id: string,
   payload: UpdateDamageIncidentPayload
 ): Promise<DamageIncident> {
-  // Backend may expect snake_case so it persists and returns fields (e.g. resolved_by_user_id).
-  const payloadSnake = toSnakeCase(payload) as Record<string, unknown>;
-  const res = await apiClient.patch<unknown>(`/api/damage-incidents/${id}`, payloadSnake);
+  const res = await apiClient.patch<unknown>(`/api/damage-incidents/${id}`, payload);
   const incident = extractOne<DamageIncident>(res, ['data', 'damageIncident', 'incident']);
   if (incident) return ensureReporterIds(normalizeIncident(incident) as DamageIncident);
   throw new Error('Invalid update response: missing damage incident');

@@ -63,6 +63,10 @@ export interface DamageAdjustment {
 export interface PurchaseOrder {
   id: string;
   supplierId: string;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
+  createdByEmail?: string | null;
+  createdBy?: string;
   orderDate: string;
   expectedDelivery: string;
   status: 'pending' | 'partially-received' | 'received' | 'cancelled';
