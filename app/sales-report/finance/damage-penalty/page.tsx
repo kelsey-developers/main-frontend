@@ -126,8 +126,8 @@ export default function DamagePenaltyPage() {
     return (
       <>
         <FinancePageHeader
-          title="Damage & penalty impact"
-          description="View monthly losses due to damage (amounts charged vs absorbed) so finance can reconcile"
+          title="Damage Report"
+          description="View monthly losses due to damage and losses."
         />
         <DamagePenaltyPageSkeleton />
       </>
@@ -137,8 +137,8 @@ export default function DamagePenaltyPage() {
   return (
     <>
       <FinancePageHeader
-        title="Damage & penalty impact"
-        description="View monthly losses due to damage (amounts charged vs absorbed) so finance can reconcile"
+        title="Damage Report" 
+        description="View monthly losses due to damage and losses."
       />
       <div className="mb-4 flex flex-1 min-w-0 gap-2">
         <input

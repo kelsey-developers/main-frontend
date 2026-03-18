@@ -5,6 +5,7 @@
  */
 
 import { apiClient } from '@/lib/api/client';
+import { getNights } from './format';
 import type { BookingLinkedRow, DamagePenalty } from '../types';
 
 /** Current user identity so backend can filter: admin = all, finance = bookings where agent matches. */
@@ -33,8 +34,16 @@ interface MarketBookingItem {
   total_amount: number;
   transaction_number?: string;
   charges?: MarketBookingCharge[];
-  listing?: { title: string; location?: string; main_image_url?: string };
+  listing?: { title: string; location?: string; main_image_url?: string; property_type?: string };
+  /** Unit property type (e.g. condo, apartment). From listing.property_type or top-level. */
+  property_type?: string;
   client?: { first_name?: string; last_name?: string };
+  assigned_agent_name?: string;
+  agent?: { first_name?: string; last_name?: string; name?: string; fullname?: string };
+  /** Per-night unit rate from backend (auth: unit_charge). When set, rate is per-night and totalAmount is the actual total. */
+  unit_charge?: number;
+  /** Extra charge from excess guests (auth: excess_pax_charge). */
+  excess_pax_charge?: number;
 }
 
 /** Extract bookings array from backend response (raw array, or { bookings }, or { data }, etc.) */
@@ -68,10 +77,25 @@ interface DamageIncidentsResponse {
   damageIncidents?: MarketDamageIncident[];
 }
 
+
 function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
   const guest = [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ').trim() || 'Guest';
+  const agentFromApi = b.agent;
+  const agentStr =
+    (b.assigned_agent_name && b.assigned_agent_name.trim()) ||
+    (agentFromApi && typeof agentFromApi === 'object' && (agentFromApi as { name?: string }).name?.trim()) ||
+    (agentFromApi && typeof agentFromApi === 'object' && (agentFromApi as { fullname?: string }).fullname?.trim()) ||
+    [agentFromApi?.first_name, agentFromApi?.last_name].filter(Boolean).join(' ').trim();
+  const agent = agentStr || '—';
   const unit = b.listing?.title ?? '—';
-  const total = Number(b.total_amount) || 0;
+  const rawPropertyType = (b.property_type ?? b.listing?.property_type ?? '').trim();
+  const unitType = rawPropertyType ? rawPropertyType.charAt(0).toUpperCase() + rawPropertyType.slice(1).toLowerCase() : undefined;
+  const totalFromBackend = Number(b.total_amount) || 0;
+  const unitCharge = b.unit_charge != null ? Number(b.unit_charge) : undefined;
+  const excessPaxCharge = b.excess_pax_charge != null ? Number(b.excess_pax_charge) : undefined;
+  const checkIn = typeof b.check_in_date === 'string' ? b.check_in_date.split('T')[0] : '';
+  const checkOut = typeof b.check_out_date === 'string' ? b.check_out_date.split('T')[0] : '';
+  const nights = getNights(checkIn, checkOut) || 1;
 
   const chargeLines = Array.isArray(b.charges) ? b.charges : [];
   const addons = chargeLines.filter((c) => String(c.category).toLowerCase() === 'addon');
@@ -92,28 +116,63 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
     const n = normalize(String(c.name ?? ''));
     return n.includes('early') || n.includes('late') || n.includes('hour');
   });
-  const extraHeads = extraHeadLine ? (Number(extraHeadLine.amount) || 0) * Math.max(1, Number(extraHeadLine.quantity) || 1) : 0;
+  const extraHeadsFromAddons = extraHeadLine ? (Number(extraHeadLine.amount) || 0) * Math.max(1, Number(extraHeadLine.quantity) || 1) : 0;
   const extraHours = extraHoursLine ? (Number(extraHoursLine.amount) || 0) * Math.max(1, Number(extraHoursLine.quantity) || 1) : 0;
 
+  const extraHeads = excessPaxCharge != null ? excessPaxCharge : extraHeadsFromAddons;
+
+  if (unitCharge != null) {
+    const ratePerNight = unitCharge;
+    const basePrice = ratePerNight * Math.max(1, nights);
+    return {
+      id: b.id,
+      bookingId: b.id,
+      unit,
+      imageUrl: b.listing?.main_image_url,
+      location: b.listing?.location,
+      unitType,
+      rate: ratePerNight,
+      agent,
+      guest,
+      checkIn: b.check_in_date,
+      checkOut: b.check_out_date,
+      guestType: 'direct',
+      basePrice,
+      discounts: 0,
+      extraHeads,
+      extraHours,
+      addOns: addOnsWithPrice.map((c) => c.name),
+      addOnsWithPrice,
+      addOnsAmount,
+      totalAmount: totalFromBackend,
+    };
+  }
+
+  // Rate = base total of the booking / nights (not full total / nights), so list matches detail "Rate (per night)"
+  const baseTotal = Math.max(0, totalFromBackend - extraHeads - extraHours - addOnsAmount);
+  const ratePerNight = baseTotal / Math.max(1, nights);
+  const basePrice = baseTotal;
   return {
     id: b.id,
     bookingId: b.id,
     unit,
     imageUrl: b.listing?.main_image_url,
     location: b.listing?.location,
-    rate: total,
-    agent: '—',
+    unitType,
+    rate: ratePerNight,
+    agent,
     guest,
     checkIn: b.check_in_date,
     checkOut: b.check_out_date,
     guestType: 'direct',
-    basePrice: Math.max(0, total - addOnsAmount),
+    basePrice,
     discounts: 0,
     extraHeads,
     extraHours,
     addOns: addOnsWithPrice.map((c) => c.name),
     addOnsWithPrice,
     addOnsAmount,
+    totalAmount: totalFromBackend,
   };
 }
 
@@ -155,12 +214,48 @@ export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Pr
     try {
       const data = await apiClient.get<unknown>(endpoint, opts);
       const list = extractBookingsList(data);
-      return list.map(toBookingLinkedRow);
+      const completedOnly = list.filter((b) => String(b.status || '').toLowerCase() === 'booked');
+      return completedOnly.map(toBookingLinkedRow);
     } catch {
       continue;
     }
   }
   return [];
+}
+
+/** Extract a single booking from GET /api/bookings/:id response (object or { data }, { booking }, etc.). */
+function extractSingleBooking(data: unknown): MarketBookingItem | null {
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (o.id != null && o.check_in_date != null) return o as unknown as MarketBookingItem;
+    for (const key of ['booking', 'data', 'item']) {
+      const val = o[key];
+      if (val && typeof val === 'object' && (val as Record<string, unknown>).id != null) {
+        return val as unknown as MarketBookingItem;
+      }
+    }
+  }
+  return null;
+}
+
+export async function fetchFinanceBookingById(
+  id: string,
+  currentUser?: FinanceAuth | null
+): Promise<BookingLinkedRow | null> {
+  if (!id) return null;
+  const headers = authHeaders(currentUser);
+  const opts = {
+    ...(Object.keys(headers).length ? { headers } : {}),
+    credentials: 'include' as RequestCredentials,
+  };
+  
+  try {
+    const data = await apiClient.get<unknown>(`/api/bookings/${id}`, opts);
+    const b = extractSingleBooking(data);
+    return b ? toBookingLinkedRow(b) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchFinanceDamageIncidents(currentUser?: FinanceAuth | null): Promise<DamagePenalty[]> {

@@ -42,15 +42,18 @@ export function exportBookingLinkedToCsv(rows: BookingLinkedRow[]): void {
   ];
   const lines = [headers.map(escapeCsvCell).join(',')];
   for (const row of rows) {
-    const total = getBookingTotal(
-      row.rate,
-      row.checkIn,
-      row.checkOut,
-      row.discounts,
-      row.extraHeads,
-      row.extraHours,
-      row.addOnsAmount
-    );
+    const total =
+      row.totalAmount != null
+        ? row.totalAmount
+        : getBookingTotal(
+            row.rate,
+            row.checkIn,
+            row.checkOut,
+            row.discounts,
+            row.extraHeads,
+            row.extraHours,
+            row.addOnsAmount
+          );
     const addOnsStr = (row.addOns || []).join('; ');
     const addOnsWithPriceStr =
       row.addOnsWithPrice?.map((x) => `${x.name}:${x.amount}`).join('; ') ?? '';
@@ -119,15 +122,18 @@ export function exportBookingLinkedToPdf(rows: BookingLinkedRow[]): void {
     'Total',
   ];
   const tableRows = rows.map((row) => {
-    const total = getBookingTotal(
-      row.rate,
-      row.checkIn,
-      row.checkOut,
-      row.discounts,
-      row.extraHeads,
-      row.extraHours,
-      row.addOnsAmount
-    );
+    const total =
+      row.totalAmount != null
+        ? row.totalAmount
+        : getBookingTotal(
+            row.rate,
+            row.checkIn,
+            row.checkOut,
+            row.discounts,
+            row.extraHeads,
+            row.extraHours,
+            row.addOnsAmount
+          );
     const basePrice = getBasePrice(row.rate, row.checkIn, row.checkOut);
     return [
       row.bookingId,

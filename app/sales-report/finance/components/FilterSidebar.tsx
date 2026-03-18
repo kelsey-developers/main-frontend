@@ -72,14 +72,14 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({
       <div className="space-y-4">
         <div>
           <label
-            htmlFor="property-type"
+            htmlFor="unit-type"
             className="block text-sm font-medium text-gray-700 mb-1"
             style={{ fontFamily: 'Poppins' }}
           >
-            Property Type
+            Unit type
           </label>
           <select
-            id="property-type"
+            id="unit-type"
             value={filterEnabled ? filters.propertyType : ''}
             onChange={(e) => update('propertyType', e.target.value)}
             disabled={!filterEnabled}

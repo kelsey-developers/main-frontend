@@ -50,15 +50,17 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
                 </td>
                 <td className="px-3 py-3 text-sm font-semibold text-gray-900 text-center">
                   {formatPHP(
-                    getBookingTotal(
-                      row.rate,
-                      row.checkIn,
-                      row.checkOut,
-                      row.discounts,
-                      row.extraHeads,
-                      row.extraHours,
-                      row.addOnsAmount,
-                    )
+                    row.totalAmount != null
+                      ? row.totalAmount
+                      : getBookingTotal(
+                          row.rate,
+                          row.checkIn,
+                          row.checkOut,
+                          row.discounts,
+                          row.extraHeads,
+                          row.extraHours,
+                          row.addOnsAmount,
+                        )
                   )}
                 </td>
                 <td className="px-3 py-3 text-sm text-gray-700 text-center">
@@ -66,7 +68,7 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
                     href={`/sales-report/finance/bookings/${row.id}`}
                     className="inline-block px-4 py-2 rounded-lg bg-teal-800 text-white hover:bg-teal-900 transition-colors"
                   >
-                    View more
+                    View
                   </Link>
                 </td>
               </tr>
