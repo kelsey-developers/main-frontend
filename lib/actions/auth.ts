@@ -26,20 +26,16 @@ function getRedirectForRole(user: { roles?: string[] }): string {
   if (roles.includes('operations') || roles.includes('housekeeping') || roles.includes('cleaner')) return '/sales-report/housekeeping';
   if (roles.includes('admin')) return '/admin';
   if (roles.includes('agent')) return '/agent';
-  if (roles.includes('employee')) return '/home';
   return '/';
 }
 
 /** Merge internal roles from market-backend into user.roles so AuthContext gets correct role. */
 async function mergeInternalRoles(user: UserInfo): Promise<UserInfo> {
   const authRoles = user.roles ?? [];
-
-  // 1. Check market-backend for Finance/Inventory/Housekeeping/Agent roles
   try {
     const map = await apiClient.get<Record<string, string>>('/api/user-roles');
     const internalRole = map?.[user.email];
     if (internalRole) {
-      // Map backend "operations" to "Housekeeping" for display (manage-users uses Housekeeping)
       const displayRole =
         internalRole === 'operations'
           ? 'Housekeeping'
@@ -47,26 +43,8 @@ async function mergeInternalRoles(user: UserInfo): Promise<UserInfo> {
       return { ...user, roles: [displayRole, ...authRoles.filter((r) => r.toLowerCase() !== internalRole)] };
     }
   } catch {
-    // Non-fatal: market-backend may be down; continue to payroll check
+    // Non-fatal: market-backend may be down; use Auth Service roles only
   }
-
-  // 2. Check payroll-backend for employee role (no market-backend needed)
-  // Only runs if no special role was already assigned above.
-  try {
-    const payrollUrl = process.env.PAYROLL_API_URL;
-    if (payrollUrl) {
-      const resp = await fetch(`${payrollUrl}/api/employees/roles`, { cache: 'no-store' });
-      if (resp.ok) {
-        const map = (await resp.json()) as Record<string, string>;
-        if (map[user.email.toLowerCase()]) {
-          return { ...user, roles: ['Employee', ...authRoles.filter((r) => r.toLowerCase() !== 'employee')] };
-        }
-      }
-    }
-  } catch {
-    // Non-fatal: payroll-backend may be down
-  }
-
   return { ...user, roles: authRoles };
 }
 

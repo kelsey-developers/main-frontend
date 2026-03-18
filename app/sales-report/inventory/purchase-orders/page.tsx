@@ -207,6 +207,7 @@ function DetailDrawer({
   const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
   const poLines = inventoryPurchaseOrderLines.filter(line => line.poId === po.id);
   const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
+  const createdByLabel = po.createdByName || po.createdByEmail || po.createdBy || 'System';
 
   const productIdsToFetch = useMemo(() => {
     const inventoryIds = new Set(inventoryItems.map((i) => i.id));
@@ -301,6 +302,7 @@ function DetailDrawer({
               },
               { label: "Total Amount", val: formatPhp(po.totalAmount) },
               { label: "Receipts", val: `${goodsReceipts.length} GR${goodsReceipts.length !== 1 ? "s" : ""}` },
+              { label: "Created By", val: createdByLabel },
             ].map(m => (
               <div key={m.label}>
                 <div className="text-[10px] font-semibold tracking-wider mb-0.5" style={{ color: "rgba(255,255,255,0.45)" }}>{m.label}</div>
@@ -364,6 +366,10 @@ function DetailDrawer({
               <div>
                 <div className="text-gray-500">Address</div>
                 <div className="font-semibold text-gray-900">{supplier?.address || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="text-gray-500">Created By</div>
+                <div className="font-semibold text-gray-900">{createdByLabel}</div>
               </div>
             </div>
           </div>
@@ -1128,6 +1134,7 @@ function PurchaseOrdersPageContent() {
             pageOrders.map((po) => {
               const supplier = inventorySuppliers.find(s => s.id === po.supplierId);
               const goodsReceipts = inventoryGoodsReceipts.filter(gr => gr.poId === po.id);
+              const createdByLabel = po.createdByName || po.createdByEmail || po.createdBy || 'System';
               return (
                 <Fragment key={po.id}>
                   {/* Desktop Row */}
@@ -1148,6 +1155,7 @@ function PurchaseOrdersPageContent() {
                   <div>
                     <div className="text-[12.5px] font-medium text-gray-900 whitespace-normal break-words">{supplier?.name || 'Unknown'}</div>
                     <div className="text-[11px] text-gray-500 whitespace-normal break-words">{supplier?.email || ''}</div>
+                    <div className="text-[11px] text-gray-500 whitespace-normal break-words">Created by: {createdByLabel}</div>
                   </div>
                   <div className="text-[12.5px] text-gray-700">
                     {new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
@@ -1186,6 +1194,7 @@ function PurchaseOrdersPageContent() {
                         {po.id.toUpperCase()}
                       </div>
                       <div className="text-[12px] font-medium text-gray-700 whitespace-normal break-words">{supplier?.name || 'Unknown'}</div>
+                      <div className="text-[11px] text-gray-500 whitespace-normal break-words">Created by: {createdByLabel}</div>
                     </div>
                     <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
                   </div>

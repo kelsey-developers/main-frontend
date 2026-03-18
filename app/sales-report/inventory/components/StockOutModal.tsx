@@ -7,7 +7,7 @@ import type { ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { useToast } from '../hooks/useToast';
-import { useMockAuth } from '@/contexts/MockAuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { processStockOut } from '../lib/inventoryLedger';
 import { 
   loadInventoryDataset,
@@ -18,6 +18,7 @@ import {
 } from '../lib/inventoryDataStore';
 import { getTodayInPhilippineTime } from '@/lib/dateUtils';
 import { listDamageIncidents, createDamageIncident } from '@/lib/api/damageIncidents';
+import { getBookings, getBookingById, type BookingListItem } from '@/lib/api/bookings';
 
 // ─── Brand colors ────────────────────────────────────────────────
 const C = {
@@ -71,12 +72,61 @@ const REASONS_UN = [
   'Other',
 ];
 
-const BOOKINGS = [
-  { id: 'b1', code: 'BK-2025-001', guest: 'Juan dela Cruz', checkIn: 'Mar 08', checkOut: 'Mar 12', unit: 'Unit 101' },
-  { id: 'b2', code: 'BK-2025-002', guest: 'Maria Santos', checkIn: 'Mar 09', checkOut: 'Mar 11', unit: 'Unit 201' },
-  { id: 'b3', code: 'BK-2025-003', guest: 'Robert Kim', checkIn: 'Mar 10', checkOut: 'Mar 14', unit: 'Unit 301' },
-];
 const CREATE_DAMAGE_INCIDENT_OPTION = '__create__';
+
+interface BookingOption {
+  id: string;
+  code: string;
+  guest: string;
+  checkIn: string;
+  checkOut: string;
+  unit: string;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+};
+
+const asString = (value: unknown): string | undefined => {
+  return typeof value === 'string' ? value : undefined;
+};
+
+const toBookingDateLabel = (value: string | undefined): string => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: '2-digit',
+  });
+};
+
+const toBookingOption = (
+  summary: BookingListItem,
+  detail: Record<string, unknown> | null,
+  fallbackUnitName: string
+): BookingOption => {
+  const detailClient = asRecord(detail?.client);
+  const firstName = asString(detailClient?.first_name)?.trim() || '';
+  const lastName = asString(detailClient?.last_name)?.trim() || '';
+  const guest = `${firstName} ${lastName}`.trim() || 'Guest';
+
+  const detailListing = asRecord(detail?.listing);
+  const unit = asString(detailListing?.title)?.trim() || fallbackUnitName;
+
+  const detailCheckIn = asString(detail?.check_in_date);
+  const detailCheckOut = asString(detail?.check_out_date);
+  const code = asString(detail?.reference_code)?.trim() || summary.id;
+
+  return {
+    id: summary.id,
+    code,
+    guest,
+    checkIn: toBookingDateLabel(detailCheckIn || summary.check_in_date),
+    checkOut: toBookingDateLabel(detailCheckOut || summary.check_out_date),
+    unit,
+  };
+};
 
 // ─── Shared input style ───────────────────────────────────────────
 const inputStyle: React.CSSProperties = {
@@ -377,10 +427,10 @@ interface WarehouseDraft {
 const DAMAGE_WRITE_OFF = 'Damaged / Write-off';
 
 function WarehouseForm({ prefill, onDraftChange, lockedReason }: WarehouseFormProps) {
-  const authState = useMockAuth();
+  const authState = useAuth();
   const isDamageOnly = lockedReason === DAMAGE_WRITE_OFF;
   const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(authState.user?.id || '');
+  const [idNumber, setIdNumber] = useState(String(authState.user?.id ?? ''));
   const [warehouse, setWarehouse] = useState(prefill?.warehouseId || '');
   const [reason, setReason] = useState(isDamageOnly ? DAMAGE_WRITE_OFF : '');
   const [toWarehouse, setToWarehouse] = useState('');
@@ -678,12 +728,12 @@ interface UnitDraft {
 }
 
 function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
-  const authState = useMockAuth();
+  const authState = useAuth();
   const itemFromPrefill = prefill?.itemId
     ? inventoryItems.find((i) => i.id === prefill.itemId)
     : undefined;
   const [confirmedBy, setConfirmedBy] = useState(prefill?.confirmedBy || authState.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(prefill?.idNumber || authState.user?.id || '');
+  const [idNumber, setIdNumber] = useState(prefill?.idNumber || String(authState.user?.id ?? ''));
   const [unit, setUnit] = useState(prefill?.unitId || '');
   const [booking, setBooking] = useState('');
   const [reason, setReason] = useState('');
@@ -695,12 +745,14 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const [items, setItems] = useState<LineItem[]>(
     prefill?.itemId ? [{ productId: prefill.itemId, quantity: '1' }] : [{ productId: '', quantity: '' }]
   );
+  const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
   const [damageIncidents, setDamageIncidents] = useState<Array<{ id: string; description?: string; reportDate?: string; unitId?: string }>>([]);
 
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
-  const bk = BOOKINGS.find((b) => b.id === booking);
+  const bk = bookingOptions.find((b) => b.id === booking);
 
   // Auto-fill warehouse from item when prefill.itemId is set and data loads
   useEffect(() => {
@@ -728,6 +780,49 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
       );
     });
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!unit) {
+      setBooking('');
+      setBookingOptions([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const fallbackUnitName = inventoryUnits.find((u) => u.id === unit)?.name ?? 'Unit';
+    setBookingsLoading(true);
+
+    void getBookings(unit)
+      .then(async (summaries) => {
+        const options = await Promise.all(
+          summaries.map(async (summary) => {
+            const detail = await getBookingById(summary.id).catch(() => null);
+            return toBookingOption(summary, detail, fallbackUnitName);
+          })
+        );
+
+        if (!active) return;
+        setBookingOptions(options);
+        setBooking((previous) =>
+          options.some((option) => option.id === previous) ? previous : ''
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setBookingOptions([]);
+        setBooking('');
+      })
+      .finally(() => {
+        if (active) setBookingsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [unit, inventoryUnits.length]);
 
   useEffect(() => {
     onDraftChange({
@@ -816,8 +911,17 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
             value={booking}
             onChange={(value) => setBooking(value)}
             options={[
-              { value: '', label: 'Select booking…' },
-              ...BOOKINGS.map((b) => ({ value: b.id, label: `${b.code} · ${b.guest}` })),
+              {
+                value: '',
+                label: !unit
+                  ? 'Select unit first'
+                  : bookingsLoading
+                    ? 'Loading bookings…'
+                    : bookingOptions.length === 0
+                      ? 'No bookings found for this unit'
+                      : 'Select booking…',
+              },
+              ...bookingOptions.map((b) => ({ value: b.id, label: `${b.code} · ${b.guest}` })),
             ]}
             placeholder="Select booking…"
             placeholderWhen=""
@@ -1030,7 +1134,7 @@ interface StockOutModalProps {
 
 export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, warehousePrefill }: StockOutModalProps) {
   const router = useRouter();
-  const authState = useMockAuth();
+  const authState = useAuth();
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [, setRefreshTick] = useState(0);

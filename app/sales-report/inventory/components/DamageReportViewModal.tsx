@@ -76,6 +76,46 @@ function fmtDateTime(raw: string | null | undefined) {
       });
 }
 
+function looksLikeOpaqueUserId(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) return true;
+  if (/^c[a-z0-9]{20,}$/i.test(v)) return true;
+  return false;
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function nameFromEmail(value: string): string | null {
+  const email = value.trim().toLowerCase();
+  if (!looksLikeEmail(email)) return null;
+  const local = email.split('@')[0] ?? '';
+  const words = local
+    .replace(/[._-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim();
+  return words || null;
+}
+
+function normalizeKnownName(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '—') return null;
+  if (/^unknown(?:\s+reporter)?$/i.test(trimmed)) return null;
+  if (/^user\s*id\s*:/i.test(trimmed)) return null;
+  const suffix = trimmed.match(/^(.*)\s+\(id:\s*([^)]+)\)\s*$/i);
+  if (suffix) {
+    const nameOnly = suffix[1]?.trim();
+    return nameOnly || null;
+  }
+  if (looksLikeEmail(trimmed)) return nameFromEmail(trimmed) ?? trimmed;
+  return trimmed;
+}
+
 /** Parse item lines from description (line 2+). Format: "Name — qty: N, price: P" */
 function parseItemsFromDescription(description: string | null | undefined): Array<{
   name: string;
@@ -347,17 +387,22 @@ export default function DamageReportViewModal({
       : null;
   const viewModalNames = useUserDisplayNames([reportedById, resolvedById].filter(Boolean) as string[]);
 
-  /** Name display: use id only (from API reportedByUserId/resolvedByUserId). Auth for current user, then useUserDisplayNames, else "User ID: {id}". */
-  const getDisplayNameForUserId = (userId: string | number | undefined | null): string => {
-    if (userId == null) return '—';
-    const idStr = String(userId);
+  /** Name display: prefer auth/user-map names, then API names; avoid exposing opaque ids. */
+  const getDisplayNameForUserId = (userId: string | number | undefined | null, nameFromApi?: string | null): string => {
+    if (userId == null || userId === '') return 'Unknown user';
+    const idStr = String(userId).trim();
+    if (!idStr || idStr === '—') return 'Unknown user';
     if (auth?.user && String(auth.user.id) === idStr) {
       const fromAuth =
         auth.userProfile?.fullname?.trim() ||
         [auth.user.firstName, auth.user.lastName].filter(Boolean).join(' ').trim();
       if (fromAuth) return fromAuth;
     }
-    return viewModalNames[idStr]?.trim() || `User ID: ${idStr}`;
+    const fromMap = viewModalNames[idStr]?.trim();
+    if (fromMap) return fromMap;
+    const fromApi = normalizeKnownName(nameFromApi);
+    if (fromApi) return fromApi;
+    return looksLikeOpaqueUserId(idStr) ? 'Unknown user' : idStr;
   };
 
   const inventoryAction = parseInventoryActionFromDescription(incident.description);
@@ -369,11 +414,13 @@ export default function DamageReportViewModal({
     : rawItems.reduce((s, i) => s + (i.quantity ?? 0) * (i.itemCost ?? 0), 0);
   const totalCost = incident.cost ?? itemsSum;
 
-  /* Reported by / Resolved by: use id only; prefer parent-passed name, else getDisplayNameForUserId(id). */
+  /* Reported by / Resolved by: prefer parent-passed name, then API name fields, then resolved id->name lookup. */
   const reportedByDisplay =
-    (reportedByDisplayName?.trim()) || getDisplayNameForUserId(incident.reportedByUserId);
+    (reportedByDisplayName?.trim()) ||
+    getDisplayNameForUserId(incident.reportedByUserId, incident.reportedByName ?? incident.reportedBy);
   const resolvedByDisplay =
-    (resolvedByDisplayName?.trim()) || getDisplayNameForUserId(resolvedById ?? null);
+    (resolvedByDisplayName?.trim()) ||
+    getDisplayNameForUserId(resolvedById ?? null, incident.resolvedByName ?? null);
 
   if (!mounted) return null;
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
 
@@ -17,12 +17,70 @@ type PermissionKey =
   | 'settingsEdit';
 
 interface User {
-  id: number;
+  id: number | string;
   firstName: string;
   lastName: string;
   fullname: string;
   email: string;
   roles: string[];
+}
+
+function readString(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim();
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function titleize(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+    .trim();
+}
+
+function fallbackNameFromEmail(email: string): string {
+  const local = readString(email).split('@')[0] ?? '';
+  const words = local.replace(/[._-]+/g, ' ').trim();
+  return words ? titleize(words) : '';
+}
+
+function normalizeUsers(payload: unknown): User[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const users = (payload as { users?: unknown[] }).users;
+  if (!Array.isArray(users)) return [];
+
+  return users
+    .filter((u): u is Record<string, unknown> => !!u && typeof u === 'object')
+    .map((u) => {
+      const firstName = readString(u.firstName ?? u.first_name);
+      const lastName = readString(u.lastName ?? u.last_name);
+      const email = readString(u.email);
+      const fullnameRaw = readString(u.fullname ?? u.fullName ?? u.name);
+
+      const fromParts = [firstName, lastName].filter(Boolean).join(' ').trim();
+      const fromEmail = fallbackNameFromEmail(email);
+      const fullname =
+        fromParts ||
+        (fullnameRaw && !looksLikeEmail(fullnameRaw) ? fullnameRaw : '') ||
+        fromEmail ||
+        fullnameRaw ||
+        email ||
+        'Unknown user';
+
+      return {
+        id: (u.id as string | number) ?? '',
+        firstName,
+        lastName,
+        fullname,
+        email,
+        roles: Array.isArray(u.roles) ? u.roles.map((r) => String(r)) : [],
+      } as User;
+    });
 }
 
 const PERMISSIONS: { key: PermissionKey; label: string; shortLabel: string }[] = [
@@ -44,21 +102,7 @@ const ROLE_PERMISSIONS: Record<string, PermissionKey[]> = {
   Guest: [],
 };
 
-function toDisplayRole(role: string): RoleType {
-  const map: Record<string, RoleType> = {
-    finance: 'Finance',
-    inventory: 'Inventory',
-    operations: 'Housekeeping',
-    housekeeping: 'Housekeeping',
-    frontdesk: 'Agent',
-    admin: 'Admin',
-    agent: 'Agent',
-  };
-  return map[role.toLowerCase()] ?? 'Guest';
-}
-
-function getRoleDisplay(roles: string[], internalRole?: string): RoleType {
-  if (internalRole) return toDisplayRole(internalRole);
+function getRoleDisplay(roles: string[]): RoleType {
   for (const r of ['Admin', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Operations', 'Guest']) {
     if (roles.map((x) => x.toLowerCase()).includes(r.toLowerCase())) {
       return (r === 'Operations' ? 'Housekeeping' : r) as RoleType;
@@ -69,21 +113,44 @@ function getRoleDisplay(roles: string[], internalRole?: string): RoleType {
 
 export default function AccessControlPage() {
   const [users, setUsers] = useState<User[]>([]);
-  const [internalRoles, setInternalRoles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/users?page=1&limit=100')
-        .then((r) => r.json())
-        .then((data) => setUsers(data.users ?? []))
-        .catch(() => setUsers([])),
-      fetch('/market-api/user-roles')
-        .then((r) => (r.ok ? r.json() : {}))
-        .then((data: Record<string, string>) => setInternalRoles(data))
-        .catch(() => {}),
-    ]).finally(() => setLoading(false));
+  const loadUsers = useCallback(async (isBackground = false) => {
+    if (!isBackground) setLoading(true);
+    try {
+      const res = await fetch(`/api/users?page=1&limit=100&_ts=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      setUsers(normalizeUsers(data));
+    } catch {
+      setUsers([]);
+    } finally {
+      if (!isBackground) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadUsers(false);
+
+    // Keep page data fresh while open and when tab regains focus.
+    const timer = window.setInterval(() => {
+      void loadUsers(true);
+    }, 15000);
+    const onFocus = () => void loadUsers(true);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadUsers(true);
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [loadUsers]);
 
   const approverRoles = useMemo(
     () => ROLES.filter((r) => ROLE_PERMISSIONS[r]?.includes('stockOutApprove') || ROLE_PERMISSIONS[r]?.includes('adjustmentApprove')).length,
@@ -98,11 +165,10 @@ export default function AccessControlPage() {
   const usersWithRoles = useMemo(
     () =>
       users.map((u) => {
-        const internalRole = internalRoles[u.email];
-        const role = getRoleDisplay(u.roles, internalRole);
+        const role = getRoleDisplay(u.roles);
         return { ...u, role };
       }),
-    [users, internalRoles]
+    [users]
   );
 
   const internalRoleUsers = usersWithRoles.filter((u) =>
