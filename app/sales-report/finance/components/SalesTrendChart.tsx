@@ -1,10 +1,9 @@
 'use client';
 
-import React from 'react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  LineChart,
-  Line,
+  Area,
+  AreaChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -21,6 +20,14 @@ interface SalesTrendChartProps {
 const formatYAxis = (value: number) => formatPHPForChart(value);
 const formatTooltip = (value: number) => [formatPHPForChart(value), 'Sales'];
 
+const tooltipStyle = {
+  backgroundColor: 'white',
+  border: '1px solid #e5e7eb',
+  borderRadius: '8px',
+  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+  fontSize: '12px',
+};
+
 const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
   const [isMounted, setIsMounted] = useState(false);
 
@@ -29,68 +36,59 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
   }, []);
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-5 border border-gray-100">
-      <div className="flex items-center justify-between mb-4">
-        <h3
-          className="text-lg font-bold text-gray-900"
-          style={{ fontFamily: 'Poppins' }}
-        >
-          Sales Trend
+    <div className="min-w-0 bg-white rounded-xl shadow-lg p-6">
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Poppins' }}>
+          Bookings over time
         </h3>
-        <button
-          type="button"
-          className="p-1 text-gray-400 hover:text-gray-600 rounded"
-          aria-label="More options"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <circle cx="12" cy="6" r="1.5" />
-            <circle cx="12" cy="12" r="1.5" />
-            <circle cx="12" cy="18" r="1.5" />
-          </svg>
-        </button>
       </div>
-      <div className="overflow-x-auto overflow-y-hidden -mx-1 px-1">
-        <div className="min-w-[320px] w-full h-[280px]" style={{ width: 'max(320px, 100%)' }}>
-          {isMounted ? (
-            <ResponsiveContainer width="100%" height="100%" debounce={50}>
-              <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis
-                  dataKey="name"
-                  stroke="#666"
-                  fontSize={12}
-                  tick={{ fontFamily: 'Poppins' }}
-                />
-                <YAxis
-                  stroke="#666"
-                  fontSize={12}
-                  tickFormatter={formatYAxis}
-                  tick={{ fontFamily: 'Poppins' }}
-                />
-                <Tooltip
-                  formatter={(value: any) => (value != null ? formatTooltip(value) : ['', 'Sales'])}
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                    fontFamily: 'Poppins',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6', strokeWidth: 2, r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full w-full" />
-          )}
-        </div>
-      </div>
+
+      {isMounted ? (
+        <ResponsiveContainer width="100%" height={300}>
+          <AreaChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="salesTrendFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#0B5858" stopOpacity={0.18} />
+                <stop offset="100%" stopColor="#0B5858" stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
+
+            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis
+              dataKey="name"
+              stroke="#6b7280"
+              fontSize={12}
+              tickLine={false}
+              axisLine
+              minTickGap={16}
+            />
+            <YAxis
+              stroke="#6b7280"
+              fontSize={12}
+              tickLine={false}
+              axisLine
+              tickFormatter={formatYAxis}
+              width={42}
+            />
+            <Tooltip
+              formatter={(value: any) => (value != null ? formatTooltip(value) : ['', 'Sales'])}
+              contentStyle={tooltipStyle}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke="#0B5858"
+              strokeWidth={2}
+              fill="url(#salesTrendFill)"
+              fillOpacity={1}
+              dot={false}
+              activeDot={{ r: 4, fill: '#0B5858', stroke: '#0B5858' }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="h-[300px] w-full" />
+      )}
     </div>
   );
 };
