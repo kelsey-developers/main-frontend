@@ -218,6 +218,7 @@ function toListingView(u: Record<string, unknown>): ListingView {
     amenities: Array.isArray(u.amenities) ? u.amenities.map(String) : [],
     is_available: Boolean(u.is_available),
     is_featured: Boolean(u.is_featured),
+    max_capacity: u.max_capacity != null ? Number(u.max_capacity) : undefined,
     created_at: String(u.created_at ?? ''),
     updated_at: String(u.updated_at ?? ''),
     details: String(u.description ?? ''),

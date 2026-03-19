@@ -897,25 +897,37 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     try {
       const created = await createPricingRule(payload);
       const createdList = Array.isArray(created) ? created : [created];
-      createdList.forEach((r) => {
-        const res = r as { id?: string; unit_id?: string; start_date?: string; end_date?: string; name?: string; adjustmentAmount?: number; adjustmentPercent?: number };
-        setAllPricingRules((prev) => [...prev, {
+      const isFixed = payload.adjustmentMode === 'fixed';
+      const newRules = createdList.map((r) => {
+        const res = r as { id?: string; unit_id?: string; start_date?: string; end_date?: string; name?: string; adjustmentAmount?: number; adjustmentPercent?: number; adjustmentType?: string; adjustmentMode?: string };
+        const price = res.adjustmentAmount ?? rule.price ?? 0;
+        const resAdjustmentMode = res.adjustmentMode as 'percentage' | 'fixed' | undefined;
+        const resAdjustmentType = res.adjustmentType as 'increase' | 'decrease' | undefined;
+        const resAdjustmentPercent = res.adjustmentPercent;
+        return {
           id: String(res.id),
           start_date: res.start_date ?? rule.start_date,
           end_date: res.end_date ?? rule.end_date,
-          price: (res as { adjustmentAmount?: number }).adjustmentAmount ?? rule.price ?? 0,
+          price,
           note: res.name ?? rule.note,
-          scope: res.unit_id ? 'unit' : 'global',
+          scope: (res.unit_id ? 'unit' : 'global') as 'global' | 'unit',
           unit_id: res.unit_id,
-        }]);
+          adjustmentMode: resAdjustmentMode ?? (isFixed ? 'fixed' : 'percentage'),
+          adjustmentType: resAdjustmentType ?? adjustmentType,
+          adjustmentPercent: resAdjustmentPercent != null ? resAdjustmentPercent : (isFixed ? undefined : Math.abs(pct)),
+        };
       });
+      setAllPricingRules((prev) => [...prev, ...newRules]);
       const unitCount = createdList.length;
       showToast(unitCount > 1 ? `Pricing rule applied to ${unitCount} units` : 'Pricing rule saved', 'success');
       dragSelect.clearSelection();
+      // Refetch pricing rules so UI stays in sync with server (handles any API response format differences)
+      const unitIds = displayUnits.map((u) => u.id);
+      if (unitIds.length > 0) fetchPricingRules(unitIds);
     } catch (err) {
       showToast((err as Error).message || 'Failed to save pricing rule', 'error');
     }
-  }, [activeUnitId, viewMode, dragSelect, displayUnits]);
+  }, [activeUnitId, viewMode, dragSelect, displayUnits, fetchPricingRules]);
 
   const handleSpecialPricingRemove = useCallback(async (id: string) => {
     try {
