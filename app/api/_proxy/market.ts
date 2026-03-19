@@ -195,6 +195,7 @@ async function buildForwardHeaders(
 
     if (!options.stripRoleHeaders && resolvedRoles.length > 0) {
       headers.set('x-user-role', pickPrimaryRole(resolvedRoles) ?? resolvedRoles[0]);
+      headers.set('x-user-role', resolvedRoles[0]);
       headers.set('x-user-roles', resolvedRoles.join(','));
     }
   } else {
