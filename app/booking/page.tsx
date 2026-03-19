@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getMyBookings, type MyBookingItem } from '@/lib/api/bookings';
 
 type BookingStatus = 'completed' | 'cancelled' | 'ongoing' | 'pending' | 'pending-payment' | 'declined' | 'booked';
+const BOOKING_REFRESH_INTERVAL_MS = 15000;
 
 const BookingPage: React.FC = () => {
   const [bookings, setBookings] = useState<MyBookingItem[]>([]);
@@ -13,23 +14,58 @@ const BookingPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState<boolean>(false);
+  const isMountedRef = useRef(true);
+  const isRefreshingRef = useRef(false);
+
+  const fetchBookings = useCallback(async (showLoading: boolean) => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+    try {
+      if (showLoading) setIsLoading(true);
+      const data = await getMyBookings();
+      if (isMountedRef.current) {
+        setBookings(data);
+      }
+    } catch {
+      if (isMountedRef.current && showLoading) {
+        setBookings([]);
+      }
+    } finally {
+      if (isMountedRef.current && showLoading) {
+        setIsLoading(false);
+      }
+      isRefreshingRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
-    let mounted = true;
-    async function fetchBookings() {
-      try {
-        setIsLoading(true);
-        const data = await getMyBookings();
-        if (mounted) setBookings(data);
-      } catch {
-        if (mounted) setBookings([]);
-      } finally {
-        if (mounted) setIsLoading(false);
+    isMountedRef.current = true;
+    void fetchBookings(true);
+
+    const refresh = () => {
+      void fetchBookings(false);
+    };
+
+    const intervalId = window.setInterval(refresh, BOOKING_REFRESH_INTERVAL_MS);
+    const handleFocus = () => {
+      refresh();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
       }
-    }
-    fetchBookings();
-    return () => { mounted = false; };
-  }, []);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      isMountedRef.current = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchBookings]);
 
   // Track mobile breakpoint
   useEffect(() => {
@@ -220,6 +256,7 @@ const BookingPage: React.FC = () => {
                   <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
                     {/* Left Column - Image */}
                     <div className="flex-shrink-0 w-full sm:w-auto">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={booking.listing.main_image_url}
                         alt={booking.listing.title}

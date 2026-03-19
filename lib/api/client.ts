@@ -6,7 +6,6 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/goods-receipts',
   '/api/product-categories',
   '/api/charge-types',
-  '/api/bookings',
   '/api/damage-incidents',
   '/api/units',
   '/api/user-roles',
@@ -49,6 +48,8 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (endpoint.startsWith('/api/agents/payouts')) return true;
   if (endpoint.startsWith('/api/admin/payouts')) return true;
   if (endpoint.startsWith('/api/upload')) return true;
+  // Holiday pricing overrides for charge types
+  if (endpoint.startsWith('/api/charge-type-date-overrides') || endpoint.startsWith('/api/market/charge-type-date-overrides')) return true;
   return false;
 }
 
@@ -251,11 +252,6 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   const raw = await res.text();
-  const rawLooksLikeHtml =
-    typeof raw === 'string' &&
-    raw.length > 0 &&
-    (raw.trimStart().toLowerCase().startsWith('<!doctype') ||
-      raw.trimStart().toLowerCase().startsWith('<html'));
 
   let data: unknown = {};
   if (raw) {

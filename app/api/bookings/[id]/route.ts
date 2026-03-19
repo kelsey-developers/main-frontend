@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const MARKET_API_URL = process.env.MARKET_API_URL;
-const API_URL = process.env.API_URL;
-const BASE_URL = MARKET_API_URL || API_URL;
+// Intentionally pinned to API_URL. Do not fall back to MARKET_API_URL for bookings.
+const BOOKING_API_URL = process.env.API_URL?.trim();
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!BASE_URL) {
-    return NextResponse.json({ error: 'MARKET_API_URL or API_URL not configured' }, { status: 503 });
+  if (!BOOKING_API_URL) {
+    return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
   const { id } = await params;
@@ -25,12 +24,19 @@ export async function GET(
     if (value) headers[key] = value;
   });
 
-  const upstreamBase = BASE_URL.replace(/\/+$/, '');
-  const res = await fetch(`${upstreamBase}/api/bookings/${id}`, {
+  const upstreamBase = BOOKING_API_URL.replace(/\/+$/, '');
+  const res = await fetch(`${upstreamBase}/api/bookings/${encodeURIComponent(id)}`, {
     method: 'GET',
     headers,
+    cache: 'no-store',
   });
 
   const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return NextResponse.json(data, {
+    status: res.status,
+    headers: {
+      'Cache-Control': 'no-store',
+      'x-bookings-upstream': BOOKING_API_URL,
+    },
+  });
 }

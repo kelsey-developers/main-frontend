@@ -23,6 +23,17 @@ type ChargeTypeRow = {
 
 type ListResponse = { chargeTypes: ChargeTypeRow[] };
 
+type UnitOption = { id: string; name: string };
+
+type OverrideRow = {
+  id: string;
+  unitId: string;
+  chargeTypeId: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  chargeType?: { id: string; code: string; name: string; pricingModel: PricingModel; isActive: boolean };
+};
+
 const PRICING_LABEL: Record<PricingModel, string> = {
   PER_BOOKING: 'Per booking',
   PER_NIGHT: 'Per night',
@@ -30,6 +41,13 @@ const PRICING_LABEL: Record<PricingModel, string> = {
   PER_PERSON_PER_NIGHT: 'Per person per night (extra guests × nights)',
   MANUAL: 'Manual only',
 };
+
+function toDateOnly(d: Date): string {
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export default function AdminChargesAddonsPage() {
   const [rows, setRows] = useState<ChargeTypeRow[]>([]);
@@ -43,6 +61,18 @@ export default function AdminChargesAddonsPage() {
     defaultAmount: '',
     pricingModel: 'PER_BOOKING' as PricingModel,
     isActive: true,
+  });
+
+  // Holiday / special-date overrides (per unit, per charge type, per date)
+  const [units, setUnits] = useState<UnitOption[]>([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
+  const [selectedUnitId, setSelectedUnitId] = useState('');
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [overrides, setOverrides] = useState<OverrideRow[]>([]);
+  const [overrideForm, setOverrideForm] = useState({
+    date: toDateOnly(new Date()),
+    chargeTypeId: '',
+    amount: '',
   });
 
   const load = async () => {
@@ -65,6 +95,62 @@ export default function AdminChargesAddonsPage() {
   }, []);
 
   const activeCount = useMemo(() => rows.filter((r) => r.isActive).length, [rows]);
+  const perNightChargeTypes = useMemo(
+    () => rows.filter((r) => r.pricingModel === 'PER_NIGHT' || r.pricingModel === 'PER_PERSON_PER_NIGHT'),
+    [rows]
+  );
+
+  const loadUnits = async () => {
+    setUnitsLoading(true);
+    try {
+      const data = await apiClient.get<unknown>('/api/market/units?limit=200&offset=0');
+      const list = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      const mapped = list
+        .map((u) => ({
+          id: String(u.id ?? ''),
+          name: String(u.title ?? u.name ?? u.code ?? u.id ?? '').trim(),
+        }))
+        .filter((u) => u.id && u.name);
+      setUnits(mapped);
+      if (!selectedUnitId && mapped.length > 0) setSelectedUnitId(mapped[0]!.id);
+    } finally {
+      setUnitsLoading(false);
+    }
+  };
+
+  const loadOverrides = async (unitId: string) => {
+    if (!unitId) {
+      setOverrides([]);
+      return;
+    }
+    setOverrideLoading(true);
+    try {
+      const from = new Date();
+      from.setUTCDate(from.getUTCDate() - 7);
+      const to = new Date();
+      to.setUTCDate(to.getUTCDate() + 90);
+      const qs = new URLSearchParams({
+        unitId,
+        from: toDateOnly(from),
+        to: toDateOnly(to),
+      }).toString();
+      const data = await apiClient.get<{ overrides?: OverrideRow[] }>(`/api/market/charge-type-date-overrides?${qs}`);
+      setOverrides(Array.isArray(data.overrides) ? data.overrides : []);
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadUnits();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selectedUnitId) return;
+    void loadOverrides(selectedUnitId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnitId]);
 
   const toggleActive = async (row: ChargeTypeRow) => {
     setSavingId(row.id);
@@ -338,6 +424,166 @@ export default function AdminChargesAddonsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        </AdminSection>
+      </div>
+
+      <div className="mt-6">
+        <AdminSection
+          title="Holiday / special-date pricing (per unit)"
+          subtitle="Set a different amount for PER_NIGHT / PER_PERSON_PER_NIGHT charges on specific dates (e.g. holidays). These overrides are applied when auto-attaching charges to new bookings."
+        >
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <label className="flex flex-col gap-1.5 md:col-span-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Unit</span>
+                <select
+                  value={selectedUnitId}
+                  onChange={(e) => setSelectedUnitId(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                  disabled={unitsLoading || units.length === 0}
+                >
+                  {units.length === 0 && (
+                    <option value="">
+                      {unitsLoading ? 'Loading units…' : 'No units found'}
+                    </option>
+                  )}
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Date</span>
+                <input
+                  type="date"
+                  value={overrideForm.date}
+                  onChange={(e) => setOverrideForm((p) => ({ ...p, date: e.target.value }))}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Amount (PHP)</span>
+                <input
+                  value={overrideForm.amount}
+                  onChange={(e) => setOverrideForm((p) => ({ ...p, amount: e.target.value }))}
+                  placeholder="e.g. 500"
+                  inputMode="decimal"
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <label className="flex flex-col gap-1.5 md:col-span-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Charge type (per night)</span>
+                <select
+                  value={overrideForm.chargeTypeId}
+                  onChange={(e) => setOverrideForm((p) => ({ ...p, chargeTypeId: e.target.value }))}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                >
+                  <option value="">Select charge type…</option>
+                  {perNightChargeTypes.map((ct) => (
+                    <option key={ct.id} value={ct.id}>
+                      {ct.code} — {ct.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <button
+                type="button"
+                disabled={!selectedUnitId || !overrideForm.chargeTypeId || !overrideForm.date || overrideForm.amount.trim() === ''}
+                onClick={async () => {
+                  const amount = Number(overrideForm.amount);
+                  if (!Number.isFinite(amount) || amount < 0) return;
+                  setOverrideLoading(true);
+                  try {
+                    await apiClient.post('/api/market/charge-type-date-overrides', {
+                      unitId: selectedUnitId,
+                      chargeTypeId: overrideForm.chargeTypeId,
+                      date: overrideForm.date,
+                      amount,
+                    });
+                    await loadOverrides(selectedUnitId);
+                  } finally {
+                    setOverrideLoading(false);
+                  }
+                }}
+                className="mt-6 md:mt-auto px-4 py-2.5 rounded-lg bg-[#0B5858] text-white text-sm font-semibold hover:bg-[#0a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {overrideLoading ? 'Saving…' : 'Save override'}
+              </button>
+            </div>
+
+            <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+              <table className="w-full text-sm" style={{ minWidth: 760 }}>
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Code</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {overrides
+                    .filter((o) => {
+                      const pm = o.chargeType?.pricingModel;
+                      return pm === 'PER_NIGHT' || pm === 'PER_PERSON_PER_NIGHT';
+                    })
+                    .map((o) => (
+                      <tr key={o.id}>
+                        <td className="px-4 py-3 text-gray-800 font-medium">{o.date}</td>
+                        <td className="px-4 py-3">
+                          <code className="font-mono text-[11px] bg-gray-100 text-[#0b5858] px-2 py-0.5 rounded">
+                            {o.chargeType?.code ?? o.chargeTypeId}
+                          </code>
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">{o.chargeType?.name ?? '—'}</td>
+                        <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                          &#8369;{Number(o.amount || 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            type="button"
+                            className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50"
+                            onClick={async () => {
+                              setOverrideLoading(true);
+                              try {
+                                await apiClient.delete('/api/market/charge-type-date-overrides', {
+                                  body: {
+                                    unitId: o.unitId,
+                                    chargeTypeId: o.chargeTypeId,
+                                    date: o.date,
+                                  },
+                                });
+                                await loadOverrides(selectedUnitId);
+                              } finally {
+                                setOverrideLoading(false);
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {overrides.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">
+                        {overrideLoading ? 'Loading overrides…' : 'No holiday overrides yet for this unit.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </AdminSection>
       </div>
