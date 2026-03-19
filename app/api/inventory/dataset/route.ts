@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 
-/** Live backend URL for market-backend. Used to proxy dataset when requests hit this app. */
+/** Market-backend URL for inventory dataset. Sales-report inventory data comes from market only. */
 const BACKEND_URL = (
   process.env.MARKET_API_URL ||
   process.env.NEXT_PUBLIC_MARKET_API_URL ||
-  process.env.API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
   ''
 ).replace(/\/+$/, '');
 

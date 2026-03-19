@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Intentionally pinned to API_URL. Do not fall back to MARKET_API_URL for bookings.
-const BOOKING_API_URL = process.env.API_URL?.trim();
+// Bookings go to Kelsey (API_URL) directly — do NOT route through market-backend.
+const API_URL = process.env.API_URL?.trim();
 
 function pickPrimaryRole(roles: string[]): string | null {
   const normalized = roles.map((r) => r.trim()).filter(Boolean);
@@ -30,7 +30,7 @@ function pickPrimaryRole(roles: string[]): string | null {
 }
 
 export async function GET(request: NextRequest) {
-  if (!BOOKING_API_URL) {
+  if (!API_URL) {
     return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  // Forward auth headers from client so backend can scope by role (admin = all, finance = agent's bookings)
+  // Forward auth headers so market-backend can scope by role and forward to Kelsey for sync
   const incomingId = request.headers.get('x-user-id');
   const incomingEmail = request.headers.get('x-user-email');
   const incomingRole = request.headers.get('x-user-role');
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const res = await fetch(`${BOOKING_API_URL.replace(/\/+$/, '')}/api/bookings/my?limit=200&page=1`, {
+  const res = await fetch(`${API_URL.replace(/\/+$/, '')}/api/bookings/my?limit=500&page=1`, {
     method: 'GET',
     headers,
     cache: 'no-store',
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     status: res.status,
     headers: {
       'Cache-Control': 'no-store',
-      'x-bookings-upstream': BOOKING_API_URL,
+      'x-bookings-upstream': 'kelsey',
     },
   });
 }

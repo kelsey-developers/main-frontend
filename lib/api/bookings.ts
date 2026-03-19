@@ -62,7 +62,96 @@ export interface CreateBookingInput {
   };
 }
 
+export interface CatalogBookingAddon {
+  id?: string;
+  name?: string;
+  quantity?: number;
+  charge?: number;
+  notes?: string;
+}
+
+type AddBookingChargesResponse = {
+  count?: number;
+};
+
+type CreateBookingItemRequestResponse = {
+  id?: string;
+};
+
+type BulkCatalogChargeItem = {
+  itemName: string;
+  itemCode?: string;
+  quantity: number;
+  amount: number;
+  notes?: string;
+};
+
+type BookingItemRequestLineInput = {
+  productId: string;
+  quantityRequested: number;
+  notes?: string;
+};
+
 const NO_STORE_OPTIONS = { cache: 'no-store' } as const;
+
+function toBulkCatalogChargeItems(addOns: unknown[]): BulkCatalogChargeItem[] {
+  const items: BulkCatalogChargeItem[] = [];
+
+  for (const raw of addOns) {
+    if (!raw || typeof raw !== 'object') continue;
+    const addon = raw as CatalogBookingAddon;
+
+    const itemName = String(addon.name ?? '').trim();
+    const amount = Number(addon.charge);
+    const quantity = Math.max(1, Math.floor(Number(addon.quantity ?? 1)));
+
+    if (!itemName) continue;
+    if (!Number.isFinite(amount) || amount < 0) continue;
+
+    const itemCode = typeof addon.id === 'string' && addon.id.trim().length > 0
+      ? addon.id.trim()
+      : undefined;
+    const notes = typeof addon.notes === 'string' && addon.notes.trim().length > 0
+      ? addon.notes.trim()
+      : undefined;
+
+    items.push({
+      itemName,
+      itemCode,
+      quantity,
+      amount,
+      notes,
+    });
+  }
+
+  return items;
+}
+
+function toBookingItemRequestLines(addOns: unknown[]): BookingItemRequestLineInput[] {
+  const lines: BookingItemRequestLineInput[] = [];
+
+  for (const raw of addOns) {
+    if (!raw || typeof raw !== 'object') continue;
+    const addon = raw as CatalogBookingAddon;
+
+    const productId = typeof addon.id === 'string' ? addon.id.trim() : '';
+    const quantity = Math.max(1, Math.floor(Number(addon.quantity ?? 1)));
+    const itemName = typeof addon.name === 'string' ? addon.name.trim() : '';
+    const noteParts = [itemName ? `catalog:${itemName}` : null, addon.notes?.trim() || null].filter(
+      (value): value is string => Boolean(value)
+    );
+
+    if (!productId) continue;
+
+    lines.push({
+      productId,
+      quantityRequested: quantity,
+      notes: noteParts.length > 0 ? noteParts.join(' | ') : undefined,
+    });
+  }
+
+  return lines;
+}
 
 export async function getBookings(listingId: string): Promise<BookingListItem[]> {
   if (!listingId) return [];
@@ -84,24 +173,73 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: nu
   return apiClient.post('/api/bookings', input);
 }
 
-export async function getMyBookings(): Promise<MyBookingItem[]> {
-  try {
-    const data = await apiClient.get<unknown>(`/api/bookings/my`, NO_STORE_OPTIONS);
-    if (Array.isArray(data)) {
-      return (data as MyBookingItem[]).map((item) => ({
-        ...item,
-        raw_status: item.raw_status ?? inferRawStatusFromClientStatus(item.status),
-      }));
+export async function appendCatalogItemsToBookingCharges(
+  bookingIdOrRef: string,
+  addOns: unknown[]
+): Promise<{ posted: number; skipped: number }> {
+  const bookingKey = String(bookingIdOrRef ?? '').trim();
+  const source = Array.isArray(addOns) ? addOns : [];
+  const items = toBulkCatalogChargeItems(source);
+  const skipped = Math.max(0, source.length - items.length);
+
+  if (!bookingKey || items.length === 0) {
+    return { posted: 0, skipped };
+  }
+
+  const response = await apiClient.post<AddBookingChargesResponse>(
+    `/api/market/bookings/${encodeURIComponent(bookingKey)}/charges/bulk`,
+    { items }
+  );
+
+  return {
+    posted: Number(response?.count ?? items.length),
+    skipped,
+  };
+}
+
+export async function createBookingItemRequestFromCatalog(
+  bookingIdOrRef: string,
+  addOns: unknown[]
+): Promise<{ requestId: string | null; posted: number; skipped: number }> {
+  const bookingKey = String(bookingIdOrRef ?? '').trim();
+  const source = Array.isArray(addOns) ? addOns : [];
+  const lines = toBookingItemRequestLines(source);
+  const skipped = Math.max(0, source.length - lines.length);
+
+  if (!bookingKey || lines.length === 0) {
+    return { requestId: null, posted: 0, skipped };
+  }
+
+  const response = await apiClient.post<CreateBookingItemRequestResponse>(
+    '/api/market/booking-item-requests',
+    {
+      bookingId: bookingKey,
+      reason: 'Booking catalog stock request',
+      items: lines,
     }
-    const payload = data as { data?: unknown[]; bookings?: unknown[] };
-    const arr = payload?.data ?? payload?.bookings ?? [];
-    return (arr as MyBookingItem[]).map((item) => ({
+  );
+
+  return {
+    requestId: typeof response?.id === 'string' ? response.id : null,
+    posted: lines.length,
+    skipped,
+  };
+}
+
+export async function getMyBookings(): Promise<MyBookingItem[]> {
+  const data = await apiClient.get<unknown>(`/api/bookings/my`, NO_STORE_OPTIONS);
+  if (Array.isArray(data)) {
+    return (data as MyBookingItem[]).map((item) => ({
       ...item,
       raw_status: item.raw_status ?? inferRawStatusFromClientStatus(item.status),
     }));
-  } catch {
-    return [];
   }
+  const payload = data as { data?: unknown[]; bookings?: unknown[] };
+  const arr = payload?.data ?? payload?.bookings ?? [];
+  return (arr as MyBookingItem[]).map((item) => ({
+    ...item,
+    raw_status: item.raw_status ?? inferRawStatusFromClientStatus(item.status),
+  }));
 }
 
 export async function getBookingById(id: string): Promise<Record<string, unknown> | null> {

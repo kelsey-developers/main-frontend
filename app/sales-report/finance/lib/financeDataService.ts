@@ -1,7 +1,7 @@
 /**
  * Fetches bookings and damage incidents from market-backend for finance dashboard.
- * Uses /api/market/* which proxies to MARKET_API_URL.
- * Pass currentUser so the backend can scope data by role (finance = agent's bookings only).
+ * Bookings: /api/market/bookings/my → MARKET_API_URL (market syncs from Kelsey, returns DB data).
+ * Damage incidents: /api/damage-incidents → MARKET_API_URL.
  */
 
 import { apiClient } from '@/lib/api/client';
@@ -15,7 +15,7 @@ export interface FinanceAuth {
   role?: string;
 }
 
-/** Raw booking from GET /api/bookings/my (market-backend) */
+/** Raw booking from GET /api/market/bookings/my (market-backend) */
 interface MarketBookingCharge {
   id: string;
   category: string;
@@ -211,18 +211,15 @@ export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Pr
     credentials: 'include' as RequestCredentials,
   };
 
-  // Try dedicated route first (server-side cookie handling), then market proxy
-  for (const endpoint of ['/api/bookings/my', '/api/market/bookings/my']) {
-    try {
-      const data = await apiClient.get<unknown>(endpoint, opts);
-      const list = extractBookingsList(data);
-      const completedOnly = list.filter((b) => String(b.status || '').toLowerCase() === 'booked');
-      return completedOnly.map(toBookingLinkedRow);
-    } catch {
-      continue;
-    }
+  // Bookings from market API (market-backend syncs from Kelsey, returns DB data).
+  try {
+    const data = await apiClient.get<unknown>('/api/market/bookings/my', opts);
+    const list = extractBookingsList(data);
+    const completedOnly = list.filter((b) => String(b.status || '').toLowerCase() === 'booked');
+    return completedOnly.map(toBookingLinkedRow);
+  } catch {
+    return [];
   }
-  return [];
 }
 
 /** Extract a single booking from GET /api/bookings/:id response (object or { data }, { booking }, etc.). */
