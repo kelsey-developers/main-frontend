@@ -3,6 +3,7 @@ import type { BookingFormData, BookingAvailability } from '@/types/booking';
 import type { Listing } from '@/types/listing';
 import { BookingService } from '@/services/bookingService';
 import { CalendarService } from '@/services/calendarService';
+import { computePriceWithUnitPricing } from '@/lib/utils/unitPricing';
 import { NeedHelpCard } from './NeedHelpCard';
 
 interface StayDetailsStepProps {
@@ -476,80 +477,51 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
   const extraGuestFeePerPerson = formData.extraGuestFeePerPerson ?? 250;
   const extraGuests = Math.max(0, Math.floor(formData.extraGuests ?? 0));
 
-  const nights = useMemo(() => {
-    const start = toDateOnly(parseYMD(formData.checkInDate));
-    const end = toDateOnly(parseYMD(formData.checkOutDate));
-    if (!start || !end) return 0;
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const diff = Math.round((end.getTime() - start.getTime()) / msPerDay);
-    return Math.max(0, diff);
-  }, [formData.checkInDate, formData.checkOutDate]);
-
-  // Calculate subtotal using special pricing per night
-  const [pricingRulesCache, setPricingRulesCache] = useState<Map<string, number>>(new Map());
-  
-  useEffect(() => {
-    const loadPricingRules = async () => {
-      if (!listingId) {
-        setPricingRulesCache(new Map());
-        return;
-      }
-      
-      try {
-        const rules = await CalendarService.getPricingRules(listingId);
-        const pricingMap = new Map<string, number>();
-        
-        rules.forEach(rule => {
-          const start = new Date(rule.start_date);
-          const end = new Date(rule.end_date);
-          const current = new Date(start);
-          
-          while (current <= end) {
-            const dateStr = formatYMD(current);
-            // Use the most recent rule if multiple rules apply to the same date
-            if (!pricingMap.has(dateStr) || new Date(rule.created_at) > new Date(rules.find(r => pricingMap.get(dateStr) === r.price)?.created_at || '')) {
-              pricingMap.set(dateStr, rule.price);
-            }
-            current.setDate(current.getDate() + 1);
-          }
-        });
-        
-        setPricingRulesCache(pricingMap);
-      } catch (error) {
-        console.error('Error loading pricing rules:', error);
-        setPricingRulesCache(new Map());
-      }
-    };
-    
-    loadPricingRules();
-  }, [listingId]);
-
-  // Calculate subtotal using special pricing per night
-  const subtotal = useMemo(() => {
-    if (!formData.checkInDate || !formData.checkOutDate || nights === 0) return 0;
-    
-    const start = toDateOnly(parseYMD(formData.checkInDate));
-    const end = toDateOnly(parseYMD(formData.checkOutDate));
-    if (!start || !end) return 0;
-    
-    let total = 0;
-    const current = new Date(start);
-    
-    while (current < end) {
-      const dateStr = formatYMD(current);
-      const specialPrice = pricingRulesCache.get(dateStr);
-      const nightPrice = specialPrice ?? basePricePerNight;
-      total += nightPrice;
-      current.setDate(current.getDate() + 1);
+  const pricingResult = useMemo(() => {
+    if (!formData.checkInDate || !formData.checkOutDate) {
+      return {
+        baseSubtotal: 0,
+        holidayAdjustmentAmount: 0,
+        subtotalBeforeDiscount: 0,
+        stayLengthDiscountAmount: 0,
+        subtotal: 0,
+        nights: 0,
+        appliedStayLengthDiscount: null,
+        appliedHolidayRules: [],
+      };
     }
-    
-    return total;
-  }, [formData.checkInDate, formData.checkOutDate, nights, basePricePerNight, pricingRulesCache]);
+    return computePriceWithUnitPricing(
+      basePricePerNight,
+      formData.checkInDate,
+      formData.checkOutDate,
+      listing?.discount_rules,
+      listing?.holiday_pricing_rules
+    );
+  }, [
+    formData.checkInDate,
+    formData.checkOutDate,
+    basePricePerNight,
+    listing?.discount_rules,
+    listing?.holiday_pricing_rules,
+  ]);
+
+  const {
+    baseSubtotal,
+    holidayAdjustmentAmount,
+    subtotalBeforeDiscount,
+    stayLengthDiscountAmount,
+    nights,
+    appliedStayLengthDiscount,
+    appliedHolidayRules,
+  } = pricingResult;
   const extraGuestFees = useMemo(() => {
     if (!extraGuests || extraGuests <= 0 || nights <= 0) return 0;
     return extraGuests * extraGuestFeePerPerson * nights;
   }, [extraGuests, extraGuestFeePerPerson, nights]);
-  const total = useMemo(() => subtotal + extraGuestFees, [subtotal, extraGuestFees]);
+  const total = useMemo(
+    () => subtotalBeforeDiscount + extraGuestFees - stayLengthDiscountAmount,
+    [subtotalBeforeDiscount, extraGuestFees, stayLengthDiscountAmount]
+  );
 
   const formattedRange =
     selectedDates.start && selectedDates.end
@@ -930,13 +902,6 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
                   <div className="font-semibold text-gray-800" style={{ fontFamily: 'Poppins' }}>{formatCurrency(basePricePerNight)}</div>
                 </div>
 
-                {nights > 0 && pricingRulesCache.size > 0 && (
-                  <div className="flex items-center justify-between text-xs sm:text-sm text-amber-600 mb-1">
-                    <div>Special pricing applied</div>
-                    <div className="font-semibold" style={{ fontFamily: 'Poppins' }}>Yes</div>
-                  </div>
-                )}
-
                 <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-1">
                   <div>Nights</div>
                   <div className="font-semibold text-gray-800" style={{ fontFamily: 'Poppins' }}>{nights}</div>
@@ -950,13 +915,29 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
                 <div className="border-t border-[#E6F5F4] mt-2 pt-2">
                   <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-1">
                     <div>Subtotal</div>
-                    <div className="font-semibold text-gray-800">{formatCurrency(subtotal)}</div>
+                    <div className="font-semibold text-gray-800">{formatCurrency(baseSubtotal)}</div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-2">
+                  <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-1">
                     <div>Extra guest fees</div>
                     <div className="font-semibold text-gray-800">{formatCurrency(extraGuestFees)}</div>
                   </div>
+
+                  {holidayAdjustmentAmount !== 0 && (
+                    <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-1">
+                      <div>Holiday {appliedHolidayRules.length > 0 ? `(${appliedHolidayRules.map((r) => r.name).join(', ')})` : ''}</div>
+                      <div className="font-semibold text-gray-800">
+                        {holidayAdjustmentAmount > 0 ? '+' : ''}{formatCurrency(holidayAdjustmentAmount)}
+                      </div>
+                    </div>
+                  )}
+
+                  {stayLengthDiscountAmount > 0 && (
+                    <div className="flex items-center justify-between text-xs sm:text-sm text-gray-600 mb-1">
+                      <div>Discount {appliedStayLengthDiscount ? `(${appliedStayLengthDiscount.label})` : ''}</div>
+                      <div className="font-semibold text-gray-800">-{formatCurrency(stayLengthDiscountAmount)}</div>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between text-sm font-semibold text-[#0B5858]">
                     <div>Total</div>

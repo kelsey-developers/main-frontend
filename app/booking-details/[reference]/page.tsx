@@ -14,6 +14,8 @@ interface BookingDetails {
   total_guests: number;
   excess_pax_charge?: number;
   unit_charge: number;
+  /** Accommodation subtotal before stay-length discount (includes holiday pricing) */
+  subtotal_before_discount?: number;
   amenities_charge?: number;
   service_charge?: number;
   discount?: number;
@@ -330,7 +332,7 @@ function BookingDetailsContent() {
                 <div className="text-sm text-gray-700 space-y-3" style={{ fontFamily: 'Poppins' }}>
                   <div className="flex justify-between">
                     <span>Unit Charge ({booking.nights} night{booking.nights !== 1 ? 's' : ''})</span>
-                    <span>{formatCurrency(booking.unit_charge * booking.nights)}</span>
+                    <span>{formatCurrency(booking.subtotal_before_discount ?? booking.unit_charge * booking.nights)}</span>
                   </div>
 
                   {(booking.excess_pax_charge ?? 0) > 0 && (
