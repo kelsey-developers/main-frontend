@@ -10,7 +10,6 @@ import SummaryCard from "../components/SummaryCard";
 import InventoryDropdown, { type InventoryDropdownOption } from "../components/InventoryDropdown";
 import ActiveStatusToggle from "../components/ActiveStatusToggle";
 import { useToast } from "../hooks/useToast";
-import { avatarPalette, initials } from "../helpers/supplierHelpers";
 
 type Supplier = (typeof inventorySupplierDirectory)[number];
 
@@ -495,7 +494,6 @@ export default function SuppliersPage() {
           ) : (
             <div>
               {filtered.map((s, idx) => {
-              const [fg, bg] = avatarPalette(s.name);
               const isLast = idx === filtered.length - 1;
               return (
               <div
@@ -524,10 +522,7 @@ export default function SuppliersPage() {
                   </div>
 
                   {/* Supplier Name + (mobile) contact */}
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[12px] font-bold flex-shrink-0" style={{ background: bg, color: fg, fontFamily: 'Poppins' }}>
-                      {initials(s.name)}
-                    </div>
+                  <div className="flex items-start min-w-0">
                     <div className="min-w-0">
                       <div
                         className="text-[13.5px] font-semibold text-gray-900 whitespace-normal break-words"

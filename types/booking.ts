@@ -11,9 +11,16 @@ export type BookingStatus =
 export type PaymentMethod = 'gcash' | 'bank_transfer' | '';
 
 export interface AdditionalService {
+  /**
+   * Inventory product/item id (from the inventory module dataset).
+   * Inventory sync on booking confirmation should use this id to decrement stock.
+   */
   id: string;
   name: string;
   quantity: number;
+  /**
+   * Per-unit price captured at booking time (used for booking totals + display).
+   */
   charge: number;
 }
 
