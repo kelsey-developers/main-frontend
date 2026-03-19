@@ -207,11 +207,11 @@ export async function proxyMarketApiBinary(
   request: NextRequest,
   upstreamPath: string
 ): Promise<NextResponse> {
-  const marketBaseUrl = process.env.MARKET_API_URL;
-  const fallbackBaseUrl = process.env.API_URL;
+  const primaryBaseUrl = process.env.API_URL;
+  const fallbackBaseUrl = process.env.MARKET_API_URL;
 
-  if (!marketBaseUrl && !fallbackBaseUrl) {
-    return new NextResponse('MARKET_API_URL not configured', {
+  if (!primaryBaseUrl && !fallbackBaseUrl) {
+    return new NextResponse('API_URL and MARKET_API_URL are not configured', {
       status: 503,
       headers: { 'Content-Type': 'text/plain' },
     });
@@ -296,7 +296,7 @@ export async function proxyMarketApiBinary(
     }
   }
 
-  const bases = [marketBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
+  const bases = [primaryBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
   let lastUpstreamStatus: number | undefined;
   for (const base of bases) {
     const result = await fetchBinary(base);
@@ -335,11 +335,11 @@ export async function proxyMarketApi(
   request: NextRequest,
   upstreamPath: string
 ): Promise<NextResponse> {
-  const marketBaseUrl = process.env.MARKET_API_URL;
-  const fallbackBaseUrl = process.env.API_URL;
+  const primaryBaseUrl = process.env.API_URL;
+  const fallbackBaseUrl = process.env.MARKET_API_URL;
 
-  if (!marketBaseUrl && !fallbackBaseUrl) {
-    return NextResponse.json({ error: 'MARKET_API_URL not configured' }, { status: 503 });
+  if (!primaryBaseUrl && !fallbackBaseUrl) {
+    return NextResponse.json({ error: 'API_URL and MARKET_API_URL are not configured' }, { status: 503 });
   }
 
   const tryForward = async (baseUrl: string) => {
@@ -350,9 +350,9 @@ export async function proxyMarketApi(
   };
 
   try {
-    if (marketBaseUrl) {
+    if (primaryBaseUrl) {
       try {
-        const primary = await tryForward(marketBaseUrl);
+        const primary = await tryForward(primaryBaseUrl);
 
         // If ngrok/HTML page comes back (often status 200), treat it as a bad gateway and try fallback.
         if (!primary.isHtml) {
@@ -368,8 +368,8 @@ export async function proxyMarketApi(
 
         return NextResponse.json(
           {
-            error: 'Market upstream is unreachable or returned HTML (ngrok/error page).',
-            upstream: marketBaseUrl,
+            error: 'Primary upstream is unreachable or returned HTML.',
+            upstream: primaryBaseUrl,
           },
           { status: 502 }
         );
@@ -388,7 +388,7 @@ export async function proxyMarketApi(
       }
     }
 
-    // No market URL configured; use API_URL as a best-effort fallback.
+    // No API_URL configured; use MARKET_API_URL as a best-effort fallback.
     const result = await tryForward(fallbackBaseUrl!);
     if (result.isHtml) {
       return NextResponse.json(
@@ -401,8 +401,8 @@ export async function proxyMarketApi(
     if (isNetworkError(err)) {
       return NextResponse.json(
         {
-          error: 'Market backend is unreachable. Ensure it is running and MARKET_API_URL is correct.',
-          upstream: marketBaseUrl || fallbackBaseUrl,
+          error: 'Upstream backend is unreachable. Ensure API_URL is correct.',
+          upstream: primaryBaseUrl || fallbackBaseUrl,
         },
         { status: 503 }
       );

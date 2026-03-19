@@ -18,7 +18,7 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
           <thead>
             <tr className="bg-gradient-to-r from-[#0b5858] to-[#05807e] rounded-t-xl border-b border-gray-200">
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Booking</th>
-              <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Unit</th>
+              <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Unit / Type</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Agent</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Guest</th>
               <th className="px-3 py-3 text-xs font-semibold text-white text-center uppercase tracking-wider">Check-in / Out</th>
@@ -37,8 +37,13 @@ const BookingLinkedTable: React.FC<BookingLinkedTableProps> = ({ rows }) => {
               </tr>
             ) : rows.map((row) => (
               <tr key={row.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                <td className="px-3 py-3 text-sm font-medium text-gray-900 text-center">{row.bookingId}</td>
-                <td className="px-3 py-3 text-sm text-gray-700 text-center">{row.unit}</td>
+                <td className="px-3 py-3 text-xs font-medium text-gray-500 text-center">{row.bookingId}</td>
+                <td className="px-3 py-3 text-center">
+                  <div className="leading-tight">
+                    <div className="text-sm text-gray-700">{row.unit}</div>
+                    <div className="text-xs text-gray-500 mt-1">{row.unitType ?? '—'}</div>
+                  </div>
+                </td>
                 <td className="px-3 py-3 text-sm text-gray-600 text-center">{row.agent}</td>
                 <td className="px-3 py-3 text-sm text-gray-600 text-center">{row.guest}</td>
                 <td className="px-3 py-3 text-sm text-gray-600 text-center">{formatDateNumeric(row.checkIn)} – {formatDateNumeric(row.checkOut)}</td>

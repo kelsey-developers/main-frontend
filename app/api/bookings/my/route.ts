@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const MARKET_API_URL = process.env.MARKET_API_URL;
 const API_URL = process.env.API_URL;
-const BASE_URL = MARKET_API_URL || API_URL;
+const BASE_URL = API_URL || MARKET_API_URL;
 
 export async function GET(request: NextRequest) {
   if (!BASE_URL) {
@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const res = await fetch(`${BASE_URL.replace(/\/+$/, '')}/api/bookings/my`, {
+  const search = request.nextUrl.searchParams.toString();
+  const res = await fetch(`${BASE_URL.replace(/\/+$/, '')}/api/bookings/my${search ? `?${search}` : ''}`, {
     method: 'GET',
     headers,
   });
