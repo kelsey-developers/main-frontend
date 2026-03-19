@@ -342,12 +342,12 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
     return /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(url.trim());
   };
 
-  // When embedded (admin), fetch penciled bookings from auth-service-backend (sorted by penciled_at ASC)
+  // When embedded (admin), fetch all bookings from auth-service-backend. Status filter is applied client-side.
   useEffect(() => {
     if (!embedded) return;
     let cancelled = false;
     setSummaryLoading(true);
-    getAllBookings({ status: 'penciled', limit: 100 })
+    getAllBookings({ limit: 100 })
       .then((res) => {
         if (cancelled) return;
         const mapped = (res.data || []).map((item) => apiToBooking(item));
@@ -431,9 +431,9 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
       await confirmBooking(booking.id);
       showToast('Booking confirmed', 'success');
       closeConfirmBookingModal();
-      // Refetch penciled bookings when embedded
+      // Refetch bookings when embedded
       if (embedded) {
-        const res = await getAllBookings({ status: 'penciled', limit: 100 });
+        const res = await getAllBookings({ limit: 100 });
         setAllBookings((res.data || []).map((item) => apiToBooking(item)));
       } else {
         setAllBookings((prev) => prev.map((b) => (b.id === booking.id ? { ...booking, status: 'booked' as const } : b)));
@@ -455,9 +455,9 @@ const BookingRequests: React.FC<{ embedded?: boolean }> = ({ embedded = false })
       await declineBooking(pendingBooking.id);
       showToast('Booking request declined', 'success');
       closeConfirmModal();
-      // Refetch penciled bookings when embedded
+      // Refetch bookings when embedded
       if (embedded) {
-        const res = await getAllBookings({ status: 'penciled', limit: 100 });
+        const res = await getAllBookings({ limit: 100 });
         setAllBookings((res.data || []).map((item) => apiToBooking(item)));
       } else {
         const updatedBooking = { ...pendingBooking, status: 'cancelled' as const };
