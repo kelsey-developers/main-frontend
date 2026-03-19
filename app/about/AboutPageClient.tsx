@@ -53,7 +53,7 @@ interface StatItem {
 }
 
 interface PillarItem {
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   description: string;
 }
@@ -88,19 +88,41 @@ const stats: StatItem[] = [
 
 const pillars: PillarItem[] = [
   {
-    icon: '🏡',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5L12 3l9 7.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 9.75V21h13.5V9.75" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 21v-6.75h4.5V21" />
+      </svg>
+    ),
     title: 'Our Mission',
     description:
       'Make every stay feel like home by connecting guests to trusted spaces and dependable service.',
   },
   {
-    icon: '🌏',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+        <circle cx="12" cy="12" r="9" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h18" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.5 2.4 4 5.6 4 9s-1.5 6.6-4 9" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c-2.5 2.4-4 5.6-4 9s1.5 6.6 4 9" />
+      </svg>
+    ),
     title: 'Our Vision',
     description:
       'Build a hospitality platform where booking, hosting, and support are simple, transparent, and accessible.',
   },
   {
-    icon: '🤝',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M12 3l7.5 3v6c0 5-3.2 7.8-7.5 9-4.3-1.2-7.5-4-7.5-9V6L12 3z"
+        />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+      </svg>
+    ),
     title: 'Our Promise',
     description:
       'Deliver a smooth end-to-end experience for guests, owners, and agents with reliable tools and support.',
@@ -191,8 +213,7 @@ export default function AboutPageClient() {
         <div
           className="absolute inset-0 bg-cover bg-center opacity-20"
           style={{
-            backgroundImage:
-              "url('https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1600&q=80')",
+            backgroundImage: "url(/mr.jpg)",
           }}
         />
         <div
@@ -251,7 +272,7 @@ export default function AboutPageClient() {
           {pillars.map((pillar, index) => (
             <RevealOnView key={pillar.title} delayMs={index * 110}>
               <article className="h-full rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:-translate-y-1 hover:shadow-md transition-all">
-                <div className="w-11 h-11 rounded-xl bg-[#0B5858]/10 text-xl flex items-center justify-center">
+                <div className="w-11 h-11 rounded-xl bg-[#0B5858]/10 text-[#0B5858] flex items-center justify-center">
                   {pillar.icon}
                 </div>
                 <h3 className="mt-4 text-lg font-semibold text-[#0B5858]">{pillar.title}</h3>
@@ -321,13 +342,7 @@ export default function AboutPageClient() {
           {services.map((service, index) => (
             <RevealOnView key={service.title} delayMs={index * 80}>
               <article className="h-full rounded-2xl border border-gray-200 bg-white p-4 shadow-sm hover:-translate-y-1 hover:shadow-md transition-all">
-                <img
-                  src={service.image}
-                  alt={service.alt}
-                  className="w-full aspect-video object-cover rounded-lg"
-                  loading="lazy"
-                />
-                <h3 className="mt-4 text-base font-semibold text-[#0B5858]">{service.title}</h3>
+                <h3 className="text-base font-semibold text-[#0B5858]">{service.title}</h3>
                 <p className="mt-2 text-sm text-gray-600 leading-6">{service.description}</p>
               </article>
             </RevealOnView>

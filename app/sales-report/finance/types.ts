@@ -11,6 +11,7 @@ export interface FinanceDashboardSummary {
 export interface SalesTrendPoint {
   name: string;
   value: number;
+  commissionReduction?: number;
 }
 
 export interface RevenueByTypeItem {
@@ -91,7 +92,7 @@ export interface RevenueByAgent {
 export interface FinanceFeatureLink {
   href: string;
   title: string;
-  icon: 'chart' | 'breakdown' | 'bookings' | 'charges' | 'damage' | 'export' | 'future';
+  icon: 'chart' | 'breakdown' | 'bookings' | 'charges' | 'damage' | 'export' | 'future' | 'commission';
 }
 
 /** Revenue overview (totals and period) */
@@ -112,6 +113,8 @@ export interface RevenueTrendPoint {
 export interface BookingLinkedRow {
   id: string;
   bookingId: string;
+  /** Booking creation timestamp (ISO). Optional; used for newest-first sorting in lists. */
+  createdAt?: string;
   unit: string;
   /** Unit/property image URL. Optional, shown on booking detail. */
   imageUrl?: string;
@@ -143,6 +146,23 @@ export interface BookingLinkedRow {
   totalAmount?: number;
   /** @deprecated Use computed total from rate × nights - discounts + extras + addOnsAmount instead. */
   total?: number;
+}
+
+/** Commission reduction row for approved bookings in finance. */
+export interface CommissionReductionRow {
+  id: string;
+  bookingRef: string;
+  propertyName: string;
+  unitType?: string;
+  location?: string;
+  guestName: string;
+  agentName: string;
+  bookingTotal: number;
+  commissionRate: number;
+  commissionAmount: number;
+  checkIn: string;
+  checkOut: string;
+  createdAt?: string;
 }
 
 /** Charge type */

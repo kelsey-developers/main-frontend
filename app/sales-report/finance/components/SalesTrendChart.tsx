@@ -18,7 +18,6 @@ interface SalesTrendChartProps {
 }
 
 const formatYAxis = (value: number) => formatPHPForChart(value);
-const formatTooltip = (value: number) => [formatPHPForChart(value), 'Sales'];
 
 const tooltipStyle = {
   backgroundColor: 'white',
@@ -27,6 +26,28 @@ const tooltipStyle = {
   boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
   fontSize: '12px',
 };
+
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: Array<{ payload: SalesTrendPoint; value: number }>;
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: ChartTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const point = payload[0].payload;
+  const salesValue = Number(point.value ?? 0);
+  const commissionReduction = Number(point.commissionReduction ?? 0);
+
+  return (
+    <div style={tooltipStyle} className="px-3 py-2.5">
+      <p className="text-xs font-semibold text-gray-700 mb-1">{label}</p>
+      <p className="text-xs text-gray-600">Sales: <span className="font-semibold text-gray-900">{formatPHPForChart(salesValue)}</span></p>
+      <p className="text-xs text-gray-600">Commission: <span className="font-semibold text-[#b45309]">-{formatPHPForChart(commissionReduction)}</span></p>
+    </div>
+  );
+}
 
 const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
   const [isMounted, setIsMounted] = useState(false);
@@ -71,8 +92,7 @@ const SalesTrendChart: React.FC<SalesTrendChartProps> = ({ data }) => {
               width={42}
             />
             <Tooltip
-              formatter={(value: any) => (value != null ? formatTooltip(value) : ['', 'Sales'])}
-              contentStyle={tooltipStyle}
+              content={<CustomTooltip />}
             />
             <Area
               type="monotone"
