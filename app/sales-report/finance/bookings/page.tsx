@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import FinancePageHeader from '../components/FinancePageHeader';
 import HorizontalFilter from '../components/HorizontalFilter';
 import BookingLinkedTable from './components/BookingLinkedTable';
-import { filterBookingRows } from '../lib/filters';
+import { buildBookingSearchIndex, filterBookingRows } from '../lib/filters';
 import { defaultSalesReportFilters } from '../types';
 import type { BookingLinkedRow, SalesReportFilters } from '../types';
 import { exportBookingLinkedToCsv, exportBookingLinkedToPdf } from '../lib/exportBookingLinked';
@@ -93,11 +93,22 @@ export default function BookingsPage() {
       mounted = false;
     };
   }, [currentUser?.userId ?? null, currentUser?.email ?? null, currentUser?.role ?? null]);
-  const effectiveFilters = filterEnabled ? appliedFilters : getDefaultViewFilters();
+  const effectiveFiltersBase = filterEnabled ? appliedFilters : getDefaultViewFilters();
+  const effectiveFilters = {
+    ...effectiveFiltersBase,
+    searchName: draftFilters.searchName,
+    ...(!filterEnabled && draftFilters.searchName.trim()
+      ? {
+          filterMethod: 'quick' as const,
+          timePeriod: 'all' as const,
+        }
+      : {}),
+  };
+  const bookingSearchIndex = useMemo(() => buildBookingSearchIndex(rows), [rows]);
 
   const filteredRows = useMemo(
-    () => filterBookingRows(rows, effectiveFilters),
-    [rows, effectiveFilters],
+    () => filterBookingRows(rows, effectiveFilters, bookingSearchIndex),
+    [rows, effectiveFilters, bookingSearchIndex],
   );
 
   const handleExportCsv = () => {
@@ -146,7 +157,7 @@ export default function BookingsPage() {
           type="search"
           value={draftFilters.searchName}
           onChange={(e) => update('searchName', e.target.value)}
-          placeholder="Search..."
+          placeholder="Search booking ID, unit, agent, or guest..."
           className="flex-1 min-w-0 px-4 py-2.5 rounded-lg border border-gray-200 bg-white shadow-sm text-gray-900 text-sm placeholder:text-gray-400 focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] transition-colors"
           style={{ fontFamily: 'Poppins' }}
           aria-label="Search"

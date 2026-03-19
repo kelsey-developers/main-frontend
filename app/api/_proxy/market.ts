@@ -57,6 +57,34 @@ function dedupeRoles(roles: string[]): string[] {
   return unique;
 }
 
+function pickPrimaryRole(roles: string[]): string | null {
+  if (!roles || roles.length === 0) return null;
+  const normalized = roles.map((r) => r.trim()).filter(Boolean);
+  if (normalized.length === 0) return null;
+
+  // Highest privilege first. Prevent forwarding a restricted role as primary
+  // when the user actually also has admin/finance/etc.
+  const priority = [
+    'admin',
+    'finance',
+    'inventory',
+    'operations',
+    'housekeeping',
+    'frontdesk',
+    'agent',
+    'cleaner',
+    'employee',
+    'user',
+    'guest',
+  ];
+  const byLower = new Map(normalized.map((r) => [r.toLowerCase(), r]));
+  for (const p of priority) {
+    const found = byLower.get(p);
+    if (found) return found;
+  }
+  return normalized[0] ?? null;
+}
+
 function readUserCookie(request: NextRequest): AuthUserInfo {
   const userCookie = request.cookies.get('user')?.value;
   if (!userCookie) return { roles: [] };
@@ -166,6 +194,7 @@ async function buildForwardHeaders(
     }
 
     if (!options.stripRoleHeaders && resolvedRoles.length > 0) {
+      headers.set('x-user-role', pickPrimaryRole(resolvedRoles) ?? resolvedRoles[0]);
       headers.set('x-user-role', resolvedRoles[0]);
       headers.set('x-user-roles', resolvedRoles.join(','));
     }
@@ -181,7 +210,7 @@ async function buildForwardHeaders(
       !headers.has('x-user-roles') &&
       cookieIdentity.roles.length > 0
     ) {
-      headers.set('x-user-role', cookieIdentity.roles[0]);
+      headers.set('x-user-role', pickPrimaryRole(cookieIdentity.roles) ?? cookieIdentity.roles[0]);
       headers.set('x-user-roles', cookieIdentity.roles.join(','));
     }
   }
@@ -310,6 +339,36 @@ function isNetworkError(err: unknown): boolean {
   );
 }
 
+function trimToUndefined(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function getMarketBaseCandidates(): string[] {
+  const candidates = [
+    trimToUndefined(process.env.MARKET_API_URL),
+    trimToUndefined(process.env.MARKET_API_FALLBACK_URL),
+    process.env.NODE_ENV !== 'production' ? 'http://localhost:4000' : undefined,
+    trimToUndefined(process.env.API_URL),
+  ].filter((value): value is string => Boolean(value));
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = candidate.replace(/\/+$/, '');
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
+}
+
+function shouldTryNextCandidate(status: number): boolean {
+  // Some upstreams may respond with unauthorized/not-found for market routes.
+  // Try the next candidate base (e.g., local backend) before failing.
+  return status === 401 || status === 403 || status === 404 || status === 405 || status === 501;
+}
+
 /**
  * Forward GET to upstream and return raw bytes (for attachment/image content).
  * Uses arrayBuffer() so images are not corrupted. HTML error pages (530/404) are
@@ -319,11 +378,11 @@ export async function proxyMarketApiBinary(
   request: NextRequest,
   upstreamPath: string
 ): Promise<NextResponse> {
-  const marketBaseUrl = process.env.MARKET_API_URL;
-  const fallbackBaseUrl = process.env.API_URL;
+  const primaryBaseUrl = process.env.API_URL;
+  const fallbackBaseUrl = process.env.MARKET_API_URL;
 
-  if (!marketBaseUrl && !fallbackBaseUrl) {
-    return new NextResponse('MARKET_API_URL not configured', {
+  if (!primaryBaseUrl && !fallbackBaseUrl) {
+    return new NextResponse('API_URL and MARKET_API_URL are not configured', {
       status: 503,
       headers: { 'Content-Type': 'text/plain' },
     });
@@ -389,7 +448,7 @@ export async function proxyMarketApiBinary(
     }
   }
 
-  const bases = [marketBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
+  const bases = [primaryBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
   let lastUpstreamStatus: number | undefined;
   for (const base of bases) {
     const result = await fetchBinary(base);
@@ -428,11 +487,11 @@ export async function proxyMarketApi(
   request: NextRequest,
   upstreamPath: string
 ): Promise<NextResponse> {
-  const marketBaseUrl = process.env.MARKET_API_URL;
-  const fallbackBaseUrl = process.env.API_URL;
+  const primaryBaseUrl = process.env.API_URL;
+  const fallbackBaseUrl = process.env.MARKET_API_URL;
 
-  if (!marketBaseUrl && !fallbackBaseUrl) {
-    return NextResponse.json({ error: 'MARKET_API_URL not configured' }, { status: 503 });
+  if (!primaryBaseUrl && !fallbackBaseUrl) {
+    return NextResponse.json({ error: 'API_URL and MARKET_API_URL are not configured' }, { status: 503 });
   }
 
   const tryForward = async (baseUrl: string) => {
@@ -443,26 +502,28 @@ export async function proxyMarketApi(
   };
 
   try {
-    if (marketBaseUrl) {
+    // If we have a primary base URL, try it first
+    if (primaryBaseUrl) {
       try {
-        const primary = await tryForward(marketBaseUrl);
-
-        // If ngrok/HTML page comes back (often status 200), treat it as a bad gateway and try fallback.
+        const primary = await tryForward(primaryBaseUrl);
         if (!primary.isHtml) {
           return NextResponse.json(primary.data, { status: primary.status });
         }
-
+        // Primary returned HTML error page; try fallback if available
         if (fallbackBaseUrl) {
-          const fallback = await tryForward(fallbackBaseUrl);
-          if (!fallback.isHtml) {
-            return NextResponse.json(fallback.data, { status: fallback.status });
+          try {
+            const fallback = await tryForward(fallbackBaseUrl);
+            if (!fallback.isHtml) {
+              return NextResponse.json(fallback.data, { status: fallback.status });
+            }
+          } catch {
+            // Fall through to error response below
           }
         }
-
         return NextResponse.json(
           {
-            error: 'Market upstream is unreachable or returned HTML (ngrok/error page).',
-            upstream: marketBaseUrl,
+            error: 'Primary upstream is unreachable or returned HTML.',
+            upstream: primaryBaseUrl,
           },
           { status: 502 }
         );
@@ -474,28 +535,37 @@ export async function proxyMarketApi(
               return NextResponse.json(fallback.data, { status: fallback.status });
             }
           } catch {
-            // fall through to 503
+            // Fall through to error response below
           }
         }
         throw err;
       }
     }
 
-    // No market URL configured; use API_URL as a best-effort fallback.
-    const result = await tryForward(fallbackBaseUrl!);
-    if (result.isHtml) {
-      return NextResponse.json(
-        { error: 'Upstream returned HTML (unexpected).', upstream: fallbackBaseUrl },
-        { status: 502 }
-      );
+    // No API_URL configured; use MARKET_API_URL as a best-effort fallback
+    if (fallbackBaseUrl) {
+      const result = await tryForward(fallbackBaseUrl);
+      if (result.isHtml) {
+        return NextResponse.json(
+          { error: 'Upstream returned HTML (unexpected).', upstream: fallbackBaseUrl },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json(result.data, { status: result.status });
     }
-    return NextResponse.json(result.data, { status: result.status });
+
+    return NextResponse.json(
+      {
+        error: 'No API_URL or MARKET_API_URL configured.',
+      },
+      { status: 503 }
+    );
   } catch (err) {
     if (isNetworkError(err)) {
       return NextResponse.json(
         {
-          error: 'Market backend is unreachable. Ensure it is running and MARKET_API_URL is correct.',
-          upstream: marketBaseUrl || fallbackBaseUrl,
+          error: 'Upstream backend is unreachable. Ensure API_URL is correct.',
+          upstream: primaryBaseUrl || fallbackBaseUrl,
         },
         { status: 503 }
       );

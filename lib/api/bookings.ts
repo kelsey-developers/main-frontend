@@ -22,6 +22,17 @@ export interface MyBookingItem {
   payment?: { reference_number: string; status: string };
 }
 
+function inferRawStatusFromClientStatus(status: unknown): string | undefined {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'booked') return 'confirmed';
+  if (normalized === 'pending' || normalized === 'pending-payment') return 'penciled';
+  if (normalized === 'ongoing') return 'ongoing';
+  if (normalized === 'completed') return 'completed';
+  if (normalized === 'cancelled' || normalized === 'declined') return 'cancelled';
+  return undefined;
+}
+
 export interface CreateBookingInput {
   listing_id: string;
   check_in_date: string;
@@ -52,10 +63,15 @@ export interface CreateBookingInput {
   };
 }
 
+const NO_STORE_OPTIONS = { cache: 'no-store' } as const;
+
 export async function getBookings(listingId: string): Promise<BookingListItem[]> {
   if (!listingId) return [];
   try {
-    const data = await apiClient.get<unknown>(`/api/bookings?listingId=${encodeURIComponent(listingId)}`);
+    const data = await apiClient.get<unknown>(
+      `/api/bookings?listingId=${encodeURIComponent(listingId)}`,
+      NO_STORE_OPTIONS
+    );
     if (Array.isArray(data)) return data as BookingListItem[];
     const payload = data as { data?: unknown[]; bookings?: unknown[] };
     const arr = payload?.data ?? payload?.bookings ?? [];
@@ -71,11 +87,19 @@ export async function createBooking(input: CreateBookingInput): Promise<{ id: nu
 
 export async function getMyBookings(): Promise<MyBookingItem[]> {
   try {
-    const data = await apiClient.get<unknown>(`/api/bookings/my`);
-    if (Array.isArray(data)) return data as MyBookingItem[];
+    const data = await apiClient.get<unknown>(`/api/bookings/my`, NO_STORE_OPTIONS);
+    if (Array.isArray(data)) {
+      return (data as MyBookingItem[]).map((item) => ({
+        ...item,
+        raw_status: item.raw_status ?? inferRawStatusFromClientStatus(item.status),
+      }));
+    }
     const payload = data as { data?: unknown[]; bookings?: unknown[] };
     const arr = payload?.data ?? payload?.bookings ?? [];
-    return arr as MyBookingItem[];
+    return (arr as MyBookingItem[]).map((item) => ({
+      ...item,
+      raw_status: item.raw_status ?? inferRawStatusFromClientStatus(item.status),
+    }));
   } catch {
     return [];
   }
@@ -83,7 +107,7 @@ export async function getMyBookings(): Promise<MyBookingItem[]> {
 
 export async function getBookingById(id: string): Promise<Record<string, unknown> | null> {
   try {
-    return await apiClient.get<Record<string, unknown>>(`/api/bookings/${id}`);
+    return await apiClient.get<Record<string, unknown>>(`/api/bookings/${id}`, NO_STORE_OPTIONS);
   } catch (err) {
     const status = (err as Error & { status?: number }).status;
     if (status === 403 || status === 404) return null;
@@ -102,7 +126,7 @@ export async function getAllBookings(params?: {
   if (params?.page != null) qs.set('page', String(params.page));
   if (params?.limit != null) qs.set('limit', String(params.limit));
   const url = `/api/bookings/all${qs.toString() ? `?${qs}` : ''}`;
-  return apiClient.get(url);
+  return apiClient.get(url, NO_STORE_OPTIONS);
 }
 
 /** Admin only. Confirm a penciled booking (penciled -> confirmed). */

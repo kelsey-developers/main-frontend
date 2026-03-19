@@ -35,8 +35,11 @@ const DamagePenaltySection: React.FC<DamagePenaltySectionProps> = ({ incidents }
                   No records detected
                 </td>
               </tr>
-            ) : incidents.map((m) => (
-              <tr key={m.bookingId} className="border-b border-gray-100 hover:bg-gray-50/50">
+            ) : incidents.map((m) => {
+              const legacySlug = `${m.bookingId}${DAMAGE_SLUG_SEP}${m.unit}`;
+              const detailId = m.damageId && m.damageId.trim() ? m.damageId : legacySlug;
+              return (
+              <tr key={m.damageId ?? `${m.bookingId}-${m.unit}-${m.reportedAt}`} className="border-b border-gray-100 hover:bg-gray-50/50">
                 <td className="px-4 py-3 text-sm font-medium text-gray-900 text-center">{m.bookingId}</td>
                 <td className="px-4 py-3 text-sm text-gray-700 text-center">{m.unit}</td>
                 <td className="px-4 py-3 text-sm text-gray-700 text-center">{/^\d{4}-\d{2}-\d{2}$/.test(String(m.reportedAt)) ? formatDateNumeric(String(m.reportedAt)) : m.reportedAt}</td>
@@ -47,14 +50,14 @@ const DamagePenaltySection: React.FC<DamagePenaltySectionProps> = ({ incidents }
                 <td className="px-4 py-3 text-sm text-gray-700 text-center">{m.status}</td>
                 <td className="px-4 py-3 text-sm text-gray-700 text-center">
                   <Link
-                    href={`/sales-report/finance/damage-penalty/${encodeURIComponent(m.bookingId + DAMAGE_SLUG_SEP + m.unit)}`}
+                    href={`/sales-report/finance/damage-penalty/${encodeURIComponent(detailId)}`}
                     className="inline-block px-4 py-2 rounded-lg bg-teal-800 text-white hover:bg-teal-900 transition-colors"
                   >
                     View more
                   </Link>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>

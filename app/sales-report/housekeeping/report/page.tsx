@@ -255,10 +255,15 @@ export default function HousekeepingReportPage() {
     setIsSubmitting(true);
 
     const reportedAtIso = new Date(reportDate + 'T12:00:00.000Z').toISOString();
+    const reporterUserId =
+      user?.id != null && String(user.id).trim() !== ''
+        ? String(user.id).trim()
+        : undefined;
 
     const payload: CreateDamageIncidentPayload = {
       bookingId: selectedBookingId || undefined,
       unitId: selectedUnitId,
+      reportedBy: reportedByName,
       reportedAt: reportedAtIso,
       description: trimmedDescription,
       resolutionNotes: notes.trim() || undefined,
@@ -271,9 +276,7 @@ export default function HousekeepingReportPage() {
     };
 
     try {
-      const incident = await createDamageIncident(payload, {
-        reporterUserId: user?.id != null ? String(user.id) : undefined,
-      });
+      const incident = await createDamageIncident(payload, { reporterUserId });
       const incidentId = incident?.id != null ? String(incident.id) : '';
 
       if (proofFiles.length > 0 && incidentId) {

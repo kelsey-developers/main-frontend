@@ -6,7 +6,6 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/goods-receipts',
   '/api/product-categories',
   '/api/charge-types',
-  '/api/bookings',
   '/api/damage-incidents',
   '/api/units',
   '/api/user-roles',
@@ -23,8 +22,16 @@ const BACKEND_ENDPOINT_PREFIXES = [
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
 const DEV_AUTH_EMAIL = process.env.NEXT_PUBLIC_DEV_AUTH_EMAIL || 'admin@example.com';
 const DEV_AUTH_ROLE = process.env.NEXT_PUBLIC_DEV_AUTH_ROLE || 'admin';
+const UNITS_API_SOURCE = (
+  process.env.NEXT_PUBLIC_UNITS_API_SOURCE ||
+  process.env.UNITS_API_SOURCE ||
+  ''
+).toLowerCase();
 
 function shouldUseBackendFallback(endpoint: string): boolean {
+  if (endpoint.startsWith('/api/units')) {
+    return UNITS_API_SOURCE !== 'api';
+  }
   return BACKEND_ENDPOINT_PREFIXES.some((prefix) => endpoint.startsWith(prefix));
 }
 
@@ -51,6 +58,8 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (endpoint.startsWith('/api/admin/payouts')) return true;
   if (endpoint.startsWith('/api/upload')) return true;
   if (endpoint.startsWith('/api/calendar')) return true;
+  // Holiday pricing overrides for charge types
+  if (endpoint.startsWith('/api/charge-type-date-overrides') || endpoint.startsWith('/api/market/charge-type-date-overrides')) return true;
   return false;
 }
 
@@ -75,10 +84,12 @@ function getBaseUrl(endpoint: string): string {
     return '';
   }
 
-  // Server-side fetches need absolute URLs. Route inventory/market endpoints to MARKET_API_URL.
+  // Server-side fetches need absolute URLs. Route backend endpoints to API_URL first, then MARKET_API_URL fallback.
   if (shouldUseBackendFallback(endpoint)) {
+    const apiUrl = process.env.API_URL || '';
+    if (apiUrl) return apiUrl;
     const marketUrl = process.env.MARKET_API_URL || '';
-    if (!marketUrl) throw new Error('Market API URL is not configured. Set MARKET_API_URL.');
+    if (!marketUrl) throw new Error('API URL is not configured. Set API_URL.');
     return marketUrl;
   }
 
@@ -253,11 +264,6 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   const raw = await res.text();
-  const rawLooksLikeHtml =
-    typeof raw === 'string' &&
-    raw.length > 0 &&
-    (raw.trimStart().toLowerCase().startsWith('<!doctype') ||
-      raw.trimStart().toLowerCase().startsWith('<html'));
 
   let data: unknown = {};
   if (raw) {
