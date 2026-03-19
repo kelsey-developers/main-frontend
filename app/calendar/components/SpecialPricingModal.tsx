@@ -410,7 +410,7 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
                       <div className="space-y-2">
                         {pricingUnits.map((unit) => {
                           const isSelected = selectedUnitId === unit.id;
-                          const projectedPrice = Math.round(unit.basePrice * (1 + (selectedPreset?.pct ?? 0) / 100));
+                          const projectedPrice = Math.round((unit.basePrice ?? 0) * (1 + (selectedPreset?.pct ?? 0) / 100));
                           return (
                             <button
                               key={unit.id}
@@ -427,7 +427,7 @@ const SpecialPricingModal: React.FC<SpecialPricingModalProps> = ({
                               </div>
                               <div className="flex-1 min-w-0 text-left">
                                 <div className="text-sm font-semibold text-gray-900 truncate">{unit.title}</div>
-                                <div className="text-xs text-gray-500">Base: {fmtCurrency(unit.basePrice)}/night</div>
+                                <div className="text-xs text-gray-500">Base: {fmtCurrency(unit.basePrice ?? 0)}/night</div>
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <div className="text-sm font-bold text-[#0B5858]">
