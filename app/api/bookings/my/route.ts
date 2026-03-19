@@ -1,12 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const MARKET_API_URL = process.env.MARKET_API_URL;
-const API_URL = process.env.API_URL;
-const BASE_URL = MARKET_API_URL || API_URL;
+// Intentionally pinned to API_URL. Do not fall back to MARKET_API_URL for bookings.
+const BOOKING_API_URL = process.env.API_URL?.trim();
+
+function pickPrimaryRole(roles: string[]): string | null {
+  const normalized = roles.map((r) => r.trim()).filter(Boolean);
+  if (normalized.length === 0) return null;
+
+  const priority = [
+    'admin',
+    'finance',
+    'inventory',
+    'operations',
+    'housekeeping',
+    'frontdesk',
+    'agent',
+    'cleaner',
+    'employee',
+    'user',
+    'guest',
+  ];
+  const byLower = new Map(normalized.map((r) => [r.toLowerCase(), r]));
+  for (const p of priority) {
+    const found = byLower.get(p);
+    if (found) return found;
+  }
+
+  return normalized[0] ?? null;
+}
 
 export async function GET(request: NextRequest) {
-  if (!BASE_URL) {
-    return NextResponse.json({ error: 'MARKET_API_URL or API_URL not configured' }, { status: 503 });
+  if (!BOOKING_API_URL) {
+    return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
   const token = request.cookies.get('accessToken')?.value;
@@ -25,12 +50,18 @@ export async function GET(request: NextRequest) {
   if (incomingRole) headers['x-user-role'] = incomingRole;
   if (incomingRoles) headers['x-user-roles'] = incomingRoles;
 
-  if (!headers['x-user-role'] && !headers['x-user-email']) {
+  if (!headers['x-user-role'] && !headers['x-user-email'] && !headers['x-user-roles']) {
     const userCookie = request.cookies.get('user')?.value;
     if (userCookie) {
       try {
         const user = JSON.parse(userCookie) as { id?: string; email?: string; roles?: string[] };
-        if (user.roles?.[0]) headers['x-user-role'] = user.roles[0];
+        const roles = Array.isArray(user.roles)
+          ? user.roles.filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+          : [];
+        if (roles.length > 0) {
+          headers['x-user-role'] = pickPrimaryRole(roles) ?? roles[0];
+          headers['x-user-roles'] = roles.join(',');
+        }
         if (user.email) headers['x-user-email'] = user.email;
         if (user.id) headers['x-user-id'] = user.id;
       } catch {
@@ -39,11 +70,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const res = await fetch(`${BASE_URL.replace(/\/+$/, '')}/api/bookings/my`, {
+  const res = await fetch(`${BOOKING_API_URL.replace(/\/+$/, '')}/api/bookings/my?limit=200&page=1`, {
     method: 'GET',
     headers,
+    cache: 'no-store',
   });
 
   const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return NextResponse.json(data, {
+    status: res.status,
+    headers: {
+      'Cache-Control': 'no-store',
+      'x-bookings-upstream': BOOKING_API_URL,
+    },
+  });
 }
