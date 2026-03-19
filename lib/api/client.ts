@@ -7,15 +7,17 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/product-categories',
   '/api/charge-types',
   '/api/damage-incidents',
-  '/api/units',
+  '/api/booking-item-requests',
   '/api/user-roles',
   '/api/inventory-settings',
   '/api/approval-requests',
-  '/api/market', // market-backend routes (finance dashboard, bookings, etc.)
+  '/api/market', // market-backend routes (finance dashboard, etc.)
+  // /api/bookings and /api/units excluded — Kelsey (API_URL) only, never MARKET_API_URL
   '/api/users',
   '/api/admin',
   '/api/agents',
   '/api/upload',
+  '/api/calendar',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
@@ -41,7 +43,6 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (method === 'PATCH' && endpoint.includes('/api/bookings/') && (endpoint.endsWith('/confirm') || endpoint.endsWith('/decline'))) return true;
   if (method === 'GET' && endpoint.startsWith('/api/agents/me/')) return true;
   if (method === 'GET' && endpoint.startsWith('/api/agents/list')) return true;
-  if (method === 'GET' && endpoint.startsWith('/api/market/bookings/my')) return true;
   if (method === 'PATCH' && endpoint.startsWith('/api/units/')) return true;
   // Allow dev-auth for charge types while there's no real login flow.
   if (endpoint.startsWith('/api/charge-types') || endpoint.startsWith('/api/market/charge-types')) return true;
@@ -56,8 +57,12 @@ function shouldAttachDevAuth(endpoint: string, method: string): boolean {
   if (endpoint.startsWith('/api/agents/payouts')) return true;
   if (endpoint.startsWith('/api/admin/payouts')) return true;
   if (endpoint.startsWith('/api/upload')) return true;
-  // Holiday pricing overrides for charge types
+  // Holiday pricing overrides and per-unit charge defaults
   if (endpoint.startsWith('/api/charge-type-date-overrides') || endpoint.startsWith('/api/market/charge-type-date-overrides')) return true;
+  if (endpoint.startsWith('/api/charge-type-defaults') || endpoint.startsWith('/api/market/charge-type-defaults')) return true;
+  // Sales-report: booking-item-requests, approval-requests, inventory
+  if (endpoint.startsWith('/api/market/booking-item-requests') || endpoint.startsWith('/api/market/approval-requests')) return true;
+  if (endpoint.startsWith('/api/market/inventory') || endpoint.startsWith('/api/inventory/dataset')) return true;
   return false;
 }
 
@@ -82,7 +87,14 @@ function getBaseUrl(endpoint: string): string {
     return '';
   }
 
-  // Server-side fetches need absolute URLs. Route backend endpoints to API_URL first, then MARKET_API_URL fallback.
+  // Bookings and units go to Kelsey (API_URL) only — never through market-backend.
+  if (endpoint.startsWith('/api/bookings') || endpoint.startsWith('/api/units')) {
+    const apiUrl = process.env.API_URL || '';
+    if (!apiUrl) throw new Error('API_URL is not configured for bookings/units.');
+    return apiUrl;
+  }
+
+  // Server-side fetches need absolute URLs. Route inventory/market endpoints to MARKET_API_URL.
   if (shouldUseBackendFallback(endpoint)) {
     const apiUrl = process.env.API_URL || '';
     if (apiUrl) return apiUrl;
@@ -189,21 +201,36 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     mergedHeaders['Content-Type'] = 'application/json';
   }
 
-  if (
+  const shouldInjectDevAuth =
     typeof window !== 'undefined' &&
     process.env.NODE_ENV !== 'production' &&
     shouldAttachDevAuth(endpoint, requestMethod) &&
-    !hasExistingAuthHeaders(mergedHeaders)
-  ) {
+    !hasExistingAuthHeaders(mergedHeaders);
+
+  if (shouldInjectDevAuth) {
     mergedHeaders['x-user-id'] = DEV_AUTH_USER_ID;
     mergedHeaders['x-user-email'] = DEV_AUTH_EMAIL;
     mergedHeaders['x-user-role'] = DEV_AUTH_ROLE;
+    mergedHeaders['x-user-roles'] = DEV_AUTH_ROLE;
   }
+
+  // Booking endpoints need cookies (accessToken) so Next.js route can forward auth to Kelsey API.
+  const needsCookiesForKelsey = endpoint.startsWith('/api/bookings');
+
+  const resolvedCredentials: RequestCredentials =
+    credentials ??
+    (needsCookiesForKelsey
+      ? 'include'
+      : token
+        ? 'omit'
+        : shouldInjectDevAuth
+          ? 'omit'
+          : 'same-origin');
 
   const requestInit: RequestInit = {
     ...rest,
-    // Use same-origin by default so cross-origin API calls do not require CORS credential headers.
-    credentials: credentials ?? (token ? 'omit' : 'same-origin'),
+    // Dev auth headers should not be overridden by stale same-origin cookies.
+    credentials: resolvedCredentials,
     headers: mergedHeaders,
     ...(body !== undefined
       ? { body: isFormDataBody ? (body as FormData) : JSON.stringify(body) }

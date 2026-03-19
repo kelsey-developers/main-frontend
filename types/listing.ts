@@ -89,6 +89,7 @@ export interface ListingView {
   amenities?: string[];
   is_available: boolean;
   is_featured: boolean;
+  max_capacity?: number;
   created_at: string;
   updated_at: string;
   details: string;

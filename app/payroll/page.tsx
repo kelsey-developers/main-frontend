@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { PAYROLL_API_BASE, payrollFetch } from '@/lib/api/payroll';
+import jsPDF from 'jspdf';
 
 const PAYROLL_API = PAYROLL_API_BASE;
 
@@ -434,6 +435,289 @@ function GenerateModal({
   );
 }
 
+// ─── Payslip PDF Generation ───────────────────────────────────────────────────
+function pdfPeso(n: number | string) {
+  const v = typeof n === 'string' ? parseFloat(n) : n;
+  const abs = Math.abs(v || 0);
+  const formatted = abs.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (v || 0) < 0 ? `PHP -${formatted}` : `PHP ${formatted}`;
+}
+
+function generatePayslipPDF(emp: PayrollPeriodEmployee, period: PayrollPeriod) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' });
+  const W = 148;
+  const margin = 14;
+  let y = 0;
+
+  const teal: [number, number, number] = [11, 88, 88];
+  const lightTeal: [number, number, number] = [236, 246, 246];
+
+  // Header
+  doc.setFillColor(...teal);
+  doc.rect(0, 0, W, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(15);
+  doc.setFont('helvetica', 'bold');
+  doc.text('PAYSLIP', margin, 12);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text(period.payroll_id, margin, 18);
+  doc.setFontSize(8);
+  doc.text(`Pay Period: ${fmtDate(period.period_start)} to ${fmtDate(period.period_end)}`, margin, 24);
+
+  y = 38;
+
+  // Employee info box
+  doc.setFillColor(...lightTeal);
+  doc.roundedRect(margin, y, W - margin * 2, 24, 3, 3, 'F');
+  doc.setTextColor(...teal);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text(emp.full_name, margin + 4, y + 9);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(80, 80, 80);
+  doc.text(emp.position || '—', margin + 4, y + 15);
+  doc.text(emp.employment_type === 'DAILY' ? 'Daily Rate Employee' : 'Monthly Rate Employee', margin + 4, y + 21);
+
+  y = 70;
+
+  // Earnings section
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...teal);
+  doc.text('EARNINGS', margin, y);
+  y += 3;
+  doc.setDrawColor(...teal);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y, W - margin, y);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(50, 50, 50);
+
+  const earningsRows: [string, string][] = [
+    ['Days Worked', `${emp.days_worked} day${emp.days_worked !== 1 ? 's' : ''}`],
+    ['Total Hours', `${Number(emp.total_hours).toFixed(2)} hrs`],
+    ...(Number(emp.overtime_hours) > 0 ? [['Overtime Hours', `${Number(emp.overtime_hours).toFixed(2)} hrs`] as [string, string]] : []),
+    ['Base Pay', pdfPeso(emp.base_pay)],
+    ...(Number(emp.overtime_pay) > 0 ? [['Overtime Pay (+25%)', pdfPeso(emp.overtime_pay)] as [string, string]] : []),
+  ];
+
+  for (const [label, value] of earningsRows) {
+    doc.setFontSize(8);
+    doc.text(label, margin, y);
+    doc.text(value, W - margin, y, { align: 'right' });
+    y += 6;
+  }
+
+  // Gross total bar
+  y += 1;
+  doc.setFillColor(...lightTeal);
+  doc.rect(margin, y - 4, W - margin * 2, 9, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...teal);
+  doc.setFontSize(8.5);
+  doc.text('Gross Income', margin + 3, y + 2);
+  doc.text(pdfPeso(emp.gross_income), W - margin - 3, y + 2, { align: 'right' });
+  y += 12;
+
+  // Deductions section
+  if (Number(emp.total_charges) > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...teal);
+    doc.setFontSize(8);
+    doc.text('DEDUCTIONS', margin, y);
+    y += 3;
+    doc.line(margin, y, W - margin, y);
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(50, 50, 50);
+
+    if (emp.charges && emp.charges.length > 0) {
+      for (const c of emp.charges) {
+        doc.setFontSize(7.5);
+        const label = `${fmtDate(c.charge_date)} — ${c.description}`;
+        doc.text(label, margin, y);
+        doc.text(pdfPeso(c.amount), W - margin, y, { align: 'right' });
+        y += 5.5;
+      }
+    } else {
+      doc.setFontSize(8);
+      doc.text('Total Charges', margin, y);
+      doc.text(pdfPeso(emp.total_charges), W - margin, y, { align: 'right' });
+      y += 6;
+    }
+
+    y += 2;
+    doc.setFillColor(255, 235, 235);
+    doc.rect(margin, y - 4, W - margin * 2, 9, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(180, 40, 40);
+    doc.setFontSize(8.5);
+    doc.text('Total Deductions', margin + 3, y + 2);
+    doc.text(`-${pdfPeso(emp.total_charges)}`, W - margin - 3, y + 2, { align: 'right' });
+    y += 14;
+  }
+
+  // Net Pay
+  doc.setFillColor(...teal);
+  doc.roundedRect(margin, y, W - margin * 2, 18, 3, 3, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('NET PAY', margin + 5, y + 8);
+  doc.setFontSize(15);
+  doc.text(pdfPeso(emp.net_pay), W - margin - 5, y + 12, { align: 'right' });
+
+  // Footer
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(180, 180, 180);
+  doc.text(
+    `Generated ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}`,
+    W / 2, 202, { align: 'center' }
+  );
+
+  doc.save(`payslip_${emp.full_name.replace(/\s+/g, '_')}_${period.payroll_id}.pdf`);
+}
+
+function generateAllPayslipsPDF(employees: PayrollPeriodEmployee[], period: PayrollPeriod) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' });
+  const W = 148;
+  const margin = 14;
+  const teal: [number, number, number] = [11, 88, 88];
+  const lightTeal: [number, number, number] = [236, 246, 246];
+
+  employees.forEach((emp, idx) => {
+    if (idx > 0) doc.addPage();
+    let y = 0;
+
+    doc.setFillColor(...teal);
+    doc.rect(0, 0, W, 30, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(15);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PAYSLIP', margin, 12);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text(period.payroll_id, margin, 18);
+    doc.setFontSize(8);
+    doc.text(`Pay Period: ${fmtDate(period.period_start)} to ${fmtDate(period.period_end)}`, margin, 24);
+
+    y = 38;
+
+    doc.setFillColor(...lightTeal);
+    doc.roundedRect(margin, y, W - margin * 2, 24, 3, 3, 'F');
+    doc.setTextColor(...teal);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(emp.full_name, margin + 4, y + 9);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(80, 80, 80);
+    doc.text(emp.position || '—', margin + 4, y + 15);
+    doc.text(emp.employment_type === 'DAILY' ? 'Daily Rate Employee' : 'Monthly Rate Employee', margin + 4, y + 21);
+
+    y = 70;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...teal);
+    doc.text('EARNINGS', margin, y);
+    y += 3;
+    doc.setDrawColor(...teal);
+    doc.setLineWidth(0.3);
+    doc.line(margin, y, W - margin, y);
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(50, 50, 50);
+
+    const earningsRows: [string, string][] = [
+      ['Days Worked', `${emp.days_worked} day${emp.days_worked !== 1 ? 's' : ''}`],
+      ['Total Hours', `${Number(emp.total_hours).toFixed(2)} hrs`],
+      ...(Number(emp.overtime_hours) > 0 ? [['Overtime Hours', `${Number(emp.overtime_hours).toFixed(2)} hrs`] as [string, string]] : []),
+      ['Base Pay', fmtPeso(emp.base_pay)],
+      ...(Number(emp.overtime_pay) > 0 ? [['Overtime Pay (+25%)', fmtPeso(emp.overtime_pay)] as [string, string]] : []),
+    ];
+
+    for (const [label, value] of earningsRows) {
+      doc.setFontSize(8);
+      doc.text(label, margin, y);
+      doc.text(value, W - margin, y, { align: 'right' });
+      y += 6;
+    }
+
+    y += 1;
+    doc.setFillColor(...lightTeal);
+    doc.rect(margin, y - 4, W - margin * 2, 9, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...teal);
+    doc.setFontSize(8.5);
+    doc.text('Gross Income', margin + 3, y + 2);
+    doc.text(pdfPeso(emp.gross_income), W - margin - 3, y + 2, { align: 'right' });
+    y += 12;
+
+    if (Number(emp.total_charges) > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...teal);
+      doc.setFontSize(8);
+      doc.text('DEDUCTIONS', margin, y);
+      y += 3;
+      doc.line(margin, y, W - margin, y);
+      y += 6;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(50, 50, 50);
+
+      if (emp.charges && emp.charges.length > 0) {
+        for (const c of emp.charges) {
+          doc.setFontSize(7.5);
+          doc.text(`${fmtDate(c.charge_date)} - ${c.description}`, margin, y);
+          doc.text(pdfPeso(c.amount), W - margin, y, { align: 'right' });
+          y += 5.5;
+        }
+      } else {
+        doc.setFontSize(8);
+        doc.text('Total Charges', margin, y);
+        doc.text(pdfPeso(emp.total_charges), W - margin, y, { align: 'right' });
+        y += 6;
+      }
+
+      y += 2;
+      doc.setFillColor(255, 235, 235);
+      doc.rect(margin, y - 4, W - margin * 2, 9, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 40, 40);
+      doc.setFontSize(8.5);
+      doc.text('Total Deductions', margin + 3, y + 2);
+      doc.text(`-${pdfPeso(emp.total_charges)}`, W - margin - 3, y + 2, { align: 'right' });
+      y += 14;
+    }
+
+    doc.setFillColor(...teal);
+    doc.roundedRect(margin, y, W - margin * 2, 18, 3, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('NET PAY', margin + 5, y + 8);
+    doc.setFontSize(15);
+    doc.text(pdfPeso(emp.net_pay), W - margin - 5, y + 12, { align: 'right' });
+
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(180, 180, 180);
+    doc.text(
+      `Generated ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}  •  Page ${idx + 1} of ${employees.length}`,
+      W / 2, 202, { align: 'center' }
+    );
+  });
+
+  doc.save(`payslips_all_${period.payroll_id}.pdf`);
+}
+
 // ─── Period Detail Modal ──────────────────────────────────────────────────────
 function PeriodDetail({
   period, onClose, onStatusUpdated,
@@ -500,6 +784,16 @@ function PeriodDetail({
           </div>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_STYLES[d.status]}`}>{d.status}</span>
           <div className="ml-auto flex items-center gap-2">
+            {(d.employees ?? []).length > 0 && (
+              <button
+                onClick={() => generateAllPayslipsPDF(d.employees!, d)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download All Payslips
+              </button>
+            )}
             {nextStatus && (
               <button onClick={advanceStatus} disabled={advancing}
                 className="px-4 py-2 bg-[#0B5858] hover:bg-[#094444] text-white text-xs font-semibold rounded-xl transition-colors disabled:opacity-60">
@@ -544,7 +838,7 @@ function PeriodDetail({
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        {['Employee','Type','Effective Period','Days','OT hrs','Base Pay','OT Pay','Charges','Net Pay'].map(h => (
+                        {['Employee','Type','Effective Period','Days','OT hrs','Base Pay','OT Pay','Charges','Net Pay',''].map(h => (
                           <th key={h} className="text-left py-3 px-4 text-[11px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -579,11 +873,21 @@ function PeriodDetail({
                             </td>
                             <td className="py-3 px-4">
                               <span className={Number(emp.total_charges) > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}>
-                                {Number(emp.total_charges) > 0 ? `−${fmtPeso(emp.total_charges)}` : '—'}
+                                {Number(emp.total_charges) > 0 ? `-${pdfPeso(emp.total_charges)}` : '—'}
                               </span>
                             </td>
                             <td className={`py-3 px-4 font-bold ${Number(emp.net_pay) < 0 ? 'text-red-600' : 'text-gray-900'}`}>
                               {fmtPeso(emp.net_pay)}
+                            </td>
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => generatePayslipPDF(emp, d)}
+                                title="Download Payslip"
+                                className="p-1.5 rounded-lg bg-gray-100 hover:bg-[#0B5858] hover:text-white text-gray-500 transition-colors">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                              </button>
                             </td>
                           </tr>
                           {(emp.charges ?? []).length > 0 && (

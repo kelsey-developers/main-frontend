@@ -30,6 +30,10 @@ type ForwardOptions = {
   stripRoleHeaders?: boolean;
 };
 
+type ProxyMarketApiOptions = {
+  baseCandidates?: string[];
+};
+
 type AuthUserInfo = {
   email?: string;
   roles: string[];
@@ -55,6 +59,14 @@ function dedupeRoles(roles: string[]): string[] {
     unique.push(trimmed);
   }
   return unique;
+}
+
+function splitRolesHeader(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
 }
 
 function pickPrimaryRole(roles: string[]): string | null {
@@ -161,6 +173,12 @@ async function buildForwardHeaders(
     if (value) headers.set(key, value);
   });
 
+  const passthroughEmail = headers.get('x-user-email');
+  const passthroughRoles = dedupeRoles([
+    ...splitRolesHeader(headers.get('x-user-role')),
+    ...splitRolesHeader(headers.get('x-user-roles')),
+  ]);
+
   const tokenFromHeader = parseBearerToken(headers.get('authorization'));
   const tokenFromCookie = request.cookies.get('accessToken')?.value?.trim() || null;
   const accessToken = tokenFromHeader || tokenFromCookie;
@@ -179,11 +197,18 @@ async function buildForwardHeaders(
     headers.delete('x-user-roles');
 
     const verifiedIdentity = await getUserInfoFromAccessToken(accessToken);
-    const resolvedEmail = verifiedIdentity?.email ?? cookieIdentity.email;
+    const resolvedEmail =
+      verifiedIdentity?.email ??
+      cookieIdentity.email ??
+      (process.env.NODE_ENV !== 'production' ? passthroughEmail ?? undefined : undefined);
     const resolvedRoles = dedupeRoles([
       ...(verifiedIdentity?.roles ?? []),
       ...cookieIdentity.roles,
     ]);
+    const effectiveRoles =
+      process.env.NODE_ENV !== 'production' && passthroughRoles.length > 0
+        ? dedupeRoles([...passthroughRoles, ...resolvedRoles])
+        : resolvedRoles;
 
     if (!verifiedIdentity && process.env.NODE_ENV !== 'production') {
       console.warn('[market proxy] /api/auth/userinfo lookup failed; falling back to user cookie identity.');
@@ -193,10 +218,9 @@ async function buildForwardHeaders(
       headers.set('x-user-email', resolvedEmail);
     }
 
-    if (!options.stripRoleHeaders && resolvedRoles.length > 0) {
-      headers.set('x-user-role', pickPrimaryRole(resolvedRoles) ?? resolvedRoles[0]);
-      headers.set('x-user-role', resolvedRoles[0]);
-      headers.set('x-user-roles', resolvedRoles.join(','));
+    if (!options.stripRoleHeaders && effectiveRoles.length > 0) {
+      headers.set('x-user-role', pickPrimaryRole(effectiveRoles) ?? effectiveRoles[0]);
+      headers.set('x-user-roles', effectiveRoles.join(','));
     }
   } else {
     // No token: preserve dev header behavior, with cookie fallback when headers are missing.
@@ -223,10 +247,12 @@ async function buildForwardHeaders(
   return headers;
 }
 
+type ForwardBody = string | ArrayBuffer | undefined;
+
 async function forwardToUpstream(
   request: NextRequest,
   upstreamUrl: string,
-  options: ForwardOptions = {}
+  options: ForwardOptions & { preReadBody?: ForwardBody } = {}
 ): Promise<{ status: number; data: unknown; isHtml: boolean; rawText: string }> {
   const method = request.method.toUpperCase();
 
@@ -237,8 +263,9 @@ async function forwardToUpstream(
     headers.set('ngrok-skip-browser-warning', 'true');
   }
 
-  let body: string | ArrayBuffer | undefined;
-  if (method !== 'GET' && method !== 'HEAD') {
+  // Use pre-read body when retrying (body can only be read once per request)
+  let body: ForwardBody = options.preReadBody;
+  if (body === undefined && method !== 'GET' && method !== 'HEAD') {
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       body = await request.arrayBuffer();
@@ -345,18 +372,32 @@ function trimToUndefined(value: string | undefined): string | undefined {
 }
 
 function getMarketBaseCandidates(): string[] {
-  const candidates = [
+  // In dev: try MARKET_API_LOCAL_URL and localhost first (for local market-backend), then MARKET_API_URL (tunnel).
+  // In prod: use MARKET_API_URL only.
+  const devLocal =
+    process.env.NODE_ENV !== 'production'
+      ? [
+          trimToUndefined(process.env.MARKET_API_LOCAL_URL),
+          'http://localhost:4000',
+        ]
+      : [];
+
+  const explicit = [
     trimToUndefined(process.env.MARKET_API_URL),
     trimToUndefined(process.env.MARKET_API_FALLBACK_URL),
-    process.env.NODE_ENV !== 'production' ? 'http://localhost:4000' : undefined,
-    trimToUndefined(process.env.API_URL),
   ].filter((value): value is string => Boolean(value));
 
+  // Dev: local first so local market-backend works; then tunnel for remote.
+  const candidates =
+    process.env.NODE_ENV !== 'production'
+      ? [...devLocal, ...explicit]
+      : [...explicit];
+  const filtered = candidates.filter((value): value is string => Boolean(value));
   const seen = new Set<string>();
   const unique: string[] = [];
-  for (const candidate of candidates) {
-    const normalized = candidate.replace(/\/+$/, '');
-    if (seen.has(normalized)) continue;
+  for (const candidate of filtered) {
+    const normalized = candidate.replace(/\/+$/, '').trim();
+    if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     unique.push(normalized);
   }
@@ -364,9 +405,8 @@ function getMarketBaseCandidates(): string[] {
 }
 
 function shouldTryNextCandidate(status: number): boolean {
-  // Some upstreams may respond with unauthorized/not-found for market routes.
-  // Try the next candidate base (e.g., local backend) before failing.
-  return status === 401 || status === 403 || status === 404 || status === 405 || status === 501;
+  // Try next candidate only for likely route/method mismatches.
+  return status === 404 || status === 405 || status === 501;
 }
 
 /**
@@ -485,7 +525,8 @@ function shouldStripRoleHeadersForPath(path: string): boolean {
 
 export async function proxyMarketApi(
   request: NextRequest,
-  upstreamPath: string
+  upstreamPath: string,
+  options: ProxyMarketApiOptions = {}
 ): Promise<NextResponse> {
   const primaryBaseUrl = process.env.API_URL;
   const fallbackBaseUrl = process.env.MARKET_API_URL;
@@ -494,10 +535,28 @@ export async function proxyMarketApi(
     return NextResponse.json({ error: 'API_URL and MARKET_API_URL are not configured' }, { status: 503 });
   }
 
+  // Read body once — request body can only be consumed once; reuse for retries.
+  let preReadBody: ForwardBody = undefined;
+  const method = request.method.toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const contentType = request.headers.get('content-type') || '';
+    try {
+      if (contentType.includes('multipart/form-data')) {
+        preReadBody = await request.arrayBuffer();
+      } else {
+        const raw = await request.text();
+        preReadBody = raw || undefined;
+      }
+    } catch {
+      preReadBody = undefined;
+    }
+  }
+
   const tryForward = async (baseUrl: string) => {
     const url = buildUpstreamUrl(baseUrl, upstreamPath, request);
     return forwardToUpstream(request, url, {
       stripRoleHeaders: shouldStripRoleHeadersForPath(upstreamPath),
+      preReadBody,
     });
   };
 

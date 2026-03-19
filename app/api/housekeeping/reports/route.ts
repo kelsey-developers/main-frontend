@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/** Market-backend for housekeeping reports (sales-report). */
 const BACKEND_URL = (
   process.env.MARKET_API_URL ||
   process.env.NEXT_PUBLIC_MARKET_API_URL ||
-  process.env.API_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
   ''
 ).replace(/\/+$/, '');
 

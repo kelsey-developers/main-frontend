@@ -5,13 +5,7 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import SingleDatePicker from '@/components/SingleDatePicker';
 
-const MODAL_UNITS = [
-  { id: 'unit-1', title: 'Ocean View Villa', imageUrl: '/heroimage.png' },
-  { id: 'unit-2', title: 'Mountain Cabin', imageUrl: undefined },
-  { id: 'unit-3', title: 'City Apartment', imageUrl: undefined },
-  { id: 'unit-4', title: 'Beach House', imageUrl: '/heroimage.png' },
-  { id: 'unit-5', title: 'Lakeside Retreat', imageUrl: undefined },
-];
+type ModalUnit = { id: string; title: string; imageUrl?: string };
 
 const BLOCK_TYPES: { id: string; label: string; description: string; icon: ReactNode }[] = [
   {
@@ -87,10 +81,11 @@ interface BlockDateRangeModalProps {
   onClose: () => void;
   startDate: string;
   endDate: string;
-  onSave: (range: Omit<BlockedDateRange, 'id'>) => void;
+  onSave: (range: Omit<BlockedDateRange, 'id'> & { source?: string; guest_name?: string }) => void;
   preselectedUnitIds?: string[];
   editingRange?: EditingBlockedRange | null;
   onRemove?: (id: string) => void;
+  units?: ModalUnit[];
 }
 
 const inputClass = 'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#0B5858]/30 focus:border-[#0B5858] transition-colors bg-white';
@@ -108,7 +103,8 @@ function fmt(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClose, startDate, endDate, onSave, preselectedUnitIds, editingRange, onRemove }) => {
+const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClose, startDate, endDate, onSave, preselectedUnitIds, editingRange, onRemove, units = [] }) => {
+  const modalUnits: ModalUnit[] = units.length > 0 ? units : [];
   const [step, setStep] = useState<1 | 2>(1);
   const [localStart, setLocalStart] = useState(startDate);
   const [localEnd, setLocalEnd] = useState(endDate);
@@ -196,15 +192,27 @@ const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClo
     if (!localStart || !localEnd) return;
     const [s, e] = [localStart, localEnd].sort();
     let finalReason = '';
+    let source: string | undefined = 'manual';
+    let guestName: string | undefined;
     if (blockType === 'external') {
       finalReason = `Booked via ${externalSource || 'External Platform'}${externalGuestName ? ` — Guest: ${externalGuestName}` : ''}`;
+      source = externalSource ? externalSource.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') : 'other';
+      if (source === 'airbnb') source = 'airbnb';
+      else if (source === 'bookingcom') source = 'booking.com';
+      else if (source === 'agoda') source = 'agoda';
+      else if (source === 'expedia') source = 'expedia';
+      else if (source === 'vrbo') source = 'vrbo';
+      else if (source === 'walk_in' || source === 'walk-in' || source === 'direct') source = 'walk_in';
+      else if (source === 'phone') source = 'phone';
+      else if (!['airbnb', 'booking.com', 'agoda', 'expedia', 'vrbo', 'walk_in', 'phone'].includes(source)) source = 'other';
+      guestName = externalGuestName.trim() || undefined;
     } else if (blockType === 'other') {
       finalReason = reason.trim();
     } else {
       finalReason = BLOCK_TYPES.find((t) => t.id === blockType)?.label || '';
     }
     const unitIds = scope === 'specific' && selectedUnitIds.size > 0 ? Array.from(selectedUnitIds) : undefined;
-    onSave({ start_date: s, end_date: e, reason: finalReason || undefined, unit_ids: unitIds });
+    onSave({ start_date: s, end_date: e, reason: finalReason || undefined, unit_ids: unitIds, source, guest_name: guestName });
     onClose();
   };
 
@@ -350,7 +358,7 @@ const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClo
                     <svg className={`w-6 h-6 ${scope === 'all' ? 'text-[#0B5858]' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     <div>
                       <div className={`text-sm font-semibold ${scope === 'all' ? 'text-[#0B5858]' : 'text-gray-700'}`}>All Units</div>
-                      <div className="text-xs text-gray-500">Block all {MODAL_UNITS.length} units</div>
+                      <div className="text-xs text-gray-500">Block all {modalUnits.length} units</div>
                     </div>
                   </button>
                   <button
@@ -373,14 +381,14 @@ const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClo
                     <label className={labelClass + ' mb-0'}>Select Units</label>
                     <button
                       type="button"
-                      onClick={() => setSelectedUnitIds(selectedUnitIds.size === MODAL_UNITS.length ? new Set() : new Set(MODAL_UNITS.map((u) => u.id)))}
+                      onClick={() => setSelectedUnitIds(selectedUnitIds.size === modalUnits.length ? new Set() : new Set(modalUnits.map((u) => u.id)))}
                       className="text-xs font-medium text-[#0B5858] hover:underline cursor-pointer"
                     >
-                      {selectedUnitIds.size === MODAL_UNITS.length ? 'Deselect all' : 'Select all'}
+                      {selectedUnitIds.size === modalUnits.length ? 'Deselect all' : 'Select all'}
                     </button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                    {MODAL_UNITS.map((unit) => {
+                    {modalUnits.map((unit) => {
                       const isSelected = selectedUnitIds.has(unit.id);
                       return (
                         <button
@@ -411,7 +419,7 @@ const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClo
                     })}
                   </div>
                   {selectedUnitIds.size > 0 && (
-                    <p className="mt-1.5 text-xs text-gray-500">{selectedUnitIds.size} of {MODAL_UNITS.length} units selected</p>
+                    <p className="mt-1.5 text-xs text-gray-500">{selectedUnitIds.size} of {modalUnits.length} units selected</p>
                   )}
                 </div>
               )}
@@ -424,7 +432,7 @@ const BlockDateRangeModal: React.FC<BlockDateRangeModalProps> = ({ isOpen, onClo
                     { label: 'Date range', value: localStart && localEnd ? `${fmt(localStart)} – ${fmt(localEnd)}` : '—' },
                     { label: 'Duration', value: `${dayCount} day${dayCount !== 1 ? 's' : ''}` },
                     { label: 'Reason', value: BLOCK_TYPES.find((t) => t.id === blockType)?.label || 'Other' },
-                    { label: 'Applies to', value: scope === 'all' ? `All ${MODAL_UNITS.length} units` : selectedUnitIds.size > 0 ? `${selectedUnitIds.size} unit${selectedUnitIds.size !== 1 ? 's' : ''}` : 'None selected' },
+                    { label: 'Applies to', value: scope === 'all' ? `All ${modalUnits.length} units` : selectedUnitIds.size > 0 ? `${selectedUnitIds.size} unit${selectedUnitIds.size !== 1 ? 's' : ''}` : 'None selected' },
                   ].map((row) => (
                     <div key={row.label} className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">{row.label}</span>

@@ -34,6 +34,14 @@ type OverrideRow = {
   chargeType?: { id: string; code: string; name: string; pricingModel: PricingModel; isActive: boolean };
 };
 
+type DefaultRow = {
+  id: string;
+  unitId: string;
+  chargeTypeId: string;
+  amount: number;
+  chargeType?: { id: string; code: string; name: string; pricingModel: PricingModel; isActive: boolean; defaultAmount?: number | null };
+};
+
 const PRICING_LABEL: Record<PricingModel, string> = {
   PER_BOOKING: 'Per booking',
   PER_NIGHT: 'Per night',
@@ -63,10 +71,15 @@ export default function AdminChargesAddonsPage() {
     isActive: true,
   });
 
-  // Holiday / special-date overrides (per unit, per charge type, per date)
+  // Per-unit default amounts (e.g. Unit A: 500, Unit B: 800 for cleaning fee)
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState('');
+  const [defaultsLoading, setDefaultsLoading] = useState(false);
+  const [defaults, setDefaults] = useState<DefaultRow[]>([]);
+  const [defaultForm, setDefaultForm] = useState({ chargeTypeId: '', amount: '' });
+
+  // Holiday / special-date overrides (per unit, per charge type, per date)
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
   const [overrideForm, setOverrideForm] = useState({
@@ -103,7 +116,7 @@ export default function AdminChargesAddonsPage() {
   const loadUnits = async () => {
     setUnitsLoading(true);
     try {
-      const data = await apiClient.get<unknown>('/api/market/units?limit=200&offset=0');
+      const data = await apiClient.get<unknown>('/api/units?limit=200&offset=0');
       const list = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
       const mapped = list
         .map((u) => ({
@@ -115,6 +128,20 @@ export default function AdminChargesAddonsPage() {
       if (!selectedUnitId && mapped.length > 0) setSelectedUnitId(mapped[0]!.id);
     } finally {
       setUnitsLoading(false);
+    }
+  };
+
+  const loadDefaults = async (unitId: string) => {
+    if (!unitId) {
+      setDefaults([]);
+      return;
+    }
+    setDefaultsLoading(true);
+    try {
+      const data = await apiClient.get<{ defaults?: DefaultRow[] }>(`/api/market/charge-type-defaults?unitId=${encodeURIComponent(unitId)}`);
+      setDefaults(Array.isArray(data.defaults) ? data.defaults : []);
+    } finally {
+      setDefaultsLoading(false);
     }
   };
 
@@ -148,6 +175,7 @@ export default function AdminChargesAddonsPage() {
 
   useEffect(() => {
     if (!selectedUnitId) return;
+    void loadDefaults(selectedUnitId);
     void loadOverrides(selectedUnitId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUnitId]);
@@ -430,8 +458,145 @@ export default function AdminChargesAddonsPage() {
 
       <div className="mt-6">
         <AdminSection
+          title="Per-unit default amounts"
+          subtitle="Override the global default amount per unit. E.g. Unit A: Cleaning fee 500, Unit B: 800. Used when auto-attaching charges to new bookings. Changes affect new bookings only."
+        >
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <label className="flex flex-col gap-1.5 md:col-span-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Unit</span>
+                <select
+                  value={selectedUnitId}
+                  onChange={(e) => setSelectedUnitId(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                  disabled={unitsLoading || units.length === 0}
+                >
+                  {units.length === 0 && (
+                    <option value="">
+                      {unitsLoading ? 'Loading units…' : 'No units found'}
+                    </option>
+                  )}
+                  {units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Charge type</span>
+                <select
+                  value={defaultForm.chargeTypeId}
+                  onChange={(e) => setDefaultForm((p) => ({ ...p, chargeTypeId: e.target.value }))}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                >
+                  <option value="">Select charge type…</option>
+                  {rows.filter((r) => r.isActive).map((ct) => (
+                    <option key={ct.id} value={ct.id}>
+                      {ct.code} — {ct.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Amount (PHP)</span>
+                <input
+                  value={defaultForm.amount}
+                  onChange={(e) => setDefaultForm((p) => ({ ...p, amount: e.target.value }))}
+                  placeholder="e.g. 500"
+                  inputMode="decimal"
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              disabled={!selectedUnitId || !defaultForm.chargeTypeId || defaultForm.amount.trim() === ''}
+              onClick={async () => {
+                const amount = Number(defaultForm.amount);
+                if (!Number.isFinite(amount) || amount <= 0) return;
+                setDefaultsLoading(true);
+                try {
+                  await apiClient.post('/api/market/charge-type-defaults', {
+                    unitId: selectedUnitId,
+                    chargeTypeId: defaultForm.chargeTypeId,
+                    amount,
+                  });
+                  setDefaultForm({ chargeTypeId: '', amount: '' });
+                  await loadDefaults(selectedUnitId!);
+                } finally {
+                  setDefaultsLoading(false);
+                }
+              }}
+              className="px-4 py-2.5 rounded-lg bg-[#0B5858] text-white text-sm font-semibold hover:bg-[#0a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {defaultsLoading ? 'Saving…' : 'Save per-unit amount'}
+            </button>
+
+            <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white">
+              <table className="w-full text-sm" style={{ minWidth: 560 }}>
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Code</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {defaults.map((d) => (
+                    <tr key={d.id}>
+                      <td className="px-4 py-3">
+                        <code className="font-mono text-[11px] bg-gray-100 text-[#0b5858] px-2 py-0.5 rounded">
+                          {d.chargeType?.code ?? d.chargeTypeId}
+                        </code>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">{d.chargeType?.name ?? '—'}</td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                        &#8369;{Number(d.amount || 0).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs font-semibold hover:bg-red-50"
+                          onClick={async () => {
+                            setDefaultsLoading(true);
+                            try {
+                              await apiClient.delete('/api/market/charge-type-defaults', {
+                                body: { unitId: d.unitId, chargeTypeId: d.chargeTypeId },
+                              });
+                              await loadDefaults(selectedUnitId);
+                            } finally {
+                              setDefaultsLoading(false);
+                            }
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {defaults.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-10 text-center text-sm text-gray-400">
+                        {defaultsLoading ? 'Loading…' : 'No per-unit overrides for this unit. Use the form above to add one.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </AdminSection>
+      </div>
+
+      <div className="mt-6">
+        <AdminSection
           title="Holiday / special-date pricing (per unit)"
-          subtitle="Set a different amount for PER_NIGHT / PER_PERSON_PER_NIGHT charges on specific dates (e.g. holidays). These overrides are applied when auto-attaching charges to new bookings."
+          subtitle="For PER_NIGHT and PER_PERSON_PER_NIGHT charge types only. Set a different amount on specific dates (e.g. Dec 25). When auto-attaching charges, each night uses this override if set; otherwise the per-unit or global default applies."
         >
           <div className="p-6 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

@@ -14,6 +14,8 @@ const isUnitsApiUnavailable = (err: unknown) => {
 export async function createUnit(payload: NewListingFormPayload): Promise<Listing> {
   const body: Record<string, unknown> = {
     unit_name: payload.title,
+    tower_building: payload.tower_building,
+    unit_number: payload.unit_number,
     description: payload.description,
     base_price: payload.price,
     location: payload.location,
@@ -37,6 +39,12 @@ export async function createUnit(payload: NewListingFormPayload): Promise<Listin
   };
   if (payload.assigned_agent_ids != null && payload.assigned_agent_ids.length > 0) {
     body.assigned_agent_ids = payload.assigned_agent_ids;
+  }
+  if (payload.discount_rules != null && payload.discount_rules.length > 0) {
+    body.discount_rules = payload.discount_rules;
+  }
+  if (payload.holiday_pricing_rules != null && payload.holiday_pricing_rules.length > 0) {
+    body.holiday_pricing_rules = payload.holiday_pricing_rules;
   }
   const data = await apiClient.post<Record<string, unknown>>('/api/units', body);
   return toListing(data);
@@ -83,6 +91,8 @@ export async function updateUnit(
 export async function updateUnitFull(id: string, payload: NewListingFormPayload): Promise<Listing> {
   const body: Record<string, unknown> = {
     unit_name: payload.title,
+    tower_building: payload.tower_building,
+    unit_number: payload.unit_number,
     description: payload.description,
     base_price: payload.price,
     location: payload.location,
@@ -105,6 +115,12 @@ export async function updateUnitFull(id: string, payload: NewListingFormPayload)
   if (payload.assigned_agent_ids != null) {
     body.assigned_agent_ids = payload.assigned_agent_ids;
   }
+  if (payload.discount_rules != null) {
+    body.discount_rules = payload.discount_rules;
+  }
+  if (payload.holiday_pricing_rules != null) {
+    body.holiday_pricing_rules = payload.holiday_pricing_rules;
+  }
   const data = await apiClient.put<Record<string, unknown>>(`/api/units/${id}`, body);
   return toListing(data);
 }
@@ -123,6 +139,8 @@ function toManageListing(u: Record<string, unknown>): Listing {
     bookings_count: typeof u.bookings_count === 'number' ? u.bookings_count : 0,
     assigned_agents: Array.isArray(assignedAgents) ? assignedAgents : [],
     assigned_agent_ids: Array.isArray(u.assigned_agent_ids) ? u.assigned_agent_ids.map(String) : [],
+    discount_rules: Array.isArray(u.discount_rules) ? u.discount_rules : base.discount_rules,
+    holiday_pricing_rules: Array.isArray(u.holiday_pricing_rules) ? u.holiday_pricing_rules : base.holiday_pricing_rules,
   };
 }
 
@@ -200,6 +218,7 @@ function toListingView(u: Record<string, unknown>): ListingView {
     amenities: Array.isArray(u.amenities) ? u.amenities.map(String) : [],
     is_available: Boolean(u.is_available),
     is_featured: Boolean(u.is_featured),
+    max_capacity: u.max_capacity != null ? Number(u.max_capacity) : undefined,
     created_at: String(u.created_at ?? ''),
     updated_at: String(u.updated_at ?? ''),
     details: String(u.description ?? ''),
@@ -213,6 +232,8 @@ function toListing(u: Record<string, unknown>): Listing {
   return {
     id: String(u.id),
     title: String(u.title ?? ''),
+    tower_building: u.tower_building ? String(u.tower_building) : undefined,
+    unit_number: u.unit_number ? String(u.unit_number) : undefined,
     description: u.description ? String(u.description) : undefined,
     price,
     price_unit: String(u.price_unit ?? 'night'),
@@ -239,5 +260,7 @@ function toListing(u: Record<string, unknown>): Listing {
     created_at: String(u.created_at ?? ''),
     updated_at: String(u.updated_at ?? ''),
     ...(assignedAgentIds ? { assigned_agent_ids: assignedAgentIds } : {}),
+    ...(Array.isArray(u.discount_rules) ? { discount_rules: u.discount_rules as Listing['discount_rules'] } : {}),
+    ...(Array.isArray(u.holiday_pricing_rules) ? { holiday_pricing_rules: u.holiday_pricing_rules as Listing['holiday_pricing_rules'] } : {}),
   };
 }

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Intentionally pinned to API_URL. Do not fall back to MARKET_API_URL for bookings.
-const BOOKING_API_URL = process.env.API_URL?.trim();
+// Bookings go to Kelsey (API_URL) directly — do NOT route through market-backend.
+const API_URL = process.env.API_URL?.trim();
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!BOOKING_API_URL) {
+  if (!API_URL) {
     return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
@@ -24,7 +24,7 @@ export async function GET(
     if (value) headers[key] = value;
   });
 
-  const upstreamBase = BOOKING_API_URL.replace(/\/+$/, '');
+  const upstreamBase = API_URL.replace(/\/+$/, '');
   const res = await fetch(`${upstreamBase}/api/bookings/${encodeURIComponent(id)}`, {
     method: 'GET',
     headers,
@@ -36,7 +36,7 @@ export async function GET(
     status: res.status,
     headers: {
       'Cache-Control': 'no-store',
-      'x-bookings-upstream': BOOKING_API_URL,
+      'x-bookings-upstream': 'kelsey',
     },
   });
 }

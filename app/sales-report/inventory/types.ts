@@ -203,5 +203,5 @@ export interface UnitItemDisplay {
 export interface InventoryFeatureLink {
   href: string;
   title: string;
-  icon: 'items' | 'suppliers' | 'warehouses' | 'purchaseOrders' | 'stockMovements' | 'damageReports';
+  icon: 'items' | 'suppliers' | 'warehouses' | 'purchaseOrders' | 'stockMovements' | 'damageReports' | 'bookingItemRequests' | 'bookingRequests';
 }

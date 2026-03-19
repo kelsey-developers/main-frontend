@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { AdminPageHeader, AdminStatCard, AdminSection } from '../components';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
+import { AdminPageHeader, AdminStatCard, AdminSection } from '../../admin/components';
 
-type ApprovalKind = 'stock-out' | 'write-off' | 'adjustment' | 'negative-override';
 type ApprovalRisk = 'low' | 'medium' | 'high';
 type ApprovalStatus =
   | 'pending'
@@ -12,42 +12,6 @@ type ApprovalStatus =
   | 'rejected'
   | 'partially_fulfilled'
   | 'fulfilled';
-type RequestSource = 'legacy-approval' | 'booking-item-request';
-
-interface ApprovalRequestRow {
-  id: string;
-  source: RequestSource;
-  kind: ApprovalKind;
-  risk: ApprovalRisk;
-  itemName: string;
-  quantity: number;
-  reason: string;
-  requestedBy: string | null;
-  requestedAt: string;
-  referenceId?: string | null;
-  referenceType?: string | null;
-  status: ApprovalStatus;
-  reviewedBy?: string | null;
-  reviewedAt?: string | null;
-}
-
-interface LegacyApprovalRequest {
-  id: string;
-  kind: ApprovalKind;
-  risk: ApprovalRisk;
-  itemName: string;
-  quantity: number;
-  reason?: string | null;
-  requestedBy?: string | null;
-  requestedByName?: string | null;
-  requestedAt: string;
-  referenceId?: string | null;
-  referenceType?: string | null;
-  status: 'pending' | 'approved' | 'rejected';
-  reviewedBy?: string | null;
-  reviewedByName?: string | null;
-  reviewedAt?: string | null;
-}
 
 interface BookingItemRequestLineApi {
   id: string;
@@ -117,112 +81,46 @@ interface FulfillmentDraftLine {
 
 type FulfillmentDraftByLineId = Record<string, FulfillmentDraftLine>;
 
+function getLineRemainingQuantity(line: BookingItemRequestLineApi): number {
+  const approved = line.quantityApproved ?? line.quantityRequested;
+  return Math.max(0, approved - (line.quantityFulfilled ?? 0));
+}
+
+function getRequestTotalRequested(request: BookingItemRequestApi): number {
+  return request.lines.reduce((sum, line) => sum + line.quantityRequested, 0);
+}
+
 function computeRiskFromQuantity(quantity: number): ApprovalRisk {
   if (quantity >= 40) return 'high';
   if (quantity >= 20) return 'medium';
   return 'low';
 }
 
-function getLineRemainingQuantity(line: BookingItemRequestLineApi): number {
-  const approved = Number(line.quantityApproved ?? line.quantityRequested);
-  const computed = approved - Number(line.quantityFulfilled ?? 0);
-  const remaining = typeof line.quantityRemaining === 'number' ? line.quantityRemaining : computed;
-  return Math.max(0, Number.isFinite(remaining) ? remaining : 0);
-}
-
-function getRequestTotalRequested(entry: BookingItemRequestApi): number {
-  if (typeof entry.totals?.requested === 'number' && Number.isFinite(entry.totals.requested)) {
-    return entry.totals.requested;
-  }
-  return (entry.lines ?? []).reduce((sum, line) => sum + Number(line.quantityRequested || 0), 0);
-}
-
 function buildFulfillmentDraft(
   request: BookingItemRequestApi,
-  previous: FulfillmentDraftByLineId = {}
+  previous: FulfillmentDraftByLineId
 ): FulfillmentDraftByLineId {
-  const next: FulfillmentDraftByLineId = {};
-
-  (request.lines ?? []).forEach((line) => {
+  const draft: FulfillmentDraftByLineId = {};
+  for (const line of request.lines) {
     const remaining = getLineRemainingQuantity(line);
-    const prior = previous[line.id];
-    const priorQty = (prior?.quantityToFulfill ?? '').trim();
-    const parsedPriorQty = Number(priorQty);
-
-    let quantityToFulfill = '';
-    if (priorQty.length > 0 && Number.isFinite(parsedPriorQty)) {
-      quantityToFulfill = String(Math.max(0, Math.min(remaining, Math.floor(parsedPriorQty))));
-    }
-
-    next[line.id] = {
-      quantityToFulfill,
-      warehouseId: prior?.warehouseId ?? (line.warehouseId ?? ''),
+    if (remaining <= 0) continue;
+    const prev = previous[line.id];
+    draft[line.id] = {
+      quantityToFulfill: prev?.quantityToFulfill ?? '',
+      warehouseId: prev?.warehouseId ?? (line.warehouseId ?? ''),
     };
-  });
-
-  return next;
+  }
+  return draft;
 }
 
-function mapLegacyRequest(entry: LegacyApprovalRequest): ApprovalRequestRow {
-  return {
-    id: entry.id,
-    source: 'legacy-approval',
-    kind: entry.kind,
-    risk: entry.risk,
-    itemName: entry.itemName,
-    quantity: entry.quantity,
-    reason: entry.reason ?? '',
-    requestedBy: entry.requestedByName ?? entry.requestedBy ?? null,
-    requestedAt: entry.requestedAt,
-    referenceId: entry.referenceId ?? null,
-    referenceType: entry.referenceType ?? null,
-    status: entry.status,
-    reviewedBy: entry.reviewedByName ?? entry.reviewedBy ?? null,
-    reviewedAt: entry.reviewedAt ?? null,
-  };
-}
-
-function mapBookingItemRequest(entry: BookingItemRequestApi): ApprovalRequestRow {
-  const lineCount = Array.isArray(entry.lines) ? entry.lines.length : 0;
-  const firstLine = lineCount > 0 ? entry.lines[0] : null;
-  const itemName = firstLine
-    ? lineCount > 1
-      ? `${firstLine.productName} (+${lineCount - 1} more)`
-      : firstLine.productName
-    : 'Booking item request';
-
-  const requestedQuantity = getRequestTotalRequested(entry);
-
-  return {
-    id: entry.id,
-    source: 'booking-item-request',
-    kind: 'stock-out',
-    risk: computeRiskFromQuantity(requestedQuantity),
-    itemName,
-    quantity: requestedQuantity,
-    reason: entry.reason ?? entry.notes ?? 'Booking item request',
-    requestedBy: entry.requestedByName ?? entry.requestedBy ?? null,
-    requestedAt: entry.requestedAt,
-    referenceId: entry.bookingCode,
-    referenceType: 'booking_item_request',
-    status: entry.status,
-    reviewedBy: entry.reviewedByName ?? entry.reviewedBy ?? null,
-    reviewedAt: entry.reviewedAt ?? null,
-  };
-}
-
-function getRowKey(entry: ApprovalRequestRow): string {
-  return `${entry.source}:${entry.id}`;
-}
-
-export default function ApprovalQueuePage() {
-  const [requests, setRequests] = useState<ApprovalRequestRow[]>([]);
-  const [bookingRequestById, setBookingRequestById] = useState<Record<string, BookingItemRequestApi>>({});
+export default function BookingItemRequestsPage() {
   const [loading, setLoading] = useState(true);
-  const [actioningKey, setActioningKey] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [requests, setRequests] = useState<BookingItemRequestApi[]>([]);
   const [statusFilter, setStatusFilter] = useState<'all' | ApprovalStatus>('pending');
   const [riskFilter, setRiskFilter] = useState<'all' | ApprovalRisk>('all');
   const [approvalSearch, setApprovalSearch] = useState('');
+  const [actioningKey, setActioningKey] = useState<string | null>(null);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [detailRequest, setDetailRequest] = useState<BookingItemRequestApi | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -234,34 +132,15 @@ export default function ApprovalQueuePage() {
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const [legacyData, bookingData] = await Promise.all([
-        apiClient.get<LegacyApprovalRequest[]>('/api/market/approval-requests?status=all'),
-        apiClient.get<BookingItemRequestApi[]>('/api/market/booking-item-requests?status=all'),
-      ]);
-
-      const merged = [
-        ...(Array.isArray(legacyData)
-          ? legacyData
-              .filter((entry) => entry.referenceType !== 'booking_item_request')
-              .map(mapLegacyRequest)
-          : []),
-        ...(Array.isArray(bookingData) ? bookingData.map(mapBookingItemRequest) : []),
-      ].sort((a, b) => {
-        const aTime = new Date(a.requestedAt).getTime();
-        const bTime = new Date(b.requestedAt).getTime();
-        return bTime - aTime;
-      });
-
-      const nextBookingMap = Object.fromEntries(
-        (Array.isArray(bookingData) ? bookingData : []).map((entry) => [entry.id, entry])
+      const bookingData = await apiClient.get<BookingItemRequestApi[]>(
+        '/api/market/booking-item-requests?status=all'
       );
-
-      setRequests(merged);
-      setBookingRequestById(nextBookingMap);
-    } catch {
+      setRequests(Array.isArray(bookingData) ? bookingData : []);
+    } catch (err) {
       setRequests([]);
-      setBookingRequestById({});
+      setLoadError(err instanceof Error ? err.message : 'Failed to load booking item requests.');
     } finally {
       setLoading(false);
     }
@@ -300,16 +179,12 @@ export default function ApprovalQueuePage() {
   }, [loadRequests]);
 
   useEffect(() => {
-    if (!selectedRequestId) return;
-    if (detailLoading) return;
-    const lightweight = bookingRequestById[selectedRequestId];
+    if (!selectedRequestId || detailLoading) return;
+    const lightweight = requests.find((r) => r.id === selectedRequestId);
     if (!lightweight) return;
 
     setDetailRequest((current) => {
-      if (!current || current.id !== lightweight.id) {
-        return current;
-      }
-
+      if (!current || current.id !== lightweight.id) return current;
       return {
         ...current,
         status: lightweight.status,
@@ -322,32 +197,21 @@ export default function ApprovalQueuePage() {
         totals: lightweight.totals,
       };
     });
-  }, [bookingRequestById, selectedRequestId, detailLoading]);
-
-  const resetFilters = () => {
-    setStatusFilter('pending');
-    setRiskFilter('all');
-    setApprovalSearch('');
-  };
+  }, [requests, selectedRequestId, detailLoading]);
 
   const reviewRequest = async (
-    entry: ApprovalRequestRow,
+    entry: BookingItemRequestApi,
     status: Extract<ApprovalStatus, 'approved' | 'rejected'>
   ) => {
-    const key = getRowKey(entry);
-    setActioningKey(key);
+    setActioningKey(entry.id);
     try {
-      if (entry.source === 'booking-item-request') {
-        if (status === 'approved') {
-          await apiClient.patch(`/api/market/booking-item-requests/${entry.id}/approve`, {});
-        } else {
-          await apiClient.patch(`/api/market/booking-item-requests/${entry.id}/reject`, {});
-        }
+      if (status === 'approved') {
+        await apiClient.patch(`/api/market/booking-item-requests/${entry.id}/approve`, {});
       } else {
-        await apiClient.patch(`/api/market/approval-requests/${entry.id}`, { status });
+        await apiClient.patch(`/api/market/booking-item-requests/${entry.id}/reject`, {});
       }
       await loadRequests();
-      if (entry.source === 'booking-item-request' && selectedRequestId === entry.id) {
+      if (selectedRequestId === entry.id) {
         await loadRequestDetailWorkspace(entry.id, true);
       }
     } catch {
@@ -357,8 +221,7 @@ export default function ApprovalQueuePage() {
     }
   };
 
-  const openRequestLineDetails = async (entry: ApprovalRequestRow) => {
-    if (entry.source !== 'booking-item-request') return;
+  const openRequestLineDetails = async (entry: BookingItemRequestApi) => {
     setFulfillmentNotes('');
     await loadRequestDetailWorkspace(entry.id, false);
   };
@@ -491,49 +354,39 @@ export default function ApprovalQueuePage() {
 
   const stockByProductWarehouseKey = useMemo(() => {
     const map = new Map<string, number>();
-
     inventoryRows.forEach((row) => {
       const key = `${row.productId}:${row.warehouseId}`;
       map.set(key, Number(row.quantity ?? 0));
     });
-
     return map;
   }, [inventoryRows]);
 
   const warehouseOptionsByProduct = useMemo(() => {
     const map = new Map<string, WarehouseStockOption[]>();
-
     inventoryRows.forEach((row) => {
       const current = map.get(row.productId) ?? [];
-
       const label = row.warehouse?.name?.trim() || row.warehouseId;
       const code = typeof row.warehouse?.code === 'string' ? row.warehouse.code : null;
-
       current.push({
         warehouseId: row.warehouseId,
         label,
         code,
         available: Number(row.quantity ?? 0),
       });
-
       map.set(row.productId, current);
     });
-
     map.forEach((options, productId) => {
       const deduped = Array.from(
         options.reduce((acc, option) => acc.set(option.warehouseId, option), new Map<string, WarehouseStockOption>()).values()
       ).sort((a, b) => b.available - a.available);
-
       map.set(productId, deduped);
     });
-
     return map;
   }, [inventoryRows]);
 
   const getWarehouseOptionsForLine = useCallback(
     (line: BookingItemRequestLineApi): WarehouseStockOption[] => {
       const base = [...(warehouseOptionsByProduct.get(line.productId) ?? [])];
-
       const fallbackWarehouseId = (line.warehouseId ?? '').trim();
       if (fallbackWarehouseId && !base.some((option) => option.warehouseId === fallbackWarehouseId)) {
         base.push({
@@ -545,45 +398,44 @@ export default function ApprovalQueuePage() {
           ),
         });
       }
-
       return base.sort((a, b) => b.available - a.available);
     },
     [warehouseOptionsByProduct, stockByProductWarehouseKey]
   );
 
-  const filteredRequests = useMemo(
-    () => {
-      const normalizedSearch = approvalSearch.trim().toLowerCase();
-
-      return requests.filter((entry) => {
-        if (statusFilter !== 'all' && entry.status !== statusFilter) return false;
-        if (riskFilter !== 'all' && entry.risk !== riskFilter) return false;
-
-        if (!normalizedSearch) {
-          return true;
-        }
-
-        return (
-          entry.id.toLowerCase().includes(normalizedSearch) ||
-          entry.itemName.toLowerCase().includes(normalizedSearch) ||
-          (entry.requestedBy ?? '').toLowerCase().includes(normalizedSearch) ||
-          entry.kind.toLowerCase().includes(normalizedSearch) ||
-          (entry.referenceId ?? '').toLowerCase().includes(normalizedSearch)
-        );
-      });
-    },
-    [requests, statusFilter, riskFilter, approvalSearch]
-  );
+  const filteredRequests = useMemo(() => {
+    const normalizedSearch = approvalSearch.trim().toLowerCase();
+    return requests.filter((entry) => {
+      if (statusFilter !== 'all' && entry.status !== statusFilter) return false;
+      const totalQty = entry.totals?.requested ?? getRequestTotalRequested(entry);
+      const risk = computeRiskFromQuantity(totalQty);
+      if (riskFilter !== 'all' && risk !== riskFilter) return false;
+      if (!normalizedSearch) return true;
+      return (
+        entry.id.toLowerCase().includes(normalizedSearch) ||
+        entry.bookingCode.toLowerCase().includes(normalizedSearch) ||
+        (entry.requestedByName ?? entry.requestedBy ?? '').toLowerCase().includes(normalizedSearch) ||
+        entry.lines.some((l) => l.productName.toLowerCase().includes(normalizedSearch))
+      );
+    });
+  }, [requests, statusFilter, riskFilter, approvalSearch]);
 
   const hasActiveFilters =
     statusFilter !== 'pending' ||
     riskFilter !== 'all' ||
     approvalSearch.trim().length > 0;
 
-  const pendingCount = requests.filter((entry) => entry.status === 'pending').length;
-  const highRiskPending = requests.filter((entry) => entry.status === 'pending' && entry.risk === 'high').length;
-  const approvedToday = requests.filter(
-    (entry) => entry.status === 'approved' || entry.status === 'partially_fulfilled' || entry.status === 'fulfilled'
+  const pendingCount = requests.filter((r) => r.status === 'pending').length;
+  const highRiskPending = requests.filter((r) => {
+    if (r.status !== 'pending') return false;
+    const total = r.totals?.requested ?? getRequestTotalRequested(r);
+    return computeRiskFromQuantity(total) === 'high';
+  }).length;
+  const approvedCount = requests.filter(
+    (r) =>
+      r.status === 'approved' ||
+      r.status === 'partially_fulfilled' ||
+      r.status === 'fulfilled'
   ).length;
 
   const detailCanFulfill =
@@ -591,201 +443,212 @@ export default function ApprovalQueuePage() {
   const detailActionKey = detailRequest ? `detail:${detailRequest.id}` : null;
   const detailActionInProgress = detailActionKey !== null && actioningKey === detailActionKey;
 
+  const resetFilters = () => {
+    setStatusFilter('pending');
+    setRiskFilter('all');
+    setApprovalSearch('');
+  };
+
   return (
     <div style={{ fontFamily: 'Poppins' }}>
+      <nav className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+        <Link href="/sales-report" className="text-[#0B5858] hover:underline">
+          Sales Report
+        </Link>
+        <span className="text-gray-400">/</span>
+        <Link href="/sales-report/inventory" className="text-[#0B5858] hover:underline">
+          Inventory
+        </Link>
+        <span className="text-gray-400">/</span>
+        <span className="text-gray-900 font-medium">Booking Item Requests</span>
+      </nav>
+
       <AdminPageHeader
-        title="Approval Queue"
-        description="Exceptions must be reviewed before stock changes are finalized. Typical approvals include large stock-outs, write-offs, manual adjustments, and negative-stock overrides by admin or finance."
+        title="Booking Item Requests"
+        description="Review and fulfill inventory requests linked to guest bookings. Approve or reject requests, then fulfill approved items by selecting warehouse stock and quantities."
       />
+
+      {loadError ? (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <strong>Failed to load:</strong> {loadError}
+          <span className="ml-2 text-red-600">
+            Ensure market-backend is running (e.g. <code className="rounded bg-red-100 px-1">npm run dev</code> on port 4000).
+          </span>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <AdminStatCard label="Pending Requests" value={loading ? '—' : pendingCount} accent="amber" />
         <AdminStatCard label="High Risk Pending" value={loading ? '—' : highRiskPending} accent="red" />
-        <AdminStatCard label="Approved" value={loading ? '—' : approvedToday} accent="teal" />
+        <AdminStatCard label="Approved / Fulfilled" value={loading ? '—' : approvedCount} accent="teal" />
       </div>
 
-      <AdminSection title="Review Requests">
-          <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Status</span>
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as 'all' | ApprovalStatus)}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
-                >
-                  <option value="all">All status</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="partially_fulfilled">Partially Fulfilled</option>
-                  <option value="fulfilled">Fulfilled</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Risk</span>
-                <select
-                  value={riskFilter}
-                  onChange={(event) => setRiskFilter(event.target.value as 'all' | ApprovalRisk)}
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
-                >
-                  <option value="all">All risk</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
-                </select>
-              </label>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Search</span>
-                <input
-                  value={approvalSearch}
-                  onChange={(event) => setApprovalSearch(event.target.value)}
-                  placeholder="Request id, item, requester"
-                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
-                  aria-label="Search approval requests"
-                />
-              </label>
-            </div>
-
-            <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <p className="text-xs text-gray-600">
-                {loading ? 'Loading…' : (
-                  <>
-                    Showing <span className="font-semibold text-gray-800">{filteredRequests.length}</span> of{' '}
-                    <span className="font-semibold text-gray-800">{requests.length}</span> requests
-                  </>
-                )}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void loadRequests()}
-                  disabled={loading}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                >
-                  Refresh
-                </button>
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  disabled={!hasActiveFilters}
-                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Reset filters
-                </button>
-              </div>
+      <AdminSection title="Requests">
+        <div className="border-b border-gray-100 bg-gray-50/80 px-5 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Status</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'all' | ApprovalStatus)}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+              >
+                <option value="all">All status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="partially_fulfilled">Partially Fulfilled</option>
+                <option value="fulfilled">Fulfilled</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Risk</span>
+              <select
+                value={riskFilter}
+                onChange={(e) => setRiskFilter(e.target.value as 'all' | ApprovalRisk)}
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+              >
+                <option value="all">All risk</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Search</span>
+              <input
+                value={approvalSearch}
+                onChange={(e) => setApprovalSearch(e.target.value)}
+                placeholder="Booking, requester, product"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858]"
+                aria-label="Search requests"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <p className="text-xs text-gray-600">
+              {loading ? 'Loading…' : (
+                <>
+                  Showing <span className="font-semibold text-gray-800">{filteredRequests.length}</span> of{' '}
+                  <span className="font-semibold text-gray-800">{requests.length}</span> requests
+                </>
+              )}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void loadRequests()}
+                disabled={loading}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={resetFilters}
+                disabled={!hasActiveFilters}
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Reset filters
+              </button>
             </div>
           </div>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ minWidth: 960, tableLayout: 'fixed' }}>
-              <colgroup>
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '18%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '9%' }} />
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '20%' }} />
-              </colgroup>
-              <thead className="bg-gradient-to-r from-[#0B5858] to-[#05807e]">
-                <tr>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Request</th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Item</th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Qty</th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Risk</th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Requested By</th>
-                  <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Status</th>
-                  <th className="px-4 py-3 text-right text-white/90 uppercase tracking-wider text-[10px] font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRequests.map((entry) => (
-                  <tr key={getRowKey(entry)} className="border-b border-gray-100 last:border-b-0 align-top">
-                    <td className="px-4 py-3 overflow-hidden" style={{ width: '16%' }}>
-                      <div className="overflow-hidden">
-                        <div className="font-semibold text-gray-900 truncate" title={entry.kind}>{entry.kind}</div>
-                        <div className="text-xs text-gray-500 mt-1 truncate" title={entry.id.toUpperCase()}>{entry.id.toUpperCase()}</div>
-                        <div className="text-xs text-gray-500 mt-1 truncate" title={entry.referenceId ?? 'No reference'}>{entry.referenceId ?? 'No reference'}</div>
-                        <div className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">
-                          {entry.source === 'booking-item-request' ? 'booking request' : 'approval rule'}
-                        </div>
-                      </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm" style={{ minWidth: 960, tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '20%' }} />
+            </colgroup>
+            <thead className="bg-gradient-to-r from-[#0B5858] to-[#05807e]">
+              <tr>
+                <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Booking</th>
+                <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Items</th>
+                <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Qty</th>
+                <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Risk</th>
+                <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Requested By</th>
+                <th className="px-4 py-3 text-left text-white/90 uppercase tracking-wider text-[10px] font-semibold">Status</th>
+                <th className="px-4 py-3 text-right text-white/90 uppercase tracking-wider text-[10px] font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRequests.map((entry) => {
+                const totalQty = entry.totals?.requested ?? getRequestTotalRequested(entry);
+                const risk = computeRiskFromQuantity(totalQty);
+                const itemSummary =
+                  entry.lines.length === 1
+                    ? `${entry.lines[0].productName} x${entry.lines[0].quantityRequested}`
+                    : `${entry.lines[0]?.productName ?? 'Items'} (+${entry.lines.length - 1} more)`;
+                const isBusy = actioningKey === entry.id;
+                const canApprove = entry.status === 'pending';
+                const canReject = entry.status === 'pending';
+                const detailsLabel =
+                  entry.status === 'approved' || entry.status === 'partially_fulfilled'
+                    ? 'Fulfill details'
+                    : 'Line details';
+
+                return (
+                  <tr key={entry.id} className="border-b border-gray-100 last:border-b-0 align-top">
+                    <td className="px-4 py-3 overflow-hidden">
+                      <div className="font-semibold text-gray-900 truncate">{entry.bookingCode}</div>
+                      <div className="text-xs text-gray-500 mt-1 truncate">{entry.id.toUpperCase()}</div>
+                      <div className="text-xs text-gray-500 mt-1">{entry.reason ?? '—'}</div>
                     </td>
-                    <td className="px-4 py-3 overflow-hidden" style={{ width: '18%' }}>
-                      <div className="overflow-hidden">
-                        <div className="font-medium text-gray-800 truncate" title={entry.itemName}>{entry.itemName}</div>
-                        <div className="text-xs text-gray-500 mt-1 truncate" title={entry.reason}>{entry.reason}</div>
-                      </div>
+                    <td className="px-4 py-3 overflow-hidden">
+                      <div className="font-medium text-gray-800 truncate">{itemSummary}</div>
                     </td>
-                    <td className="px-4 py-3 overflow-hidden" style={{ width: '6%' }}>
-                      <span className="font-medium text-gray-800 tabular-nums">{entry.quantity}</span>
+                    <td className="px-4 py-3">
+                      <span className="font-medium text-gray-800 tabular-nums">{totalQty}</span>
                     </td>
-                    <td className="px-4 py-3 overflow-hidden" style={{ width: '9%' }}>
+                    <td className="px-4 py-3">
                       <span
                         className={`inline-flex px-2 py-1 rounded text-xs font-semibold shrink-0 ${
-                          entry.risk === 'high'
+                          risk === 'high'
                             ? 'bg-red-100 text-red-700'
-                            : entry.risk === 'medium'
+                            : risk === 'medium'
                             ? 'bg-amber-100 text-amber-700'
                             : 'bg-green-100 text-green-700'
                         }`}
                       >
-                        {entry.risk}
+                        {risk}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 overflow-hidden" style={{ width: '16%' }}>
-                      <div className="overflow-hidden">
-                        <div className="truncate" title={entry.requestedBy ?? '—'}>{entry.requestedBy ?? '—'}</div>
-                        <div className="text-xs text-gray-500 mt-1 truncate" title={typeof entry.requestedAt === 'string' ? new Date(entry.requestedAt).toLocaleString() : String(entry.requestedAt)}>
-                          {typeof entry.requestedAt === 'string'
-                            ? new Date(entry.requestedAt).toLocaleString()
-                            : entry.requestedAt}
+                    <td className="px-4 py-3 text-gray-600 overflow-hidden">
+                      <div className="truncate">{entry.requestedByName ?? entry.requestedBy ?? '—'}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(entry.requestedAt).toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 overflow-hidden">
+                      <span
+                        className={`inline-flex px-2 py-1 rounded text-xs font-semibold shrink-0 ${
+                          entry.status === 'approved'
+                            ? 'bg-green-100 text-green-700'
+                            : entry.status === 'fulfilled'
+                            ? 'bg-teal-100 text-teal-700'
+                            : entry.status === 'partially_fulfilled'
+                            ? 'bg-cyan-100 text-cyan-700'
+                            : entry.status === 'rejected'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}
+                      >
+                        {entry.status.replace('_', ' ')}
+                      </span>
+                      {entry.reviewedBy && (
+                        <div className="text-xs text-gray-500 mt-1 truncate">
+                          {entry.reviewedBy} at{' '}
+                          {entry.reviewedAt ? new Date(entry.reviewedAt).toLocaleString() : '—'}
                         </div>
-                      </div>
+                      )}
                     </td>
-                    <td className="px-4 py-3 overflow-hidden" style={{ width: '15%' }}>
-                      <div className="overflow-hidden">
-                        <span
-                          className={`inline-flex px-2 py-1 rounded text-xs font-semibold shrink-0 ${
-                            entry.status === 'approved'
-                              ? 'bg-green-100 text-green-700'
-                              : entry.status === 'fulfilled'
-                              ? 'bg-teal-100 text-teal-700'
-                              : entry.status === 'partially_fulfilled'
-                              ? 'bg-cyan-100 text-cyan-700'
-                              : entry.status === 'rejected'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {entry.status}
-                        </span>
-                        {entry.reviewedBy ? (
-                          <div className="text-xs text-gray-500 mt-1 truncate" title={`${entry.reviewedBy} at ${entry.reviewedAt ? new Date(entry.reviewedAt).toLocaleString() : '—'}`}>
-                            {entry.reviewedBy} at{' '}
-                            {entry.reviewedAt
-                              ? new Date(entry.reviewedAt).toLocaleString()
-                              : '—'}
-                          </div>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3" style={{ width: '20%' }}>
-                      {(() => {
-                        const rowKey = getRowKey(entry);
-                        const isBusy = actioningKey === rowKey;
-                        const canApprove = entry.status === 'pending';
-                        const canReject = entry.status === 'pending';
-                        const isBookingRequest = entry.source === 'booking-item-request';
-                        const detailsLabel =
-                          entry.status === 'approved' || entry.status === 'partially_fulfilled'
-                            ? 'Fulfill details'
-                            : 'Line details';
-
-                        return (
+                    <td className="px-4 py-3">
                       <div className="flex justify-end gap-1.5 flex-nowrap">
                         <button
                           type="button"
@@ -803,33 +666,30 @@ export default function ApprovalQueuePage() {
                         >
                           {isBusy ? '...' : 'Reject'}
                         </button>
-                        {isBookingRequest ? (
-                          <button
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => void openRequestLineDetails(entry)}
-                            className="shrink-0 px-2.5 py-1.5 rounded border border-cyan-200 text-xs text-cyan-700 hover:bg-cyan-50 disabled:opacity-40"
-                          >
-                            {detailsLabel}
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void openRequestLineDetails(entry)}
+                          className="shrink-0 px-2.5 py-1.5 rounded border border-cyan-200 text-xs text-cyan-700 hover:bg-cyan-50 disabled:opacity-40"
+                        >
+                          {detailsLabel}
+                        </button>
                       </div>
-                        );
-                      })()}
                     </td>
                   </tr>
-                ))}
-                {filteredRequests.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
-                      No approval requests match the selected filters.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </AdminSection>
+                );
+              })}
+              {filteredRequests.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
+                    No booking item requests match the selected filters.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </AdminSection>
 
       <AdminSection
         title="Request Line Details"
@@ -840,10 +700,7 @@ export default function ApprovalQueuePage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (!selectedRequestId) return;
-                  void loadRequestDetailWorkspace(selectedRequestId, true);
-                }}
+                onClick={() => selectedRequestId && void loadRequestDetailWorkspace(selectedRequestId, true)}
                 disabled={detailLoading || detailActionInProgress}
                 className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
               >
@@ -862,7 +719,7 @@ export default function ApprovalQueuePage() {
       >
         {!selectedRequestId ? (
           <div className="px-5 py-6 text-sm text-gray-600">
-            Select a booking item request from the queue to view per-line remaining quantity,
+            Select a booking item request from the table to view per-line remaining quantity,
             inspect warehouse stock, and submit partial fulfillment with explicit warehouse picks.
           </div>
         ) : null}
@@ -935,7 +792,7 @@ export default function ApprovalQueuePage() {
                     <th className="px-4 py-3 text-left text-gray-600 uppercase tracking-wider text-[10px] font-semibold">Done</th>
                     <th className="px-4 py-3 text-left text-gray-600 uppercase tracking-wider text-[10px] font-semibold">Remain</th>
                     <th className="px-4 py-3 text-left text-gray-600 uppercase tracking-wider text-[10px] font-semibold">Warehouse Pick</th>
-                    <th className="px-4 py-3 text-left text-gray-600 uppercase tracking-wider text-[10px] font-semibold">Warehouse Stock Snapshot</th>
+                    <th className="px-4 py-3 text-left text-gray-600 uppercase tracking-wider text-[10px] font-semibold">Warehouse Stock</th>
                     <th className="px-4 py-3 text-right text-gray-600 uppercase tracking-wider text-[10px] font-semibold">Fulfill Qty</th>
                   </tr>
                 </thead>
@@ -948,12 +805,10 @@ export default function ApprovalQueuePage() {
                       quantityToFulfill: '',
                       warehouseId: line.warehouseId ?? '',
                     };
-
                     const selectedWarehouseId = (draftLine.warehouseId ?? line.warehouseId ?? '').trim();
                     const selectedSnapshot = selectedWarehouseId
                       ? stockByProductWarehouseKey.get(`${line.productId}:${selectedWarehouseId}`)
                       : undefined;
-
                     const canEditLine = detailCanFulfill && remaining > 0 && !detailActionInProgress;
                     const maxHint =
                       selectedWarehouseId && typeof selectedSnapshot === 'number'
@@ -984,7 +839,7 @@ export default function ApprovalQueuePage() {
                         <td className="px-4 py-3">
                           <select
                             value={draftLine.warehouseId}
-                            onChange={(event) => setDraftWarehouseForLine(line, event.target.value)}
+                            onChange={(e) => setDraftWarehouseForLine(line, e.target.value)}
                             disabled={!canEditLine}
                             className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] disabled:opacity-60"
                           >
@@ -1020,7 +875,7 @@ export default function ApprovalQueuePage() {
                               type="text"
                               inputMode="numeric"
                               value={draftLine.quantityToFulfill}
-                              onChange={(event) => setDraftQuantityForLine(line, event.target.value)}
+                              onChange={(e) => setDraftQuantityForLine(line, e.target.value)}
                               disabled={!canEditLine}
                               placeholder="0"
                               className="w-16 rounded-lg border border-gray-200 px-2 py-1.5 text-right text-xs bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] disabled:opacity-60"
@@ -1068,7 +923,7 @@ export default function ApprovalQueuePage() {
                 <textarea
                   rows={2}
                   value={fulfillmentNotes}
-                  onChange={(event) => setFulfillmentNotes(event.target.value)}
+                  onChange={(e) => setFulfillmentNotes(e.target.value)}
                   disabled={!detailCanFulfill || detailActionInProgress}
                   placeholder="Optional note for this partial fulfillment"
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-[#0B5858]/20 focus:border-[#0B5858] disabled:opacity-60"
@@ -1084,10 +939,9 @@ export default function ApprovalQueuePage() {
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!selectedRequestId) return;
-                    void loadRequestDetailWorkspace(selectedRequestId, false);
-                  }}
+                  onClick={() =>
+                    selectedRequestId && void loadRequestDetailWorkspace(selectedRequestId, false)
+                  }
                   disabled={detailLoading || detailActionInProgress}
                   className="px-3 py-2 rounded-lg border border-gray-200 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
                 >
@@ -1106,26 +960,6 @@ export default function ApprovalQueuePage() {
           </>
         ) : null}
       </AdminSection>
-
-      <details className="mt-6 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <summary className="px-5 py-3 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50 list-none">
-          Approval Policy (MVP)
-        </summary>
-        <div className="px-5 pb-5 pt-1 space-y-2.5 text-sm text-gray-700 border-t border-gray-100">
-          <div className="rounded-lg border border-gray-200 p-3">
-            Stock-out greater than 20 units requires admin or finance approval.
-          </div>
-          <div className="rounded-lg border border-gray-200 p-3">
-            Any reusable item write-off requires finance validation and audit note.
-          </div>
-          <div className="rounded-lg border border-gray-200 p-3">
-            Negative-stock override is blocked unless approved first.
-          </div>
-          <div className="rounded-lg border border-gray-200 p-3">
-            Rejected request cannot adjust stock quantities.
-          </div>
-        </div>
-      </details>
     </div>
   );
 }

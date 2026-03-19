@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getMyBookings, type MyBookingItem } from '@/lib/api/bookings';
 
 type BookingStatus = 'completed' | 'cancelled' | 'ongoing' | 'pending' | 'pending-payment' | 'declined' | 'booked';
-const BOOKING_REFRESH_INTERVAL_MS = 15000;
+const BOOKING_REFRESH_INTERVAL_MS = 5000;
 
 const BookingPage: React.FC = () => {
   const [bookings, setBookings] = useState<MyBookingItem[]>([]);

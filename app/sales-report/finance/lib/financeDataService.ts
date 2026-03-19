@@ -1,7 +1,7 @@
 /**
  * Fetches bookings and damage incidents from market-backend for finance dashboard.
- * Uses /api/market/* which proxies to MARKET_API_URL.
- * Pass currentUser so the backend can scope data by role (finance = agent's bookings only).
+ * Bookings: /api/market/bookings/my → MARKET_API_URL (market syncs from Kelsey, returns DB data).
+ * Damage incidents: /api/damage-incidents → MARKET_API_URL.
  */
 
 import { apiClient } from '@/lib/api/client';
@@ -15,7 +15,7 @@ export interface FinanceAuth {
   role?: string;
 }
 
-/** Raw booking from GET /api/bookings/my (market-backend) */
+/** Raw booking from GET /api/market/bookings/my (market-backend) */
 interface MarketBookingCharge {
   id: string;
   category: string;
@@ -481,7 +481,6 @@ export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Pr
       continue;
     }
   }
-  return [];
 }
 
 export async function fetchFinanceCommissionReductions(
