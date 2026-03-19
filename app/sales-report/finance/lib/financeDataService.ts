@@ -481,6 +481,8 @@ export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Pr
       continue;
     }
   }
+
+  return [];
 }
 
 export async function fetchFinanceCommissionReductions(
