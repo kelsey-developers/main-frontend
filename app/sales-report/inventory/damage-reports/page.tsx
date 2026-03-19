@@ -606,7 +606,7 @@ export default function DamageReportsPage() {
                   style={{ gridTemplateColumns: '0.85fr 0.85fr 0.75fr 0.85fr 1fr 1.1fr 1.2fr 1fr' }}
                 >
                   <div
-                    className="text-[11px] text-gray-400 break-all font-mono max-w-[180px]"
+                    className="text-[11px] text-gray-400 break-all font-mono max-w-[180px] pr-4"
                     style={{ fontFamily: "'DM Mono', monospace" }}
                     title={row.id}
                   >

@@ -1140,13 +1140,13 @@ function PurchaseOrdersPageContent() {
                   {/* Desktop Row */}
                 <div
                   onClick={() => setSelectedPO(po)}
-                  className="hidden md:grid px-5 py-3 border-b border-gray-200 last:border-b-0 cursor-pointer transition-colors hover:bg-gray-50"
+                  className="hidden md:grid px-5 py-3 border-b border-gray-200 last:border-b-0 cursor-pointer transition-colors hover:bg-gray-50 items-start"
                   style={{
                     gridTemplateColumns: "1fr 1.5fr 1.2fr 1.2fr 1.2fr 1fr 0.8fr",
                   }}
                 >
                   <div
-                    className="text-[11px] text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px]"
+                    className="text-[11px] text-gray-400 overflow-hidden text-ellipsis whitespace-nowrap max-w-[110px] pt-0.5"
                     style={{ fontFamily: "'DM Mono', monospace" }}
                     title={po.id.toUpperCase()}
                   >
@@ -1157,22 +1157,24 @@ function PurchaseOrdersPageContent() {
                     <div className="text-[11px] text-gray-500 whitespace-normal break-words">{supplier?.email || ''}</div>
                     <div className="text-[11px] text-gray-500 whitespace-normal break-words">Created by: {createdByLabel}</div>
                   </div>
-                  <div className="text-[12.5px] text-gray-700">
+                  <div className="text-[12.5px] text-gray-700 pt-0.5">
                     {new Date(po.orderDate).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
                   </div>
-                  <div className="text-[12.5px] text-gray-700 flex items-center gap-2">
-                    {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                  <div className="flex flex-col gap-1 pt-0.5">
+                    <span className="text-[12.5px] text-gray-700">
+                      {new Date(po.expectedDelivery).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })}
+                    </span>
                     {isPOOverdue(po) && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/90 text-white" title="Exceeded expected delivery time">
+                      <span className="inline-flex w-fit items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/90 text-white" title="Exceeded expected delivery time">
                         Overdue
                       </span>
                     )}
                   </div>
-                  <div className="text-[12.5px] font-semibold text-gray-900">{formatPhp(po.totalAmount)}</div>
-                  <div className="flex items-center">
+                  <div className="text-[12.5px] font-semibold text-gray-900 pt-0.5">{formatPhp(po.totalAmount)}</div>
+                  <div className="pt-0.5">
                     <StatusBadge status={po.status} statusConfig={PO_STATUS_CONFIG} />
                   </div>
-                  <div className="flex items-center justify-center">
+                  <div className="pt-0.5">
                     {goodsReceipts.length > 0 && (
                       <span className="text-[11px] text-gray-600 bg-gray-100 rounded-md px-2 py-1 font-semibold">{goodsReceipts.length} GR</span>
                     )}

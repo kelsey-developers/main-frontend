@@ -104,7 +104,7 @@ const InventoryTableSkeleton = () => {
           <div
             key={`skeleton-row-${rowIndex}`}
             className="grid items-center border-b border-[#e8f4f4] pb-2 sm:pb-2.5"
-            style={{ gridTemplateColumns: '100px 1fr 120px 110px 190px 150px', minWidth: 'max(100%, 600px)' }}
+            style={{ gridTemplateColumns: '100px minmax(120px,1.6fr) 130px 110px 190px 150px', minWidth: 'max(100%, 600px)' }}
           >
             <div className="px-2 sm:px-3 py-3 sm:py-5">
               <div className="h-2.5 sm:h-3 w-16 rounded bg-slate-200" />
@@ -465,8 +465,8 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
               className="grid px-3 bg-gradient-to-r from-[#0b5858] to-[#05807e] rounded-t-xl sticky top-0 z-10"
               style={{
                 gridTemplateColumns: hideEditButton && !onEditThreshold
-                  ? '100px 1fr 120px 110px 190px 150px'
-                  : '100px 1fr 120px 110px 190px 150px 70px',
+                  ? '100px minmax(120px,1.6fr) 130px 110px 190px 150px'
+                  : '100px minmax(120px,1.6fr) 130px 110px 190px 150px 70px',
                 minWidth: 'max(100%, 600px)',
               }}
             >
@@ -535,8 +535,8 @@ const ReplenishmentTable: React.FC<ReplenishmentTableProps> = ({
                       }`}
                       style={{
                         gridTemplateColumns: hideEditButton && !onEditThreshold
-                          ? '100px 1fr 120px 110px 190px 150px'
-                          : '100px 1fr 120px 110px 190px 150px 70px',
+                          ? '100px minmax(120px,1.6fr) 130px 110px 190px 150px'
+                          : '100px minmax(120px,1.6fr) 130px 110px 190px 150px 70px',
                         minWidth: 'max(100%, 600px)',
                       }}
                       onClick={handleRowClick}
