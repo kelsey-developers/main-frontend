@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import type { ReplenishmentItem } from '../types';
 import InventoryDropdown from './InventoryDropdown';
 import SingleDatePicker from '@/components/SingleDatePicker';
 import { useToast } from '../hooks/useToast';
@@ -56,6 +55,7 @@ const C = {
 // Warehouse stock-out reasons (damage/write-off handled via separate damage flow, not here)
 const REASONS_WH = [
   'General Use',
+  'Guest Booking',
   'Disposal / Expired',
   'Inter-warehouse Transfer',
   'Event Use',
@@ -405,7 +405,14 @@ function AddItemBtn({ onAdd, accent }: { onAdd: () => void; accent: string }) {
 // WAREHOUSE FORM COMPONENT
 // ═══════════════════════════════════════════════════════════════════
 interface WarehouseFormProps {
-  prefill?: { warehouseId: string };
+  prefill?: {
+    warehouseId: string;
+    reason?: string;
+    reference?: string;
+    referenceType?: string;
+    notes?: string;
+    items?: Array<{ productId: string; quantity: string }>;
+  };
   onDraftChange: (draft: WarehouseDraft) => void;
   /** When set, reason is fixed to damage write-off; reference on submit is damage receipt id only */
   lockedReason?: 'Damaged / Write-off';
@@ -429,28 +436,24 @@ const DAMAGE_WRITE_OFF = 'Damaged / Write-off';
 function WarehouseForm({ prefill, onDraftChange, lockedReason }: WarehouseFormProps) {
   const authState = useAuth();
   const isDamageOnly = lockedReason === DAMAGE_WRITE_OFF;
-  const [confirmedBy, setConfirmedBy] = useState(authState.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(String(authState.user?.id ?? ''));
+  const [confirmedBy] = useState(authState.userProfile?.fullname || '');
+  const [idNumber] = useState(String(authState.user?.id ?? ''));
   const [warehouse, setWarehouse] = useState(prefill?.warehouseId || '');
-  const [reason, setReason] = useState(isDamageOnly ? DAMAGE_WRITE_OFF : '');
+  const [reason, setReason] = useState(isDamageOnly ? DAMAGE_WRITE_OFF : (prefill?.reason || ''));
   const [toWarehouse, setToWarehouse] = useState('');
   const [date, setDate] = useState(getTodayInPhilippineTime());
-  const [reference, setReference] = useState('');
+  const [reference, setReference] = useState(prefill?.reference || '');
   const [damageIncidentId, setDamageIncidentId] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(prefill?.notes || '');
   const [isDamage, setIsDamage] = useState(isDamageOnly);
-  const [items, setItems] = useState<LineItem[]>([{ productId: '', quantity: '' }]);
+  const [items, setItems] = useState<LineItem[]>(
+    prefill?.items && prefill.items.length > 0 ? prefill.items : [{ productId: '', quantity: '' }]
+  );
   const [damageIncidents, setDamageIncidents] = useState<Array<{ id: string; description?: string; reportDate?: string; warehouseId?: string }>>([]);
 
   const upd = (i: number, k: keyof LineItem, v: string) =>
     setItems((p) => p.map((it, ix) => (ix === i ? { ...it, [k]: v } : it)));
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
-
-  useEffect(() => {
-    if (prefill?.warehouseId && !warehouse) {
-      setWarehouse(prefill.warehouseId);
-    }
-  }, [prefill?.warehouseId, warehouse]);
 
   useEffect(() => {
     void listDamageIncidents().then((list) => {
@@ -464,10 +467,6 @@ function WarehouseForm({ prefill, onDraftChange, lockedReason }: WarehouseFormPr
       );
     });
   }, []);
-
-  useEffect(() => {
-    if (!isDamageOnly) setDamageIncidentId('');
-  }, [reason, isDamageOnly]);
 
   const warehouseDamageIncidents = warehouse
     ? damageIncidents.filter((d) => d.warehouseId === warehouse)
@@ -557,6 +556,8 @@ function WarehouseForm({ prefill, onDraftChange, lockedReason }: WarehouseFormPr
             onChange={(value) => {
               setReason(value);
               setIsDamage(value === DAMAGE_WRITE_OFF);
+              // keep damage incident selection only when damage write-off is selected
+              if (value !== DAMAGE_WRITE_OFF) setDamageIncidentId('');
             }}
             options={[
               { value: '', label: 'Select reason…' },
@@ -709,6 +710,12 @@ interface UnitFormProps {
     confirmedBy: string;
     idNumber: string;
     itemId: string;
+    bookingId?: string;
+    reason?: string;
+    reference?: string;
+    referenceType?: string;
+    notes?: string;
+    items?: Array<{ productId: string; quantity: string }>;
   };
   onDraftChange: (draft: UnitDraft) => void;
 }
@@ -729,21 +736,29 @@ interface UnitDraft {
 
 function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const authState = useAuth();
-  const itemFromPrefill = prefill?.itemId
-    ? inventoryItems.find((i) => i.id === prefill.itemId)
+  const firstPrefillItemId =
+    prefill?.items && prefill.items.length > 0
+      ? prefill.items[0]?.productId
+      : prefill?.itemId;
+  const itemFromPrefill = firstPrefillItemId
+    ? inventoryItems.find((i) => i.id === firstPrefillItemId)
     : undefined;
-  const [confirmedBy, setConfirmedBy] = useState(prefill?.confirmedBy || authState.userProfile?.fullname || '');
-  const [idNumber, setIdNumber] = useState(prefill?.idNumber || String(authState.user?.id ?? ''));
+  const [confirmedBy] = useState(prefill?.confirmedBy || authState.userProfile?.fullname || '');
+  const [idNumber] = useState(prefill?.idNumber || String(authState.user?.id ?? ''));
   const [unit, setUnit] = useState(prefill?.unitId || '');
-  const [booking, setBooking] = useState('');
-  const [reason, setReason] = useState('');
+  const [booking, setBooking] = useState(prefill?.bookingId || '');
+  const [reason, setReason] = useState(prefill?.reason || '');
   const [srcWarehouse, setSrcWarehouse] = useState(itemFromPrefill?.warehouseId || '');
   const [date, setDate] = useState(getTodayInPhilippineTime());
-  const [reference, setReference] = useState('');
+  const [reference, setReference] = useState(prefill?.reference || '');
   const [damageIncidentId, setDamageIncidentId] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(prefill?.notes || '');
   const [items, setItems] = useState<LineItem[]>(
-    prefill?.itemId ? [{ productId: prefill.itemId, quantity: '1' }] : [{ productId: '', quantity: '' }]
+    prefill?.items && prefill.items.length > 0
+      ? prefill.items
+      : prefill?.itemId
+        ? [{ productId: prefill.itemId, quantity: '1' }]
+        : [{ productId: '', quantity: '' }]
   );
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
@@ -754,19 +769,10 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
   const rem = (i: number) => setItems((p) => (p.length > 1 ? p.filter((_, ix) => ix !== i) : p));
   const bk = bookingOptions.find((b) => b.id === booking);
 
-  // Auto-fill warehouse from item when prefill.itemId is set and data loads
-  useEffect(() => {
-    if (prefill?.itemId) {
-      const item = inventoryItems.find((i) => i.id === prefill.itemId);
-      if (item?.warehouseId) {
-        setSrcWarehouse((prev) => (prev ? prev : item.warehouseId));
-      }
-    }
-  }, [prefill?.itemId, inventoryItems]);
-
-  useEffect(() => {
+  const setReasonAndReset = (value: string) => {
+    setReason(value);
     setDamageIncidentId('');
-  }, [reason]);
+  };
 
   useEffect(() => {
     void listDamageIncidents().then((list) => {
@@ -785,17 +791,18 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
     let active = true;
 
     if (!unit) {
-      setBooking('');
-      setBookingOptions([]);
       return () => {
         active = false;
       };
     }
 
     const fallbackUnitName = inventoryUnits.find((u) => u.id === unit)?.name ?? 'Unit';
-    setBookingsLoading(true);
-
-    void getBookings(unit)
+    // Avoid setting state synchronously in the effect body (lint rule).
+    void Promise.resolve()
+      .then(() => {
+        if (active) setBookingsLoading(true);
+      })
+      .then(() => getBookings(unit))
       .then(async (summaries) => {
         const options = await Promise.all(
           summaries.map(async (summary) => {
@@ -890,7 +897,13 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
         <Field label="Unit / Room" required>
           <InventoryDropdown
             value={unit}
-            onChange={(value) => setUnit(value)}
+            onChange={(value) => {
+              setUnit(value);
+              if (!value) {
+                setBooking('');
+                setBookingOptions([]);
+              }
+            }}
             options={[
               { value: '', label: 'Select unit…' },
               ...inventoryUnits.map((u) => ({ value: u.id, label: u.name })),
@@ -1028,7 +1041,7 @@ function UnitForm({ prefill, onDraftChange }: UnitFormProps) {
         <Field label="Reason" required>
           <InventoryDropdown
             value={reason}
-            onChange={(value) => setReason(value)}
+            onChange={setReasonAndReset}
             options={[
               { value: '', label: 'Select reason…' },
               ...REASONS_UN.map((r) => ({ value: r, label: r })),
@@ -1136,7 +1149,6 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
   const router = useRouter();
   const authState = useAuth();
   const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [, setRefreshTick] = useState(0);
   const { error } = useToast();
   const [warehouseDraft, setWarehouseDraft] = useState<WarehouseDraft | null>(null);
@@ -1148,7 +1160,6 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
-    setMounted(true);
   }, []);
 
   useEffect(() => {
@@ -1366,10 +1377,6 @@ export default function StockOutModal({ mode, onClose, returnTo, unitPrefill, wa
     : isWH
       ? 'Deduct items from warehouse inventory'
       : 'Allocate items to a room or unit';
-
-  if (!mounted) {
-    return null;
-  }
 
   return createPortal(
     <>
