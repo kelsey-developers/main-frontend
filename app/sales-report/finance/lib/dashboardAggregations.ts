@@ -6,6 +6,7 @@ import type {
   RevenueByAgent,
   RevenueByTypeItem,
   BookingLinkedRow,
+  CommissionReductionRow,
   DamagePenalty,
   SalesReportFilters,
 } from '../types';
@@ -20,13 +21,18 @@ export function computeBookingRevenue(row: BookingLinkedRow): number {
 export function buildSummary(
   bookings: BookingLinkedRow[],
   damageIncidents: DamagePenalty[],
+  commissionReductions: CommissionReductionRow[] = [],
 ): FinanceDashboardSummary {
   const bookingRevenue = bookings.reduce((sum, row) => sum + computeBookingRevenue(row), 0);
   const damageRevenue = damageIncidents.reduce((sum, inc) => sum + inc.chargedToGuest, 0);
   const absorbedDamage = damageIncidents.reduce((sum, inc) => sum + inc.absorbed, 0);
+  const commissionReductionTotal = commissionReductions.reduce(
+    (sum, row) => sum + row.commissionAmount,
+    0,
+  );
 
   const totalSales = bookingRevenue + damageRevenue;
-  const totalRevenue = totalSales - absorbedDamage;
+  const totalRevenue = totalSales - absorbedDamage - commissionReductionTotal;
   const totalBookings = bookings.length;
 
   return {
@@ -159,9 +165,10 @@ export function buildSalesTrend(
   bookings: BookingLinkedRow[],
   damageIncidents: DamagePenalty[],
   filters?: SalesReportFilters,
+  commissionReductions: CommissionReductionRow[] = [],
 ): SalesTrendPoint[] {
   const { start, end, granularity, includeYearInMonthLabel } = getDateRangeFromFilters(filters);
-  const points: { key: string; label: string; value: number }[] = [];
+  const points: { key: string; label: string; value: number; commissionReduction: number }[] = [];
   const keyToIndex = new Map<string, number>();
 
   // Pre-build buckets so gaps show as zero on chart
@@ -171,7 +178,7 @@ export function buildSalesTrend(
       const key = cursor.toISOString().slice(0, 10);
       const label = formatDayLabel(cursor);
       keyToIndex.set(key, points.length);
-      points.push({ key, label, value: 0 });
+      points.push({ key, label, value: 0, commissionReduction: 0 });
       cursor = addDays(cursor, 1);
     }
   } else {
@@ -180,12 +187,16 @@ export function buildSalesTrend(
       const key = `${cursor.getFullYear()}-${cursor.getMonth()}`;
       const label = formatMonthLabel(cursor, includeYearInMonthLabel);
       keyToIndex.set(key, points.length);
-      points.push({ key, label, value: 0 });
+      points.push({ key, label, value: 0, commissionReduction: 0 });
       cursor = addMonths(cursor, 1);
     }
   }
 
-  const accumulate = (dateStr: string | undefined, amount: number) => {
+  const accumulate = (
+    dateStr: string | undefined,
+    amount: number,
+    bucket: 'sales' | 'commissionReduction' = 'sales',
+  ) => {
     if (!dateStr || !amount) return;
     const d = new Date(dateStr + 'T00:00:00');
     if (Number.isNaN(d.getTime())) return;
@@ -201,7 +212,11 @@ export function buildSalesTrend(
 
     const idx = keyToIndex.get(key);
     if (idx == null) return;
-    points[idx].value += amount;
+    if (bucket === 'commissionReduction') {
+      points[idx].commissionReduction += amount;
+    } else {
+      points[idx].value += amount;
+    }
   };
 
   bookings.forEach((row) => {
@@ -212,7 +227,15 @@ export function buildSalesTrend(
     accumulate(inc.reportedAt, inc.chargedToGuest);
   });
 
-  return points.map((p) => ({ name: p.label, value: p.value }));
+  commissionReductions.forEach((row) => {
+    accumulate(row.checkIn, row.commissionAmount, 'commissionReduction');
+  });
+
+  return points.map((p) => ({
+    name: p.label,
+    value: p.value,
+    commissionReduction: p.commissionReduction,
+  }));
 }
 
 export function buildRevenueByProperty(

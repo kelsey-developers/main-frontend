@@ -7,8 +7,16 @@ import FinanceDashboardLinks from './components/FinanceDashboardLinks';
 import FinanceSummaryCards from './components/FinanceSummaryCards';
 import SalesTrendChart from './components/SalesTrendChart';
 import RevenueByTypeChart from './components/RevenueByTypeChart';
-import { fetchFinanceBookings, fetchFinanceDamageIncidents } from './lib/financeDataService';
-import { filterBookingRows, filterDamageIncidents } from './lib/filters';
+import {
+  fetchFinanceBookings,
+  fetchFinanceCommissionReductions,
+  fetchFinanceDamageIncidents,
+} from './lib/financeDataService';
+import {
+  filterBookingRows,
+  filterCommissionReductionRows,
+  filterDamageIncidents,
+} from './lib/filters';
 import {
   buildSummary,
   buildSalesTrend,
@@ -26,6 +34,7 @@ import type {
   RevenueByAgent,
   RevenueByTypeItem,
   BookingLinkedRow,
+  CommissionReductionRow,
   DamagePenalty,
 } from './types';
 import { defaultSalesReportFilters } from './types';
@@ -86,6 +95,8 @@ export default function SalesReportPage() {
   const [bookings, setBookings] = useState<Awaited<ReturnType<typeof fetchFinanceBookings>>>([]);
   const [damageIncidents, setDamageIncidents] =
     useState<Awaited<ReturnType<typeof fetchFinanceDamageIncidents>>>([]);
+  const [commissionReductions, setCommissionReductions] =
+    useState<Awaited<ReturnType<typeof fetchFinanceCommissionReductions>>>([]);
 
   const currentUser = user
     ? { userId: user.id, email: user.email, role: user.roles?.[0] }
@@ -95,13 +106,15 @@ export default function SalesReportPage() {
     let mounted = true;
     (async () => {
       try {
-        const [bookingsData, damageData] = await Promise.all([
+        const [bookingsData, damageData, commissionData] = await Promise.all([
           fetchFinanceBookings(currentUser),
           fetchFinanceDamageIncidents(currentUser),
+          fetchFinanceCommissionReductions(currentUser),
         ]);
         if (mounted) {
           setBookings(bookingsData);
           setDamageIncidents(damageData);
+          setCommissionReductions(commissionData);
         }
       } finally {
         if (mounted) setIsLoading(false);
@@ -120,15 +133,19 @@ export default function SalesReportPage() {
     () => filterDamageIncidents(damageIncidents as DamagePenalty[], effectiveFilters),
     [damageIncidents, effectiveFilters],
   );
+  const filteredCommissionReductions = useMemo(
+    () => filterCommissionReductionRows(commissionReductions as CommissionReductionRow[], effectiveFilters),
+    [commissionReductions, effectiveFilters],
+  );
 
   const summary: FinanceDashboardSummary = useMemo(
-    () => buildSummary(filteredBookings, filteredDamage),
-    [filteredBookings, filteredDamage],
+    () => buildSummary(filteredBookings, filteredDamage, filteredCommissionReductions),
+    [filteredBookings, filteredDamage, filteredCommissionReductions],
   );
 
   const salesTrendData: SalesTrendPoint[] = useMemo(
-    () => buildSalesTrend(filteredBookings, filteredDamage, effectiveFilters),
-    [filteredBookings, filteredDamage, effectiveFilters],
+    () => buildSalesTrend(filteredBookings, filteredDamage, effectiveFilters, filteredCommissionReductions),
+    [filteredBookings, filteredDamage, effectiveFilters, filteredCommissionReductions],
   );
 
   const revenueByProperty: RevenueByProperty[] = useMemo(

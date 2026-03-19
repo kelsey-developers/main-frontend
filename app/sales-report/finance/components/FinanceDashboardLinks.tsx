@@ -6,10 +6,8 @@ import type { FinanceFeatureLink } from '../types';
 
 const FEATURE_LINKS: FinanceFeatureLink[] = [
   { href: '/sales-report/finance/bookings', title: 'Booking-linked data', icon: 'bookings' },
-  { href: '/sales-report/finance/charges-addons', title: 'Charges & add-ons', icon: 'charges' },
+  { href: '/sales-report/finance/comission-reduction', title: 'Comission reduction', icon: 'commission' },
   { href: '/sales-report/finance/damage-penalty', title: 'Damage & penalty impact', icon: 'damage' },
-  { href: '/sales-report/finance/export', title: 'Export for accounting', icon: 'export' },
-  { href: '/sales-report/finance/future', title: 'Coming soon', icon: 'future' },
 ];
 
 const IconSvg: React.FC<{ icon: FinanceFeatureLink['icon'] }> = ({ icon }) => {
@@ -55,6 +53,13 @@ const IconSvg: React.FC<{ icon: FinanceFeatureLink['icon'] }> = ({ icon }) => {
       return (
         <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+    case 'commission':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2m-8-6h2m12 0h2" />
+          <circle cx="12" cy="12" r="9" strokeWidth={2} />
         </svg>
       );
     default:

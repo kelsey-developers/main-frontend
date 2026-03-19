@@ -40,12 +40,23 @@ function getDefaultViewFilters(): SalesReportFilters {
   return {
     ...defaultSalesReportFilters,
     filterMethod: 'quick',
-    timePeriod: 'month',
+    timePeriod: 'all',
     timePeriodScope: 'this',
     searchName: '',
     propertyType: 'All',
     location: 'All',
   };
+}
+
+function getBookingSortTimestamp(row: BookingLinkedRow): number {
+  const createdAtTimestamp = row.createdAt ? new Date(row.createdAt).getTime() : Number.NaN;
+  if (Number.isFinite(createdAtTimestamp)) return createdAtTimestamp;
+
+  const checkInTimestamp = row.checkIn ? new Date(row.checkIn).getTime() : Number.NaN;
+  if (Number.isFinite(checkInTimestamp)) return checkInTimestamp;
+
+  const numericId = Number(row.id);
+  return Number.isFinite(numericId) ? numericId : 0;
 }
 
 export default function BookingsPage() {
@@ -111,11 +122,16 @@ export default function BookingsPage() {
     [rows, effectiveFilters, bookingSearchIndex],
   );
 
+  const sortedRows = useMemo(
+    () => [...filteredRows].sort((a, b) => getBookingSortTimestamp(b) - getBookingSortTimestamp(a)),
+    [filteredRows],
+  );
+
   const handleExportCsv = () => {
     setExportingCsv(true);
     try {
-      exportBookingLinkedToCsv(filteredRows);
-      logExport('booking-linked', 'csv', effectiveFilters, filteredRows.length);
+      exportBookingLinkedToCsv(sortedRows);
+      logExport('booking-linked', 'csv', effectiveFilters, sortedRows.length);
     } finally {
       setExportingCsv(false);
     }
@@ -124,8 +140,8 @@ export default function BookingsPage() {
   const handleExportPdf = () => {
     setExportingPdf(true);
     try {
-      exportBookingLinkedToPdf(filteredRows);
-      logExport('booking-linked', 'pdf', effectiveFilters, filteredRows.length);
+      exportBookingLinkedToPdf(sortedRows);
+      logExport('booking-linked', 'pdf', effectiveFilters, sortedRows.length);
     } catch (e) {
       console.error(e);
     } finally {
@@ -166,7 +182,7 @@ export default function BookingsPage() {
           <button
             type="button"
             onClick={() => setExportPanelOpen((o) => !o)}
-            disabled={filteredRows.length === 0}
+            disabled={sortedRows.length === 0}
             className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
             style={{ fontFamily: 'Poppins' }}
             aria-expanded={exportPanelOpen}
@@ -185,7 +201,7 @@ export default function BookingsPage() {
                   handleExportCsv();
                   setExportPanelOpen(false);
                 }}
-                disabled={exportingCsv || exportingPdf || filteredRows.length === 0}
+                disabled={exportingCsv || exportingPdf || sortedRows.length === 0}
                 className="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ fontFamily: 'Poppins' }}
               >
@@ -197,7 +213,7 @@ export default function BookingsPage() {
                   handleExportPdf();
                   setExportPanelOpen(false);
                 }}
-                disabled={exportingCsv || exportingPdf || filteredRows.length === 0}
+                disabled={exportingCsv || exportingPdf || sortedRows.length === 0}
                 className="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ fontFamily: 'Poppins' }}
               >
@@ -229,7 +245,7 @@ export default function BookingsPage() {
         />
       </div>
       <div className="mt-4">
-        <BookingLinkedTable rows={filteredRows} />
+        <BookingLinkedTable rows={sortedRows} />
       </div>
     </>
   );

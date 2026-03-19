@@ -1,5 +1,6 @@
 import type { SalesReportFilters } from '../types';
 import type { BookingLinkedRow } from '../types';
+import type { CommissionReductionRow } from '../types';
 import type { DamagePenalty } from '../types';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -280,6 +281,44 @@ export function filterDamageIncidents(incidents: DamagePenalty[], filters: Sales
       const reported = inc.reportedAt;
       if (reported < dateRange.start || reported > dateRange.end) return false;
     }
+    return true;
+  });
+}
+
+/**
+ * Filter commission reduction rows by search text and date range (check-in/check-out overlap).
+ */
+export function filterCommissionReductionRows(
+  rows: CommissionReductionRow[],
+  filters: SalesReportFilters
+): CommissionReductionRow[] {
+  const q = filters.searchName.trim().toLowerCase();
+  const dateRange = getDateRangeFromFilters(filters);
+
+  return rows.filter((row) => {
+    if (q) {
+      const match =
+        row.bookingRef.toLowerCase().includes(q) ||
+        row.agentName.toLowerCase().includes(q) ||
+        row.propertyName.toLowerCase().includes(q) ||
+        row.guestName.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+
+    if (dateRange) {
+      const checkIn = row.checkIn;
+      const checkOut = row.checkOut;
+      if (checkOut < dateRange.start || checkIn > dateRange.end) return false;
+    }
+
+    if (filters.propertyType && filters.propertyType !== 'All') {
+      if (row.unitType != null && row.unitType !== filters.propertyType) return false;
+    }
+
+    if (filters.location && filters.location !== 'All') {
+      if (row.location != null && row.location !== filters.location) return false;
+    }
+
     return true;
   });
 }

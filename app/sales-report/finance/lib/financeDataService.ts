@@ -6,7 +6,7 @@
 
 import { apiClient } from '@/lib/api/client';
 import { getNights } from './format';
-import type { BookingLinkedRow, DamagePenalty } from '../types';
+import type { BookingLinkedRow, CommissionReductionRow, DamagePenalty } from '../types';
 
 /** Current user identity so backend can filter: admin = all, finance = bookings where agent matches. */
 export interface FinanceAuth {
@@ -28,6 +28,8 @@ interface MarketBookingCharge {
 interface MarketBookingItem {
   id: string;
   reference_code?: string;
+  created_at?: string;
+  createdAt?: string;
   check_in_date: string;
   check_out_date: string;
   checkin_date?: string;
@@ -238,6 +240,52 @@ function toProofUrls(d: MarketDamageIncident): string[] {
   return Array.from(new Set(merged));
 }
 
+function isApprovedCommissionStatus(status: string | undefined): boolean {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  return normalized === 'approved' || normalized === 'confirmed' || normalized === 'booked';
+}
+
+function toCommissionReductionRow(b: MarketBookingItem): CommissionReductionRow {
+  const listing = b.listing ?? {};
+  const unit = b.unit ?? {};
+  const client = b.client ?? {};
+  const agentObj = b.agent;
+  const bookingTotal = Number(b.total_amount) || 0;
+  const commissionRate = 10;
+  const createdAtRaw = b.created_at ?? b.createdAt;
+
+  return {
+    id: String(b.id),
+    bookingRef: b.reference_code || String(b.id),
+    propertyName: String(listing.title ?? listing.unit_name ?? unit.title ?? unit.name ?? '—'),
+    unitType: toCanonicalUnitType(
+      String(
+        b.property_type ??
+          b.unit_type ??
+          listing.property_type ??
+          listing.unit_type ??
+          unit.property_type ??
+          unit.unit_type ??
+          ''
+      )
+    ) || undefined,
+    location: listing.location ?? unit.location,
+    guestName: [client.first_name, client.last_name].filter(Boolean).join(' ').trim() || '—',
+    agentName:
+      (b.assigned_agent_name && b.assigned_agent_name.trim()) ||
+      (agentObj && typeof agentObj === 'object' && (agentObj as { name?: string }).name?.trim()) ||
+      (agentObj && typeof agentObj === 'object' && (agentObj as { fullname?: string }).fullname?.trim()) ||
+      [agentObj?.first_name, agentObj?.last_name].filter(Boolean).join(' ').trim() ||
+      '—',
+    bookingTotal,
+    commissionRate,
+    commissionAmount: Math.round(bookingTotal * (commissionRate / 100)),
+    checkIn: typeof b.check_in_date === 'string' ? b.check_in_date.split('T')[0] : '',
+    checkOut: typeof b.check_out_date === 'string' ? b.check_out_date.split('T')[0] : '',
+    createdAt: typeof createdAtRaw === 'string' ? createdAtRaw : undefined,
+  };
+}
+
 
 function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
   const guest = [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ').trim() || 'Guest';
@@ -267,6 +315,8 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
   const rawCheckOut = b.check_out_date ?? b.checkout_date ?? '';
   const checkIn = typeof rawCheckIn === 'string' ? rawCheckIn.split('T')[0] : '';
   const checkOut = typeof rawCheckOut === 'string' ? rawCheckOut.split('T')[0] : '';
+  const createdAtRaw = b.created_at ?? b.createdAt;
+  const createdAt = typeof createdAtRaw === 'string' ? createdAtRaw : undefined;
   const nights = getNights(checkIn, checkOut) || 1;
 
   const chargeLines = Array.isArray(b.charges) ? b.charges : [];
@@ -300,6 +350,7 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
     return {
       id: b.id,
       bookingId: b.reference_code || b.id,
+      createdAt,
       unit,
       imageUrl: b.listing?.main_image_url,
       location: b.listing?.location ?? b.unit?.location,
@@ -330,6 +381,7 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
   return {
     id: b.id,
     bookingId: b.reference_code || b.id,
+    createdAt,
     unit,
     imageUrl: b.listing?.main_image_url,
     location: b.listing?.location ?? b.unit?.location,
@@ -409,15 +461,60 @@ export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Pr
     credentials: 'include' as RequestCredentials,
   };
 
-  // Bookings from market API (market-backend syncs from Kelsey, returns DB data).
-  try {
-    const data = await apiClient.get<unknown>('/api/market/bookings/my', opts);
-    const list = extractBookingsList(data);
-    const completedOnly = list.filter((b) => String(b.status || '').toLowerCase() === 'booked');
-    return completedOnly.map(toBookingLinkedRow);
-  } catch {
-    return [];
+  // Try dedicated route first (server-side cookie handling), then market proxy
+  for (const endpoint of ['/api/bookings/my', '/api/market/bookings/my']) {
+    try {
+      const data = await apiClient.get<unknown>(endpoint, opts);
+      const list = extractBookingsList(data);
+      const completedOnly = list.filter((booking) => String(booking.status ?? '').toLowerCase() === 'booked');
+
+      const hydratedRows = await Promise.all(
+        completedOnly.map(async (booking) => {
+          const detailed = await fetchMarketBookingByIdRaw(String(booking.id ?? ''), opts);
+          const source = detailed ? mergeBookingItems(booking, detailed) : booking;
+          return toBookingLinkedRow(source);
+        })
+      );
+
+      return hydratedRows;
+    } catch {
+      continue;
+    }
   }
+
+  return [];
+}
+
+export async function fetchFinanceCommissionReductions(
+  currentUser?: FinanceAuth | null
+): Promise<CommissionReductionRow[]> {
+  const headers = authHeaders(currentUser);
+  const opts: FinanceRequestOptions = {
+    ...(Object.keys(headers).length ? { headers } : {}),
+    credentials: 'include' as RequestCredentials,
+  };
+
+  for (const endpoint of ['/api/bookings/my', '/api/market/bookings/my']) {
+    try {
+      const data = await apiClient.get<unknown>(endpoint, opts);
+      const list = extractBookingsList(data);
+      const approvedOnly = list.filter((booking) => isApprovedCommissionStatus(booking.status));
+
+      const hydratedRows = await Promise.all(
+        approvedOnly.map(async (booking) => {
+          const detailed = await fetchMarketBookingByIdRaw(String(booking.id ?? ''), opts);
+          const source = detailed ? mergeBookingItems(booking, detailed) : booking;
+          return toCommissionReductionRow(source);
+        })
+      );
+
+      return hydratedRows;
+    } catch {
+      continue;
+    }
+  }
+
+  return [];
 }
 
 /** Extract a single booking from GET /api/bookings/:id response (object or { data }, { booking }, etc.). */
