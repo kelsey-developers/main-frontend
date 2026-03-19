@@ -522,9 +522,13 @@ const syncUnitsFromExternalSource = (externalUnits: ExternalUnitListing[]) => {
 
 export const loadInventoryDataset = async (force = false): Promise<void> => {
   if (isDatasetLoaded && !force) {
-    const externalUnits = await fetchExternalUnits();
-    if (externalUnits) {
-      syncUnitsFromExternalSource(externalUnits);
+    // Avoid replacing dataset-backed units with /api/units fallback results on routine refreshes.
+    // /api/units can be a reduced subset (e.g. availability filtered), which can hide units in inventory views.
+    if (inventoryUnitsState.length === 0) {
+      const externalUnits = await fetchExternalUnits();
+      if (externalUnits) {
+        syncUnitsFromExternalSource(externalUnits);
+      }
     }
     // Do not clear units when fetch fails — preserve existing data so users don't see "no items"
     emitInventoryDatasetUpdated();

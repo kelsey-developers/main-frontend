@@ -30,15 +30,118 @@ type ForwardOptions = {
   stripRoleHeaders?: boolean;
 };
 
-async function forwardToUpstream(
-  request: NextRequest,
-  upstreamUrl: string,
-  options: ForwardOptions = {}
-): Promise<{ status: number; data: unknown; isHtml: boolean; rawText: string }> {
-  const method = request.method.toUpperCase();
+type AuthUserInfo = {
+  email?: string;
+  roles: string[];
+};
 
+function parseBearerToken(headerValue: string | null | undefined): string | null {
+  if (!headerValue) return null;
+  const [scheme, token] = headerValue.trim().split(' ');
+  if (!scheme || !token) return null;
+  if (scheme.toLowerCase() !== 'bearer') return null;
+  return token.trim() || null;
+}
+
+function dedupeRoles(roles: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const role of roles) {
+    const trimmed = role.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(trimmed);
+  }
+  return unique;
+}
+
+function pickPrimaryRole(roles: string[]): string | null {
+  if (!roles || roles.length === 0) return null;
+  const normalized = roles.map((r) => r.trim()).filter(Boolean);
+  if (normalized.length === 0) return null;
+
+  // Highest privilege first. Prevent forwarding a restricted role as primary
+  // when the user actually also has admin/finance/etc.
+  const priority = [
+    'admin',
+    'finance',
+    'inventory',
+    'operations',
+    'housekeeping',
+    'frontdesk',
+    'agent',
+    'cleaner',
+    'employee',
+    'user',
+    'guest',
+  ];
+  const byLower = new Map(normalized.map((r) => [r.toLowerCase(), r]));
+  for (const p of priority) {
+    const found = byLower.get(p);
+    if (found) return found;
+  }
+  return normalized[0] ?? null;
+}
+
+function readUserCookie(request: NextRequest): AuthUserInfo {
+  const userCookie = request.cookies.get('user')?.value;
+  if (!userCookie) return { roles: [] };
+
+  try {
+    const user = JSON.parse(userCookie) as { email?: unknown; roles?: unknown };
+    const email =
+      typeof user.email === 'string' && user.email.trim().length > 0
+        ? user.email.trim()
+        : undefined;
+    const roles = Array.isArray(user.roles)
+      ? user.roles.filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+      : [];
+    return { email, roles: dedupeRoles(roles) };
+  } catch {
+    return { roles: [] };
+  }
+}
+
+async function getUserInfoFromAccessToken(accessToken: string): Promise<AuthUserInfo | null> {
+  const apiUrl = process.env.API_URL?.replace(/\/+$/, '');
+  if (!apiUrl) return null;
+
+  try {
+    const response = await fetch(`${apiUrl}/api/auth/userinfo`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as { email?: unknown; roles?: unknown };
+    const email =
+      typeof payload.email === 'string' && payload.email.trim().length > 0
+        ? payload.email.trim()
+        : undefined;
+    const roles = Array.isArray(payload.roles)
+      ? payload.roles.filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+      : [];
+
+    return { email, roles: dedupeRoles(roles) };
+  } catch {
+    return null;
+  }
+}
+
+async function buildForwardHeaders(
+  request: NextRequest,
+  method: string,
+  options: ForwardOptions = {}
+): Promise<Headers> {
   const headers = new Headers();
-  // Preserve auth/dev-auth headers if present.
+
+  // Keep passthrough support for non-authenticated local dev calls.
   const passthroughHeaders = [
     'authorization',
     'content-type',
@@ -46,11 +149,11 @@ async function forwardToUpstream(
     'x-user-email',
     'x-user-role',
     'x-user-roles',
-    /** Auth app user id for create flows — backend can persist without Prisma FK on reportedByUserId */
+    /** Auth app user id for create flows where the backend supports an alternate header */
     'x-reporter-user-id',
   ];
+
   passthroughHeaders.forEach((key) => {
-    // Optionally strip role headers so backend sees full access (used for damage-incidents access by inventory role)
     if (options.stripRoleHeaders && (key === 'x-user-role' || key === 'x-user-roles')) {
       return;
     }
@@ -58,42 +161,80 @@ async function forwardToUpstream(
     if (value) headers.set(key, value);
   });
 
-  // If no Authorization header came from the client, fall back to the
-  // accessToken cookie (set by the login flow) so protected routes work.
-  if (!headers.has('authorization')) {
-    const cookieToken = request.cookies.get('accessToken')?.value;
-    if (cookieToken) headers.set('authorization', `Bearer ${cookieToken}`);
+  const tokenFromHeader = parseBearerToken(headers.get('authorization'));
+  const tokenFromCookie = request.cookies.get('accessToken')?.value?.trim() || null;
+  const accessToken = tokenFromHeader || tokenFromCookie;
+
+  if (accessToken && !headers.has('authorization')) {
+    headers.set('authorization', `Bearer ${accessToken}`);
   }
 
-  // If no x-user-role but we have a logged-in user, add role from user cookie
-  // so backend auth guard can enforce inventory-only access.
-  // Skip when stripRoleHeaders is enabled (we want full access for that path).
-  if (
-    !options.stripRoleHeaders &&
-    !headers.has('x-user-role') &&
-    !headers.has('x-user-roles')
-  ) {
-    const userCookie = request.cookies.get('user')?.value;
-    if (userCookie) {
-      try {
-        const user = JSON.parse(userCookie) as { email?: string; roles?: string[] };
-        const role = user.roles?.[0];
-        if (role) headers.set('x-user-role', role);
-        if (user.email) headers.set('x-user-email', user.email);
-      } catch {
-        // ignore malformed cookie
-      }
+  const cookieIdentity = readUserCookie(request);
+
+  if (accessToken) {
+    // Token exists: do not trust caller-supplied identity headers.
+    headers.delete('x-user-id');
+    headers.delete('x-user-email');
+    headers.delete('x-user-role');
+    headers.delete('x-user-roles');
+
+    const verifiedIdentity = await getUserInfoFromAccessToken(accessToken);
+    const resolvedEmail = verifiedIdentity?.email ?? cookieIdentity.email;
+    const resolvedRoles = dedupeRoles([
+      ...(verifiedIdentity?.roles ?? []),
+      ...cookieIdentity.roles,
+    ]);
+
+    if (!verifiedIdentity && process.env.NODE_ENV !== 'production') {
+      console.warn('[market proxy] /api/auth/userinfo lookup failed; falling back to user cookie identity.');
     }
-  }
 
-  // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
-  if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
-    headers.set('ngrok-skip-browser-warning', 'true');
+    if (resolvedEmail) {
+      headers.set('x-user-email', resolvedEmail);
+    }
+
+    if (!options.stripRoleHeaders && resolvedRoles.length > 0) {
+      headers.set('x-user-role', pickPrimaryRole(resolvedRoles) ?? resolvedRoles[0]);
+      headers.set('x-user-role', resolvedRoles[0]);
+      headers.set('x-user-roles', resolvedRoles.join(','));
+    }
+  } else {
+    // No token: preserve dev header behavior, with cookie fallback when headers are missing.
+    if (!headers.has('x-user-email') && cookieIdentity.email) {
+      headers.set('x-user-email', cookieIdentity.email);
+    }
+
+    if (
+      !options.stripRoleHeaders &&
+      !headers.has('x-user-role') &&
+      !headers.has('x-user-roles') &&
+      cookieIdentity.roles.length > 0
+    ) {
+      headers.set('x-user-role', pickPrimaryRole(cookieIdentity.roles) ?? cookieIdentity.roles[0]);
+      headers.set('x-user-roles', cookieIdentity.roles.join(','));
+    }
   }
 
   // Ensure JSON content-type only when not set (multipart uploads need their boundary).
   if (method !== 'GET' && method !== 'HEAD' && !headers.get('content-type')) {
     headers.set('content-type', 'application/json');
+  }
+
+  return headers;
+}
+
+async function forwardToUpstream(
+  request: NextRequest,
+  upstreamUrl: string,
+  options: ForwardOptions = {}
+): Promise<{ status: number; data: unknown; isHtml: boolean; rawText: string }> {
+  const method = request.method.toUpperCase();
+
+  const headers = await buildForwardHeaders(request, method, options);
+
+  // Bypass ngrok browser warning/interstitial so API requests receive actual JSON payloads.
+  if (isNgrokUrl(upstreamUrl) && !headers.has('ngrok-skip-browser-warning')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
   }
 
   let body: string | ArrayBuffer | undefined;
@@ -198,6 +339,36 @@ function isNetworkError(err: unknown): boolean {
   );
 }
 
+function trimToUndefined(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function getMarketBaseCandidates(): string[] {
+  const candidates = [
+    trimToUndefined(process.env.MARKET_API_URL),
+    trimToUndefined(process.env.MARKET_API_FALLBACK_URL),
+    process.env.NODE_ENV !== 'production' ? 'http://localhost:4000' : undefined,
+    trimToUndefined(process.env.API_URL),
+  ].filter((value): value is string => Boolean(value));
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = candidate.replace(/\/+$/, '');
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
+}
+
+function shouldTryNextCandidate(status: number): boolean {
+  // Some upstreams may respond with unauthorized/not-found for market routes.
+  // Try the next candidate base (e.g., local backend) before failing.
+  return status === 401 || status === 403 || status === 404 || status === 405 || status === 501;
+}
+
 /**
  * Forward GET to upstream and return raw bytes (for attachment/image content).
  * Uses arrayBuffer() so images are not corrupted. HTML error pages (530/404) are
@@ -231,28 +402,9 @@ export async function proxyMarketApiBinary(
 
   async function fetchBinary(baseUrl: string): Promise<BinaryResult> {
     const url = buildUpstreamUrl(baseUrl, upstreamPath, request);
-    const headers = new Headers();
-    for (const key of ['authorization', 'x-user-id', 'x-user-email', 'x-user-role', 'x-user-roles'] as const) {
-      if (shouldStripRoleHeadersForPath(upstreamPath) && (key === 'x-user-role' || key === 'x-user-roles')) continue;
-      const value = request.headers.get(key);
-      if (value) headers.set(key, value);
-    }
-    if (!headers.has('authorization')) {
-      const cookieToken = request.cookies.get('accessToken')?.value;
-      if (cookieToken) headers.set('authorization', `Bearer ${cookieToken}`);
-    }
-    if (!headers.has('x-user-role') && !headers.has('x-user-roles')) {
-      const userCookie = request.cookies.get('user')?.value;
-      if (userCookie) {
-        try {
-          const user = JSON.parse(userCookie) as { email?: string; roles?: string[] };
-          if (user.roles?.[0]) headers.set('x-user-role', user.roles[0]);
-          if (user.email) headers.set('x-user-email', user.email);
-        } catch {
-          // ignore
-        }
-      }
-    }
+    const headers = await buildForwardHeaders(request, 'GET', {
+      stripRoleHeaders: shouldStripRoleHeadersForPath(upstreamPath),
+    });
     if (isNgrokUrl(url) && !headers.has('ngrok-skip-browser-warning')) {
       headers.set('ngrok-skip-browser-warning', 'true');
     }
@@ -298,7 +450,7 @@ export async function proxyMarketApiBinary(
 
   const bases = [primaryBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
   let lastUpstreamStatus: number | undefined;
-  for (const base of bases) {
+  for (const base of baseCandidates) {
     const result = await fetchBinary(base);
     if (result.ok) {
       return new NextResponse(result.buffer, {
@@ -354,10 +506,9 @@ export async function proxyMarketApi(
       try {
         const primary = await tryForward(primaryBaseUrl);
 
-        // If ngrok/HTML page comes back (often status 200), treat it as a bad gateway and try fallback.
-        if (!primary.isHtml) {
-          return NextResponse.json(primary.data, { status: primary.status });
-        }
+  for (const base of baseCandidates) {
+    try {
+      const result = await tryForward(base);
 
         if (fallbackBaseUrl) {
           const fallback = await tryForward(fallbackBaseUrl);
@@ -386,7 +537,6 @@ export async function proxyMarketApi(
         }
         throw err;
       }
-    }
 
     // No API_URL configured; use MARKET_API_URL as a best-effort fallback.
     const result = await tryForward(fallbackBaseUrl!);
@@ -409,5 +559,27 @@ export async function proxyMarketApi(
     }
     throw err;
   }
+
+  if (lastStatusResult) {
+    return NextResponse.json(lastStatusResult.data, { status: lastStatusResult.status });
+  }
+
+  if (sawHtml) {
+    return NextResponse.json(
+      {
+        error: 'Market upstream is unreachable or returned HTML (ngrok/error page).',
+        upstreams: baseCandidates,
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json(
+    {
+      error: 'Market backend is unreachable. Ensure it is running and MARKET_API_URL is correct.',
+      upstreams: baseCandidates,
+    },
+    { status: 503 }
+  );
 }
 

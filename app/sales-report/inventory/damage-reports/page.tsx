@@ -71,13 +71,89 @@ function formatDateShort(value: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
 }
 
+function looksLikeOpaqueUserId(value: string): boolean {
+  const v = value.trim();
+  if (!v) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)) return true;
+  if (/^c[a-z0-9]{20,}$/i.test(v)) return true;
+  return false;
+}
+
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function nameFromEmail(value: string): string | undefined {
+  const email = value.trim().toLowerCase();
+  if (!looksLikeEmail(email)) return undefined;
+  const local = email.split('@')[0] ?? '';
+  const words = local
+    .replace(/[._-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim();
+  return words || undefined;
+}
+
+function normalizeReporterName(value?: string | null): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || isNoneLike(trimmed)) return undefined;
+
+  const nameWithIdSuffix = trimmed.match(/^(.*)\s+\(id:\s*([^)]+)\)\s*$/i);
+  if (nameWithIdSuffix) {
+    const nameOnly = nameWithIdSuffix[1]?.trim();
+    if (!nameOnly || isNoneLike(nameOnly) || /^unknown(?:\s+reporter)?$/i.test(nameOnly)) {
+      return undefined;
+    }
+    return nameOnly;
+  }
+
+  if (/^unknown(?:\s+reporter)?$/i.test(trimmed)) return undefined;
+  if (/^user\s*id\s*:/i.test(trimmed)) return undefined;
+  if (looksLikeEmail(trimmed)) return nameFromEmail(trimmed) ?? trimmed;
+  return trimmed;
+}
+
+function extractUserIdFromReportedByText(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || isNoneLike(trimmed)) return undefined;
+
+  const userIdPrefix = trimmed.match(/^user\s*id\s*:\s*(.+)$/i);
+  if (userIdPrefix) {
+    const extracted = userIdPrefix[1]?.trim();
+    return extracted && !isNoneLike(extracted) ? extracted : undefined;
+  }
+
+  const idSuffix = trimmed.match(/\(id:\s*([^)]+)\)\s*$/i);
+  if (idSuffix) {
+    const extracted = idSuffix[1]?.trim();
+    return extracted && !isNoneLike(extracted) ? extracted : undefined;
+  }
+
+  return undefined;
+}
+
 /** Get reporter user id from incident (API may send reportedByUserId or reportedBy.id / reportedBy string). */
 function getReportedByUserId(inc: DamageIncident): string | undefined {
-  if (inc.reportedByUserId != null && inc.reportedByUserId !== '') return String(inc.reportedByUserId);
+  if (inc.reportedByUserId != null && inc.reportedByUserId !== '') {
+    const direct = String(inc.reportedByUserId).trim();
+    if (direct && !isNoneLike(direct)) return direct;
+  }
   const rb = (inc as unknown as Record<string, unknown>).reportedBy;
   if (rb == null) return undefined;
-  if (typeof rb === 'object' && rb !== null && 'id' in rb) return String((rb as { id: string | number }).id);
-  if (typeof rb === 'string') return rb;
+  if (typeof rb === 'object' && rb !== null && 'id' in rb) {
+    const fromObj = String((rb as { id: string | number }).id).trim();
+    if (fromObj && !isNoneLike(fromObj)) return fromObj;
+    return undefined;
+  }
+  if (typeof rb === 'string') {
+    const extracted = extractUserIdFromReportedByText(rb);
+    if (extracted) return extracted;
+    const fromText = rb.trim();
+    if (looksLikeOpaqueUserId(fromText)) return fromText;
+  }
   return undefined;
 }
 
@@ -97,7 +173,7 @@ function flattenIncidentsToRows(incidents: DamageIncident[]): DamageReportRow[] 
       unitName: inc.unitId ? (byUnit.get(inc.unitId) ?? inc.unitId) : undefined,
       reportedBy: inc.reportedBy,
       reportedByUserId: getReportedByUserId(inc),
-      reportedByName: inc.reportedByName,
+      reportedByName: normalizeReporterName(inc.reportedByName ?? inc.reportedBy),
       reportedAt,
       createdAt,
       updatedAt,
@@ -183,10 +259,11 @@ export default function DamageReportsPage() {
   );
   const userDisplayNames = useUserDisplayNames(userIdsForNames);
 
-  /** Name display: prefer id lookup (auth + useUserDisplayNames), else "User ID: {id}". When no id, use backend reportedByName. */
+  /** Name display: prefer auth/user-map names, then API names; avoid exposing raw opaque ids in UI. */
   const getDisplayNameForUserId = (userId: string | number | undefined | null, nameFromApi?: string | null): string => {
     if (userId != null && userId !== '') {
-      const idStr = String(userId);
+      const idStr = String(userId).trim();
+      if (!idStr || isNoneLike(idStr)) return 'Unknown user';
       if (auth?.user && String(auth.user.id) === idStr) {
         const fromAuth =
           auth.userProfile?.fullname?.trim() ||
@@ -195,9 +272,18 @@ export default function DamageReportsPage() {
       }
       const fromMap = userDisplayNames[idStr]?.trim();
       if (fromMap) return fromMap;
-      return `User ID: ${idStr}`;
+
+      const normalizedApiName = normalizeReporterName(nameFromApi);
+      if (normalizedApiName) return normalizedApiName;
+
+      if (!looksLikeOpaqueUserId(idStr) && !/^user\s*id\s*:/i.test(idStr)) return idStr;
+      return 'Unknown user';
     }
-    return (nameFromApi?.trim()) || '—';
+
+    const normalizedApiName = normalizeReporterName(nameFromApi);
+    if (normalizedApiName) return normalizedApiName;
+
+    return 'Unknown user';
   };
 
   const filteredRows = useMemo(() => {
@@ -564,7 +650,7 @@ export default function DamageReportsPage() {
                   </div>
                   <div>
                     <div className="text-[12.5px] font-medium text-gray-900">
-                      {getDisplayNameForUserId(row.reportedByUserId, row.incident.reportedByName)}
+                      {getDisplayNameForUserId(row.reportedByUserId, row.reportedByName)}
                     </div>
                     <div className="text-[11px] text-gray-500">{formatDateShort(row.reportedAt)}</div>
                   </div>
@@ -640,7 +726,7 @@ parseInventoryActionFromDescription(row.incident.description) === 'record_only'
                     <div className="col-span-2 bg-[#e8f4f4] rounded-lg p-2">
                       <div className="text-[9.5px] font-bold tracking-wider text-gray-500 uppercase mb-1">Reported by</div>
                       <div className="text-[12px] font-semibold text-gray-900">
-                        {getDisplayNameForUserId(row.reportedByUserId, row.incident.reportedByName)}
+                        {getDisplayNameForUserId(row.reportedByUserId, row.reportedByName)}
                       </div>
                       <div className="text-[11px] text-gray-500 mt-0.5">{formatDateShort(row.reportedAt)}</div>
                     </div>
@@ -698,7 +784,10 @@ parseInventoryActionFromDescription(row.incident.description) === 'record_only'
               ? inventoryUnits.find((u) => u.id === viewModalIncident.unitId)?.name ?? viewModalIncident.unitId
               : undefined
           }
-          reportedByDisplayName={getDisplayNameForUserId(viewModalIncident.reportedByUserId, viewModalIncident.reportedByName)}
+          reportedByDisplayName={getDisplayNameForUserId(
+            viewModalIncident.reportedByUserId,
+            viewModalIncident.reportedByName ?? viewModalIncident.reportedBy
+          )}
           resolvedByDisplayName={getDisplayNameForUserId(
             viewModalIncident.resolvedByUserId ?? null,
             (viewModalIncident as { resolvedByName?: string }).resolvedByName

@@ -5,8 +5,8 @@ const API_URL = process.env.API_URL;
 const BASE_URL = API_URL || MARKET_API_URL;
 
 export async function GET(request: NextRequest) {
-  if (!BASE_URL) {
-    return NextResponse.json({ error: 'MARKET_API_URL or API_URL not configured' }, { status: 503 });
+  if (!BOOKING_API_URL) {
+    return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
   const token = request.cookies.get('accessToken')?.value;
@@ -25,12 +25,18 @@ export async function GET(request: NextRequest) {
   if (incomingRole) headers['x-user-role'] = incomingRole;
   if (incomingRoles) headers['x-user-roles'] = incomingRoles;
 
-  if (!headers['x-user-role'] && !headers['x-user-email']) {
+  if (!headers['x-user-role'] && !headers['x-user-email'] && !headers['x-user-roles']) {
     const userCookie = request.cookies.get('user')?.value;
     if (userCookie) {
       try {
         const user = JSON.parse(userCookie) as { id?: string; email?: string; roles?: string[] };
-        if (user.roles?.[0]) headers['x-user-role'] = user.roles[0];
+        const roles = Array.isArray(user.roles)
+          ? user.roles.filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+          : [];
+        if (roles.length > 0) {
+          headers['x-user-role'] = pickPrimaryRole(roles) ?? roles[0];
+          headers['x-user-roles'] = roles.join(',');
+        }
         if (user.email) headers['x-user-email'] = user.email;
         if (user.id) headers['x-user-id'] = user.id;
       } catch {
@@ -43,8 +49,15 @@ export async function GET(request: NextRequest) {
   const res = await fetch(`${BASE_URL.replace(/\/+$/, '')}/api/bookings/my${search ? `?${search}` : ''}`, {
     method: 'GET',
     headers,
+    cache: 'no-store',
   });
 
   const data = await res.json().catch(() => ({}));
-  return NextResponse.json(data, { status: res.status });
+  return NextResponse.json(data, {
+    status: res.status,
+    headers: {
+      'Cache-Control': 'no-store',
+      'x-bookings-upstream': BOOKING_API_URL,
+    },
+  });
 }

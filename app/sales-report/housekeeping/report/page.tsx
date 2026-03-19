@@ -86,7 +86,7 @@ export default function HousekeepingReportPage() {
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [unitsError, setUnitsError] = useState<string | null>(null);
   const [bookings, setBookings] = useState<BookingOption[]>([]);
-  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -113,69 +113,6 @@ export default function HousekeepingReportPage() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchRecentBookings() {
-      setBookingsLoading(true);
-      setBookingsError(null);
-      try {
-        const data = await apiClient.get<
-          Array<{
-            id: string;
-            check_in_date: string;
-            check_out_date: string;
-            client?: { first_name?: string; last_name?: string };
-          }> | { message?: string }
-        >('/api/market/bookings/my');
-
-        if (!Array.isArray(data)) {
-          if (!cancelled) {
-            setBookings([]);
-          }
-          return;
-        }
-
-        const today = new Date(todayStr + 'T00:00:00');
-        const cutoff = new Date(today);
-        cutoff.setDate(cutoff.getDate() - 11); // ~ a week and a half ago
-
-        const recent = data
-          .map<BookingOption | null>((b) => {
-            const guest =
-              [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ').trim() ||
-              'Guest';
-            const ci = new Date(b.check_in_date + 'T00:00:00');
-            if (Number.isNaN(ci.getTime())) return null;
-            if (ci < cutoff || ci > today) return null;
-            return {
-              id: b.id,
-              guest,
-              checkIn: b.check_in_date,
-              checkOut: b.check_out_date,
-            };
-          })
-          .filter((b): b is BookingOption => b != null);
-
-        if (!cancelled) {
-          setBookings(recent);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setBookingsError(err instanceof Error ? err.message : 'Failed to load bookings');
-          setBookings([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setBookingsLoading(false);
-        }
-      }
-    }
-    void fetchRecentBookings();
-    return () => {
-      cancelled = true;
-    };
-  }, [todayStr]);
-
   const [selectedUnitId, setSelectedUnitId] = useState<string>('');
   const [description, setDescription] = useState('');
   const [notes, setNotes] = useState('');
@@ -189,6 +126,86 @@ export default function HousekeepingReportPage() {
   const reportDateInputRef = useRef<HTMLInputElement>(null);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId);
+
+  useEffect(() => {
+    if (!selectedUnitId) {
+      setBookings([]);
+      setBookingsError(null);
+      setBookingsLoading(false);
+      setSelectedBookingId('');
+      return;
+    }
+
+    let cancelled = false;
+    async function fetchBookingsForUnit() {
+      setBookingsLoading(true);
+      setBookingsError(null);
+      try {
+        const data = await apiClient.get<unknown>(`/api/bookings?listingId=${encodeURIComponent(selectedUnitId)}`);
+        const rows = Array.isArray(data)
+          ? data
+          : (data && typeof data === 'object' && Array.isArray((data as { data?: unknown[] }).data)
+              ? (data as { data: unknown[] }).data
+              : []);
+
+        const mapped = rows
+          .map<BookingOption | null>((row) => {
+            if (!row || typeof row !== 'object') return null;
+            const b = row as {
+              id?: string;
+              reference_code?: string;
+              booking_code?: string;
+              bookingCode?: string;
+              check_in_date?: string;
+              check_out_date?: string;
+              checkIn?: string;
+              checkOut?: string;
+              client?: { first_name?: string; last_name?: string };
+              guest_name?: string;
+              guestName?: string;
+            };
+            const id = b.id ? String(b.id) : '';
+            if (!id) return null;
+
+            const guest =
+              [b.client?.first_name, b.client?.last_name].filter(Boolean).join(' ').trim() ||
+              (typeof b.guest_name === 'string' ? b.guest_name : '') ||
+              (typeof b.guestName === 'string' ? b.guestName : '') ||
+              'Guest';
+            const checkIn = b.check_in_date || b.checkIn || '';
+            const checkOut = b.check_out_date || b.checkOut || '';
+
+            return {
+              id,
+              guest,
+              checkIn,
+              checkOut,
+            };
+          })
+          .filter((b): b is BookingOption => b != null);
+
+        if (!cancelled) {
+          setBookings(mapped);
+          setSelectedBookingId((prev) => (mapped.some((b) => b.id === prev) ? prev : ''));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setBookingsError(err instanceof Error ? err.message : 'Failed to load bookings');
+          setBookings([]);
+          setSelectedBookingId('');
+        }
+      } finally {
+        if (!cancelled) {
+          setBookingsLoading(false);
+        }
+      }
+    }
+
+    void fetchBookingsForUnit();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUnitId]);
 
   const unitOptions = [
     { value: '', label: unitsLoading ? 'Loading units…' : 'Select a unit' },
@@ -254,6 +271,8 @@ export default function HousekeepingReportPage() {
       chargedToGuest: 0,
       absorbedAmount: 0,
       status: 'open',
+      ...(reportedByName ? { reportedByName } : {}),
+      ...(user?.email ? { reportedByEmail: user.email } : {}),
     };
 
     try {
@@ -332,11 +351,46 @@ export default function HousekeepingReportPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
           <form id="housekeeping-report-form" onSubmit={handleSubmit} className="space-y-5">
-            {/* Booking – full width, optional */}
+            {/* Unit – full width */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Unit <span className="text-red-500">*</span>
+              </label>
+              <InventoryDropdown
+                value={selectedUnitId}
+                onChange={setSelectedUnitId}
+                options={unitOptions}
+                placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
+                placeholderWhen=""
+                hideIcon
+                fullWidth
+                minWidthClass="min-w-0"
+                align="left"
+                disabled={unitsLoading}
+              />
+              {unitsError && (
+                <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
+              )}
+              {units.length === 0 && !unitsLoading && !unitsError && (
+                <p className="mt-2 text-sm text-gray-500">No units available.</p>
+              )}
+              {selectedUnit && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {(selectedUnit.location ?? selectedUnit.city) && (
+                    <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
+                  )}
+                  {selectedUnit.property_type && (
+                    <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
+                  )}
+                </p>
+              )}
+            </div>
+
+            {/* Booking – full width, optional (for selected unit) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 Booking
-                <span className="ml-1.5 font-normal text-gray-500">Optional – link to guest stay</span>
+                <span className="ml-1.5 font-normal text-gray-500">Optional – link to selected unit stay</span>
               </label>
               <InventoryDropdown
                 value={selectedBookingId}
@@ -344,24 +398,36 @@ export default function HousekeepingReportPage() {
                 options={[
                   {
                     value: '',
-                    label: bookingsLoading ? 'Loading bookings…' : 'No booking linked',
+                    label: !selectedUnitId
+                      ? 'Select unit first'
+                      : bookingsLoading
+                        ? 'Loading bookings…'
+                        : bookings.length === 0
+                          ? 'No booking linked'
+                          : 'Select booking…',
                   },
                   ...bookingDropdownOptions,
                 ]}
-                placeholder={bookingsLoading ? 'Loading bookings…' : 'Select booking…'}
+                placeholder={
+                  !selectedUnitId
+                    ? 'Select unit first'
+                    : bookingsLoading
+                      ? 'Loading bookings…'
+                      : 'Select booking…'
+                }
                 placeholderWhen=""
                 hideIcon
                 fullWidth
                 minWidthClass="min-w-0"
                 align="left"
-                disabled={bookingsLoading || bookings.length === 0}
+                disabled={!selectedUnitId || bookingsLoading || bookings.length === 0}
               />
               {bookingsError && (
                 <p className="mt-1.5 text-sm text-amber-600">{bookingsError}</p>
               )}
-              {bookings.length === 0 && !bookingsLoading && !bookingsError && (
+              {selectedUnitId && bookings.length === 0 && !bookingsLoading && !bookingsError && (
                 <p className="mt-1.5 text-xs text-gray-500">
-                  No recent bookings found within the last week and a half.
+                  No bookings found for this unit.
                 </p>
               )}
             </div>
@@ -424,41 +490,6 @@ export default function HousekeepingReportPage() {
                   aria-hidden
                 />
               </div>
-            </div>
-
-            {/* Unit – full width */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Unit <span className="text-red-500">*</span>
-              </label>
-              <InventoryDropdown
-                value={selectedUnitId}
-                onChange={setSelectedUnitId}
-                options={unitOptions}
-                placeholder={unitsLoading ? 'Loading units…' : 'Select a unit'}
-                placeholderWhen=""
-                hideIcon
-                fullWidth
-                minWidthClass="min-w-0"
-                align="left"
-                disabled={unitsLoading}
-              />
-              {unitsError && (
-                <p className="mt-2 text-sm text-amber-600">{unitsError}</p>
-              )}
-              {units.length === 0 && !unitsLoading && !unitsError && (
-                <p className="mt-2 text-sm text-gray-500">No units available.</p>
-              )}
-              {selectedUnit && (
-                <p className="mt-2 text-xs text-gray-500">
-                  {(selectedUnit.location ?? selectedUnit.city) && (
-                    <span>{(selectedUnit.location ?? selectedUnit.city)}</span>
-                  )}
-                  {selectedUnit.property_type && (
-                    <span>{selectedUnit.location || selectedUnit.city ? ' · ' : ''}{selectedUnit.property_type}</span>
-                  )}
-                </p>
-              )}
             </div>
 
             <div className="mb-1.5">

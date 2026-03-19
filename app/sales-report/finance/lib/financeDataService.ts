@@ -260,7 +260,8 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
   ).trim();
   const unitType = rawPropertyType ? toCanonicalUnitType(rawPropertyType) : undefined;
   const totalFromBackend = Number(b.total_amount) || 0;
-  const unitCharge = b.unit_charge != null ? Number(b.unit_charge) : undefined;
+  const unitCharge =
+    b.unit_charge != null && Number.isFinite(Number(b.unit_charge)) ? Number(b.unit_charge) : undefined;
   const excessPaxCharge = b.excess_pax_charge != null ? Number(b.excess_pax_charge) : undefined;
   const rawCheckIn = b.check_in_date ?? b.checkin_date ?? '';
   const rawCheckOut = b.check_out_date ?? b.checkout_date ?? '';
@@ -292,7 +293,8 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
 
   const extraHeads = excessPaxCharge != null ? excessPaxCharge : extraHeadsFromAddons;
 
-  if (unitCharge != null) {
+  // Treat `unit_charge = 0` as "unknown" so we don't show empty base pricing when backend didn't populate nightlyRate.
+  if (unitCharge != null && unitCharge > 0) {
     const ratePerNight = unitCharge;
     const basePrice = ratePerNight * Math.max(1, nights);
     return {

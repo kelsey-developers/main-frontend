@@ -105,20 +105,6 @@ const roleColors: Record<string, { bg: string; text: string; label: string; chip
   Housekeeping: { bg: '#059669', text: '#fff',     label: 'Housekeeping', chipStyle: { backgroundColor: '#059669', color: '#fff',     boxShadow: chipShadow(5, 150, 105, 0.35) } },
 };
 
-/** Convert a Prisma/market-backend role string to the display name used in ROLES. */
-function toDisplayRole(role: string): RoleType {
-  const map: Record<string, RoleType> = {
-    finance:      'Finance',
-    inventory:    'Inventory',
-    operations:   'Housekeeping',
-    frontdesk:    'Agent',
-    admin:        'Admin',
-    agent:        'Agent',
-    employee:     'Employee',
-  };
-  return map[role.toLowerCase()] ?? 'Guest';
-}
-
 function getRoleDisplay(roles: string[]) {
   for (const r of ['Admin', 'Agent', 'Finance', 'Inventory', 'Housekeeping', 'Employee', 'Operations', 'Guest']) {
     if (roles.map((x) => x.toLowerCase()).includes(r.toLowerCase())) {
@@ -182,9 +168,6 @@ export default function ManageUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Internal roles stored in market-backend, keyed by email
-  const [internalRoles, setInternalRoles] = useState<Record<string, string>>({});
-
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -223,14 +206,6 @@ export default function ManageUsers() {
     }
   }, [search, roleFilter]);
 
-  // Fetch internal role mappings from market-backend on mount
-  useEffect(() => {
-    fetch('/market-api/user-roles')
-      .then((r) => r.ok ? r.json() as Promise<Record<string, string>> : Promise.resolve({}))
-      .then((data) => setInternalRoles(data))
-      .catch(() => {/* non-fatal */});
-  }, []);
-
   useEffect(() => {
     fetchUsers(1);
   }, []);
@@ -249,11 +224,7 @@ export default function ManageUsers() {
   };
 
   const openEdit = (user: User) => {
-    // Prefer internal role (from market-backend) if one exists for this email
-    const internalRole = internalRoles[user.email];
-    const displayRole = internalRole
-      ? toDisplayRole(internalRole)
-      : (getRoleDisplay(user.roles) as RoleType) ?? 'Guest';
+    const displayRole = (getRoleDisplay(user.roles) as RoleType) ?? 'Guest';
     setEditForm({ firstName: user.firstName, lastName: user.lastName, email: user.email, role: displayRole });
     setEditError(null);
     setEditingUser(user);
@@ -283,12 +254,6 @@ export default function ManageUsers() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Update failed');
-
-      // Refresh internal roles so the table badge updates immediately
-      const updatedInternal = await fetch('/market-api/user-roles')
-        .then((r) => r.ok ? r.json() as Promise<Record<string, string>> : Promise.resolve(internalRoles))
-        .catch(() => internalRoles);
-      setInternalRoles(updatedInternal);
 
       setUsers((prev) =>
         prev.map((u) =>
@@ -402,8 +367,7 @@ export default function ManageUsers() {
                     </tr>
                   ) : (
                     users.map((user) => {
-                      const internalRole = internalRoles[user.email];
-                      const role = internalRole ? toDisplayRole(internalRole) : getRoleDisplay(user.roles);
+                      const role = getRoleDisplay(user.roles);
                       return (
                         <tr key={user.id} className="hover:bg-gray-50/80 transition-colors">
                           <td className="px-5 py-4">
