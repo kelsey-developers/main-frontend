@@ -191,6 +191,7 @@ export default function SalesReportPage() {
                   }
                 }}
               />
+              <FinanceDashboardLinks />
             </div>
           </aside>
 
@@ -210,6 +211,10 @@ export default function SalesReportPage() {
               byType={revenueByType}
             />
 
+            {/* Mobile: show feature links below main content */}
+            <div className="lg:hidden">
+              <FinanceDashboardLinks />
+            </div>
 
           </div>
         </div>

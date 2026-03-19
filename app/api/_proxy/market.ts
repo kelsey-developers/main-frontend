@@ -450,7 +450,7 @@ export async function proxyMarketApiBinary(
 
   const bases = [primaryBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
   let lastUpstreamStatus: number | undefined;
-  for (const base of baseCandidates) {
+  for (const base of bases) {
     const result = await fetchBinary(base);
     if (result.ok) {
       return new NextResponse(result.buffer, {
@@ -502,21 +502,24 @@ export async function proxyMarketApi(
   };
 
   try {
+    // If we have a primary base URL, try it first
     if (primaryBaseUrl) {
       try {
         const primary = await tryForward(primaryBaseUrl);
-
-  for (const base of baseCandidates) {
-    try {
-      const result = await tryForward(base);
-
+        if (!primary.isHtml) {
+          return NextResponse.json(primary.data, { status: primary.status });
+        }
+        // Primary returned HTML error page; try fallback if available
         if (fallbackBaseUrl) {
-          const fallback = await tryForward(fallbackBaseUrl);
-          if (!fallback.isHtml) {
-            return NextResponse.json(fallback.data, { status: fallback.status });
+          try {
+            const fallback = await tryForward(fallbackBaseUrl);
+            if (!fallback.isHtml) {
+              return NextResponse.json(fallback.data, { status: fallback.status });
+            }
+          } catch {
+            // Fall through to error response below
           }
         }
-
         return NextResponse.json(
           {
             error: 'Primary upstream is unreachable or returned HTML.',
@@ -532,21 +535,31 @@ export async function proxyMarketApi(
               return NextResponse.json(fallback.data, { status: fallback.status });
             }
           } catch {
-            // fall through to 503
+            // Fall through to error response below
           }
         }
         throw err;
       }
-
-    // No API_URL configured; use MARKET_API_URL as a best-effort fallback.
-    const result = await tryForward(fallbackBaseUrl!);
-    if (result.isHtml) {
-      return NextResponse.json(
-        { error: 'Upstream returned HTML (unexpected).', upstream: fallbackBaseUrl },
-        { status: 502 }
-      );
     }
-    return NextResponse.json(result.data, { status: result.status });
+
+    // No API_URL configured; use MARKET_API_URL as a best-effort fallback
+    if (fallbackBaseUrl) {
+      const result = await tryForward(fallbackBaseUrl);
+      if (result.isHtml) {
+        return NextResponse.json(
+          { error: 'Upstream returned HTML (unexpected).', upstream: fallbackBaseUrl },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json(result.data, { status: result.status });
+    }
+
+    return NextResponse.json(
+      {
+        error: 'No API_URL or MARKET_API_URL configured.',
+      },
+      { status: 503 }
+    );
   } catch (err) {
     if (isNetworkError(err)) {
       return NextResponse.json(
@@ -559,27 +572,5 @@ export async function proxyMarketApi(
     }
     throw err;
   }
-
-  if (lastStatusResult) {
-    return NextResponse.json(lastStatusResult.data, { status: lastStatusResult.status });
-  }
-
-  if (sawHtml) {
-    return NextResponse.json(
-      {
-        error: 'Market upstream is unreachable or returned HTML (ngrok/error page).',
-        upstreams: baseCandidates,
-      },
-      { status: 502 }
-    );
-  }
-
-  return NextResponse.json(
-    {
-      error: 'Market backend is unreachable. Ensure it is running and MARKET_API_URL is correct.',
-      upstreams: baseCandidates,
-    },
-    { status: 503 }
-  );
 }
 

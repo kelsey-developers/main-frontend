@@ -4,8 +4,34 @@ const MARKET_API_URL = process.env.MARKET_API_URL;
 const API_URL = process.env.API_URL;
 const BASE_URL = API_URL || MARKET_API_URL;
 
+function pickPrimaryRole(roles: string[]): string | null {
+  if (!roles || roles.length === 0) return null;
+  const normalized = roles.map((r) => r.trim()).filter(Boolean);
+  if (normalized.length === 0) return null;
+
+  const priority = [
+    'admin',
+    'finance',
+    'inventory',
+    'operations',
+    'housekeeping',
+    'frontdesk',
+    'agent',
+    'cleaner',
+    'employee',
+    'user',
+    'guest',
+  ];
+  const byLower = new Map(normalized.map((r) => [r.toLowerCase(), r]));
+  for (const p of priority) {
+    const found = byLower.get(p);
+    if (found) return found;
+  }
+  return normalized[0] ?? null;
+}
+
 export async function GET(request: NextRequest) {
-  if (!BOOKING_API_URL) {
+  if (!BASE_URL) {
     return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
@@ -57,7 +83,7 @@ export async function GET(request: NextRequest) {
     status: res.status,
     headers: {
       'Cache-Control': 'no-store',
-      'x-bookings-upstream': BOOKING_API_URL,
+      'x-bookings-upstream': BASE_URL || '',
     },
   });
 }
