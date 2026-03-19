@@ -6,6 +6,7 @@ import type { InventoryFeatureLink } from '../types';
 
 const FEATURE_LINKS: InventoryFeatureLink[] = [
     { href: '/sales-report/inventory/purchase-orders', title: 'Purchase Orders', icon: 'purchaseOrders' },
+    { href: '/sales-report/inventory/booking-item-requests', title: 'Booking Item Requests', icon: 'bookingItemRequests' },
     { href: '/sales-report/inventory/items', title: 'Inventory items', icon: 'items' },
     { href: '/sales-report/inventory/booking-requests', title: 'Booking Requests', icon: 'bookingRequests' },
     { href: '/sales-report/inventory/damage-reports', title: 'Damage Reports', icon: 'damageReports' },
@@ -53,10 +54,16 @@ const IconSvg: React.FC<{ icon: InventoryFeatureLink['icon'] }> = ({ icon }) => 
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
                 </svg>
             );
+        case 'bookingItemRequests':
+            return (
+                <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+            );
         case 'bookingRequests':
             return (
                 <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5h6M9 9h6M9 13h4M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2h-1l-1-2H9L8 5H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
             );
     }

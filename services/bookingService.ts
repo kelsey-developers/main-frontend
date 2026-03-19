@@ -6,7 +6,12 @@ import type {
   AdditionalService,
   PaymentMethod,
 } from '@/types/booking';
-import { getBookings, createBooking as createBookingApi } from '@/lib/api/bookings';
+import {
+  appendCatalogItemsToBookingCharges,
+  createBookingItemRequestFromCatalog,
+  createBooking as createBookingApi,
+  getBookings,
+} from '@/lib/api/bookings';
 
 const LOCAL_BOOKINGS_KEY = 'booking_temporary_records_v1';
 
@@ -163,7 +168,35 @@ export const BookingService = {
   async createBooking(input: CreateBookingInput): Promise<BookingRecord> {
     try {
       const payload = await createBookingApi(input);
-      return normalizeRecord(payload);
+      const createdBooking = normalizeRecord(payload);
+
+      const bookingKey = String(
+        (payload as { reference_code?: unknown }).reference_code ??
+        (payload as { id?: unknown }).id ??
+        createdBooking.id
+      ).trim();
+
+      if (bookingKey && Array.isArray(input.add_ons) && input.add_ons.length > 0) {
+        try {
+          await appendCatalogItemsToBookingCharges(bookingKey, input.add_ons);
+        } catch (addonErr) {
+          // Do not fail booking creation if add-on charge posting fails.
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('[bookingService] Failed to append catalog add-ons to booking:', addonErr);
+          }
+        }
+
+        try {
+          await createBookingItemRequestFromCatalog(bookingKey, input.add_ons);
+        } catch (requestErr) {
+          // Do not fail booking creation if inventory request creation fails.
+          if (process.env.NODE_ENV !== 'production') {
+            console.warn('[bookingService] Failed to create booking item request:', requestErr);
+          }
+        }
+      }
+
+      return createdBooking;
     } catch (err) {
       // Re-throw API errors (409 overlap, 401, etc.) so the UI can show them
       if (err instanceof Error && (err as Error & { status?: number }).status != null) {

@@ -126,8 +126,8 @@ const StayDetailsStep: React.FC<StayDetailsStepProps> = ({ formData, listingId, 
     // initial fetch — signals the parent when done
     fetchBookings(true);
 
-    // poll every 15 seconds to stay in sync with other bookings
-    timer = setInterval(() => fetchBookings(false), 15000);
+    // poll every 5 seconds to stay in sync with other bookings
+    timer = setInterval(() => fetchBookings(false), 5000);
 
     return () => {
       mounted = false;

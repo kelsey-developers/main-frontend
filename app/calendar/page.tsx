@@ -511,6 +511,8 @@ export function CalendarView({ embedded }: CalendarViewProps) {
 
   useEffect(() => {
     fetchBookings();
+    const intervalId = window.setInterval(fetchBookings, 5000);
+    return () => window.clearInterval(intervalId);
   }, [fetchBookings]);
 
   useEffect(() => {
