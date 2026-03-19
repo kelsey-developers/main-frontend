@@ -78,6 +78,8 @@ export function AuthProvider({
   initialUser: UserInfo | null;
 }) {
   const [user, setUser] = useState<UserInfo | null>(initialUser);
+  const [hasEmployeeRecord, setHasEmployeeRecord] = useState(false);
+  const [employeeCheckDone, setEmployeeCheckDone] = useState(false);
   const router = useRouter();
 
   // Re-sync whenever the server re-renders the layout with a new cookie value
@@ -86,6 +88,21 @@ export function AuthProvider({
     setUser(initialUser);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUser?.id ?? null]);
+
+  // Check if the logged-in user has an employee record in the payroll backend.
+  // This covers approved registrations where the auth service role hasn't been updated.
+  useEffect(() => {
+    if (!user) {
+      setHasEmployeeRecord(false);
+      setEmployeeCheckDone(true);
+      return;
+    }
+    setEmployeeCheckDone(false);
+    fetch('/api/payroll-proxy/api/dtr/my-profile')
+      .then(r => { if (r.ok) setHasEmployeeRecord(true); })
+      .catch(() => {})
+      .finally(() => setEmployeeCheckDone(true));
+  }, [user?.id ?? null]);
 
   const signOut = useCallback(async () => {
     setUser(null); // instant UI update
@@ -106,8 +123,11 @@ export function AuthProvider({
     ? [user.firstName, user.middleName, user.lastName].filter(Boolean).join(' ')
     : '';
 
+  const isEmployee = primaryRole === 'employee' || hasEmployeeRecord;
+
   const hasAnyRole = (...roles: NormalizedRole[]) => {
     if (primaryRole === 'admin') return true;
+    if (isEmployee && roles.includes('employee')) return true;
     return primaryRole !== null && roles.includes(primaryRole);
   };
 
@@ -115,7 +135,7 @@ export function AuthProvider({
     user,
     userRole: primaryRole ? { role: primaryRole, fullname } : null,
     userProfile: user ? { fullname, profile_photo: null } : null,
-    roleLoading: false,
+    roleLoading: !employeeCheckDone,
     isAdmin: primaryRole === 'admin',
     isAgent: primaryRole === 'agent',
     isGuest: primaryRole === 'guest',
@@ -124,7 +144,7 @@ export function AuthProvider({
     isHousekeeping: primaryRole === 'housekeeping',
     isOperations: primaryRole === 'operations',
     isFrontdesk: primaryRole === 'frontdesk',
-    isEmployee: primaryRole === 'employee',
+    isEmployee,
     hasAnyRole,
     signOut,
   };
