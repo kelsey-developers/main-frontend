@@ -40,7 +40,7 @@ function getDefaultViewFilters(): SalesReportFilters {
   return {
     ...defaultSalesReportFilters,
     filterMethod: 'quick',
-    timePeriod: 'month',
+    timePeriod: 'all',
     timePeriodScope: 'this',
     searchName: '',
     propertyType: 'All',

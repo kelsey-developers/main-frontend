@@ -27,16 +27,41 @@ interface MarketBookingCharge {
 
 interface MarketBookingItem {
   id: string;
-  reference_code: string;
+  reference_code?: string;
   check_in_date: string;
   check_out_date: string;
+  checkin_date?: string;
+  checkout_date?: string;
+  check_in_time?: string;
+  check_out_time?: string;
   status: string;
   total_amount: number;
   transaction_number?: string;
   charges?: MarketBookingCharge[];
-  listing?: { title: string; location?: string; main_image_url?: string; property_type?: string };
+  listing?: {
+    id?: string;
+    title?: string;
+    unit_name?: string;
+    location?: string;
+    main_image_url?: string;
+    property_type?: string;
+    unit_type?: string;
+    check_in_time?: string;
+    check_out_time?: string;
+  };
+  unit?: {
+    id?: string;
+    name?: string;
+    title?: string;
+    location?: string;
+    property_type?: string;
+    unit_type?: string;
+    check_in_time?: string;
+    check_out_time?: string;
+  };
   /** Unit property type (e.g. condo, apartment). From listing.property_type or top-level. */
   property_type?: string;
+  unit_type?: string;
   client?: { first_name?: string; last_name?: string };
   assigned_agent_name?: string;
   agent?: { first_name?: string; last_name?: string; name?: string; fullname?: string };
@@ -44,6 +69,64 @@ interface MarketBookingItem {
   unit_charge?: number;
   /** Extra charge from excess guests (auth: excess_pax_charge). */
   excess_pax_charge?: number;
+}
+
+interface FinanceRequestOptions {
+  headers?: Record<string, string>;
+  credentials?: RequestCredentials;
+}
+
+function toCanonicalUnitType(value: string): string {
+  const cleaned = value.trim().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ');
+  if (!cleaned) return '';
+  const normalized = cleaned.toLowerCase();
+
+  if (normalized.includes('condo')) return 'Condo';
+  if (normalized.includes('apartment')) return 'Apartment';
+  if (normalized.includes('penthouse')) return 'Penthouse';
+  if (normalized.includes('house')) return 'House';
+
+  return cleaned
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function mergeBookingItems(base: MarketBookingItem, detail: MarketBookingItem): MarketBookingItem {
+  return {
+    ...base,
+    ...detail,
+    listing: {
+      ...(base.listing ?? {}),
+      ...(detail.listing ?? {}),
+    },
+    unit: {
+      ...(base.unit ?? {}),
+      ...(detail.unit ?? {}),
+    },
+    client: {
+      ...(base.client ?? {}),
+      ...(detail.client ?? {}),
+    },
+    agent: {
+      ...(base.agent ?? {}),
+      ...(detail.agent ?? {}),
+    },
+    charges:
+      Array.isArray(detail.charges) && detail.charges.length > 0
+        ? detail.charges
+        : base.charges,
+  };
+}
+
+async function fetchMarketBookingByIdRaw(id: string, opts: FinanceRequestOptions): Promise<MarketBookingItem | null> {
+  if (!id) return null;
+  try {
+    const data = await apiClient.get<unknown>(`/api/bookings/${id}`, opts);
+    return extractSingleBooking(data);
+  } catch {
+    return null;
+  }
 }
 
 /** Extract bookings array from backend response (raw array, or { bookings }, or { data }, etc.) */
@@ -64,17 +147,95 @@ interface MarketDamageIncident {
   id: string;
   bookingId: string | null;
   unitId: string;
+  unitAddress?: string;
+  unitType?: string;
+  location?: string;
   reportedAt: string;
+  resolvedAt?: string;
   description: string;
+  reasonOfDamage?: string;
+  cause?: string;
+  resolutionNotes?: string;
+  reportedBy?: string;
+  reportedByName?: string;
   cost: number;
   chargedToGuest: number;
   absorbedAmount: number;
   status: string;
+  proofUrls?: string[];
+  attachmentUrls?: string[];
+  attachments?: Array<{ id: string; url?: string }>;
+  items?: Array<{ item?: string; name?: string; type?: 'loss' | 'broken' | string }>;
   unit?: { name?: string };
 }
 
 interface DamageIncidentsResponse {
   damageIncidents?: MarketDamageIncident[];
+  data?: MarketDamageIncident[];
+  incidents?: MarketDamageIncident[];
+}
+
+function normalizeDamageIncidentStatus(raw: string | undefined): 'open' | 'resolved' {
+  const status = (raw ?? 'open').toLowerCase().replace(/\s+/g, '_');
+  if (status === 'open') return 'open';
+  if (
+    status === 'resolved' ||
+    status === 'charged_to_guest' ||
+    status === 'absorbed' ||
+    status === 'settled' ||
+    status === 'in-review' ||
+    status === 'in_review'
+  ) {
+    return 'resolved';
+  }
+  return 'open';
+}
+
+function isResolvedDamageIncident(d: MarketDamageIncident): boolean {
+  return normalizeDamageIncidentStatus(d.status) === 'resolved';
+}
+
+function extractDamageIncidentsList(data: DamageIncidentsResponse | MarketDamageIncident[] | unknown): MarketDamageIncident[] {
+  if (Array.isArray(data)) return data as MarketDamageIncident[];
+  if (!data || typeof data !== 'object') return [];
+  const o = data as Record<string, unknown>;
+  for (const key of ['damageIncidents', 'data', 'incidents', 'items', 'results']) {
+    const v = o[key];
+    if (Array.isArray(v)) return v as MarketDamageIncident[];
+  }
+  return [];
+}
+
+function extractSingleDamageIncident(data: unknown): MarketDamageIncident | null {
+  if (!data || typeof data !== 'object') return null;
+  const o = data as Record<string, unknown>;
+  if (o.id != null && (o.bookingId != null || o.unitId != null || o.description != null)) {
+    return o as unknown as MarketDamageIncident;
+  }
+  for (const key of ['damageIncident', 'incident', 'data', 'item']) {
+    const v = o[key];
+    if (v && typeof v === 'object' && (v as Record<string, unknown>).id != null) {
+      return v as unknown as MarketDamageIncident;
+    }
+  }
+  return null;
+}
+
+function toProofUrls(d: MarketDamageIncident): string[] {
+  const direct = Array.isArray(d.proofUrls) ? d.proofUrls.filter(Boolean) : [];
+  const attachmentUrls = Array.isArray(d.attachmentUrls) ? d.attachmentUrls.filter(Boolean) : [];
+  const attachmentContentUrls = Array.isArray(d.attachments)
+    ? d.attachments
+        .map((a) => {
+          if (a?.url) return a.url;
+          if (a?.id) return `/api/damage-incidents/attachments/${encodeURIComponent(String(a.id))}/content`;
+          return null;
+        })
+        .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    : [];
+
+  const merged = [...direct, ...attachmentUrls, ...attachmentContentUrls];
+  return Array.from(new Set(merged));
 }
 
 
@@ -87,15 +248,25 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
     (agentFromApi && typeof agentFromApi === 'object' && (agentFromApi as { fullname?: string }).fullname?.trim()) ||
     [agentFromApi?.first_name, agentFromApi?.last_name].filter(Boolean).join(' ').trim();
   const agent = agentStr || '—';
-  const unit = b.listing?.title ?? '—';
-  const rawPropertyType = (b.property_type ?? b.listing?.property_type ?? '').trim();
-  const unitType = rawPropertyType ? rawPropertyType.charAt(0).toUpperCase() + rawPropertyType.slice(1).toLowerCase() : undefined;
+  const unit = b.listing?.title ?? b.listing?.unit_name ?? b.unit?.title ?? b.unit?.name ?? '—';
+  const rawPropertyType = (
+    b.property_type ??
+    b.unit_type ??
+    b.listing?.property_type ??
+    b.listing?.unit_type ??
+    b.unit?.property_type ??
+    b.unit?.unit_type ??
+    ''
+  ).trim();
+  const unitType = rawPropertyType ? toCanonicalUnitType(rawPropertyType) : undefined;
   const totalFromBackend = Number(b.total_amount) || 0;
   const unitCharge =
     b.unit_charge != null && Number.isFinite(Number(b.unit_charge)) ? Number(b.unit_charge) : undefined;
   const excessPaxCharge = b.excess_pax_charge != null ? Number(b.excess_pax_charge) : undefined;
-  const checkIn = typeof b.check_in_date === 'string' ? b.check_in_date.split('T')[0] : '';
-  const checkOut = typeof b.check_out_date === 'string' ? b.check_out_date.split('T')[0] : '';
+  const rawCheckIn = b.check_in_date ?? b.checkin_date ?? '';
+  const rawCheckOut = b.check_out_date ?? b.checkout_date ?? '';
+  const checkIn = typeof rawCheckIn === 'string' ? rawCheckIn.split('T')[0] : '';
+  const checkOut = typeof rawCheckOut === 'string' ? rawCheckOut.split('T')[0] : '';
   const nights = getNights(checkIn, checkOut) || 1;
 
   const chargeLines = Array.isArray(b.charges) ? b.charges : [];
@@ -128,16 +299,18 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
     const basePrice = ratePerNight * Math.max(1, nights);
     return {
       id: b.id,
-      bookingId: b.id,
+      bookingId: b.reference_code || b.id,
       unit,
       imageUrl: b.listing?.main_image_url,
-      location: b.listing?.location,
+      location: b.listing?.location ?? b.unit?.location,
       unitType,
       rate: ratePerNight,
       agent,
       guest,
-      checkIn: b.check_in_date,
-      checkOut: b.check_out_date,
+      checkIn: checkIn,
+      checkOut: checkOut,
+      checkInTime: b.check_in_time ?? b.listing?.check_in_time ?? b.unit?.check_in_time,
+      checkOutTime: b.check_out_time ?? b.listing?.check_out_time ?? b.unit?.check_out_time,
       guestType: 'direct',
       basePrice,
       discounts: 0,
@@ -156,16 +329,18 @@ function toBookingLinkedRow(b: MarketBookingItem): BookingLinkedRow {
   const basePrice = baseTotal;
   return {
     id: b.id,
-    bookingId: b.id,
+    bookingId: b.reference_code || b.id,
     unit,
     imageUrl: b.listing?.main_image_url,
-    location: b.listing?.location,
+    location: b.listing?.location ?? b.unit?.location,
     unitType,
     rate: ratePerNight,
     agent,
     guest,
-    checkIn: b.check_in_date,
-    checkOut: b.check_out_date,
+    checkIn: checkIn,
+    checkOut: checkOut,
+    checkInTime: b.check_in_time ?? b.listing?.check_in_time ?? b.unit?.check_in_time,
+    checkOutTime: b.check_out_time ?? b.listing?.check_out_time ?? b.unit?.check_out_time,
     guestType: 'direct',
     basePrice,
     discounts: 0,
@@ -182,16 +357,39 @@ function toDamagePenalty(d: MarketDamageIncident): DamagePenalty {
   const charged = Number(d.chargedToGuest) || 0;
   const absorbed = Number(d.absorbedAmount) || 0;
   const cost = Number(d.cost) || 0;
+  const items = Array.isArray(d.items)
+    ? d.items
+        .map((entry) => {
+          const itemName = String(entry.item ?? entry.name ?? '').trim();
+          if (!itemName) return null;
+          const itemType = String(entry.type ?? 'broken').toLowerCase();
+          return {
+            item: itemName,
+            type: itemType === 'loss' ? 'loss' : 'broken',
+          };
+        })
+        .filter((entry): entry is { item: string; type: 'loss' | 'broken' } => entry != null)
+    : undefined;
+
+  const status = normalizeDamageIncidentStatus(d.status);
   return {
+    damageId: String(d.id ?? ''),
     bookingId: d.bookingId ?? '',
     unit: d.unit?.name ?? d.unitId,
+    unitAddress: d.unitAddress,
+    unitType: d.unitType,
+    location: d.location,
     reportedAt: typeof d.reportedAt === 'string' ? d.reportedAt.split('T')[0] : '',
     description: d.description ?? '',
+    reasonOfDamage: d.reasonOfDamage ?? d.cause ?? d.resolutionNotes,
+    reportedBy: d.reportedByName ?? d.reportedBy,
+    proofUrls: toProofUrls(d),
+    items,
     cost,
     chargedToGuest: charged,
     absorbed,
     totalLoss: cost,
-    status: d.status ?? 'open',
+    status,
   };
 }
 
@@ -206,7 +404,7 @@ function authHeaders(currentUser?: FinanceAuth | null): Record<string, string> {
 
 export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Promise<BookingLinkedRow[]> {
   const headers = authHeaders(currentUser);
-  const opts = {
+  const opts: FinanceRequestOptions = {
     ...(Object.keys(headers).length ? { headers } : {}),
     credentials: 'include' as RequestCredentials,
   };
@@ -217,7 +415,16 @@ export async function fetchFinanceBookings(currentUser?: FinanceAuth | null): Pr
       const data = await apiClient.get<unknown>(endpoint, opts);
       const list = extractBookingsList(data);
       const completedOnly = list.filter((b) => String(b.status || '').toLowerCase() === 'booked');
-      return completedOnly.map(toBookingLinkedRow);
+
+      const hydratedRows = await Promise.all(
+        completedOnly.map(async (booking) => {
+          const detailed = await fetchMarketBookingByIdRaw(String(booking.id ?? ''), opts);
+          const source = detailed ? mergeBookingItems(booking, detailed) : booking;
+          return toBookingLinkedRow(source);
+        })
+      );
+
+      return hydratedRows;
     } catch {
       continue;
     }
@@ -246,18 +453,13 @@ export async function fetchFinanceBookingById(
 ): Promise<BookingLinkedRow | null> {
   if (!id) return null;
   const headers = authHeaders(currentUser);
-  const opts = {
+  const opts: FinanceRequestOptions = {
     ...(Object.keys(headers).length ? { headers } : {}),
     credentials: 'include' as RequestCredentials,
   };
   
-  try {
-    const data = await apiClient.get<unknown>(`/api/bookings/${id}`, opts);
-    const b = extractSingleBooking(data);
-    return b ? toBookingLinkedRow(b) : null;
-  } catch {
-    return null;
-  }
+  const b = await fetchMarketBookingByIdRaw(id, opts);
+  return b ? toBookingLinkedRow(b) : null;
 }
 
 export async function fetchFinanceDamageIncidents(currentUser?: FinanceAuth | null): Promise<DamagePenalty[]> {
@@ -265,10 +467,30 @@ export async function fetchFinanceDamageIncidents(currentUser?: FinanceAuth | nu
     const headers = authHeaders(currentUser);
     const data = await apiClient.get<DamageIncidentsResponse>('/api/damage-incidents', {
       ...(Object.keys(headers).length ? { headers } : {}),
+      credentials: 'include' as RequestCredentials,
     });
-    const list = data?.damageIncidents ?? [];
-    return list.map(toDamagePenalty);
+    const list = extractDamageIncidentsList(data);
+    return list.filter(isResolvedDamageIncident).map(toDamagePenalty);
   } catch {
     return [];
+  }
+}
+
+export async function fetchFinanceDamageIncidentById(
+  id: string,
+  currentUser?: FinanceAuth | null
+): Promise<DamagePenalty | null> {
+  if (!id) return null;
+  try {
+    const headers = authHeaders(currentUser);
+    const data = await apiClient.get<unknown>(`/api/damage-incidents/${id}`, {
+      ...(Object.keys(headers).length ? { headers } : {}),
+      credentials: 'include' as RequestCredentials,
+    });
+    const incident = extractSingleDamageIncident(data);
+    if (!incident || !isResolvedDamageIncident(incident)) return null;
+    return toDamagePenalty(incident);
+  } catch {
+    return null;
   }
 }

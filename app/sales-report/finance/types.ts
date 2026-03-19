@@ -163,6 +163,8 @@ export interface DamagePenaltyItem {
 
 /** Damage & penalty incident */
 export interface DamagePenalty {
+  /** Unique damage incident id from backend. */
+  damageId?: string;
   bookingId: string;
   unit: string;
   /** Full unit address (e.g. for display on detail). */

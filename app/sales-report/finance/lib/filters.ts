@@ -108,21 +108,136 @@ function matchesSearch(text: string, query: string): boolean {
   return text.toLowerCase().includes(q);
 }
 
+const SEARCH_GRAM_SIZE = 3;
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hashToken(token: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < token.length; i += 1) {
+    hash ^= token.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function buildSearchKeys(value: string): string[] {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return [];
+
+  const keys = new Set<string>();
+  const terms = normalized.split(' ').filter(Boolean);
+  for (const term of terms) {
+    keys.add(term);
+
+    const maxGram = Math.min(SEARCH_GRAM_SIZE, term.length);
+    for (let gramSize = 1; gramSize <= maxGram; gramSize += 1) {
+      for (let i = 0; i <= term.length - gramSize; i += 1) {
+        keys.add(term.slice(i, i + gramSize));
+      }
+    }
+  }
+  return Array.from(keys);
+}
+
+export interface BookingSearchIndex {
+  tokenBuckets: Map<number, Set<string>>;
+  normalizedTextById: Map<string, string>;
+}
+
+function getBookingSearchSource(row: BookingLinkedRow): string {
+  return `${row.id} ${row.bookingId} ${row.unit} ${row.agent} ${row.guest}`;
+}
+
+export function buildBookingSearchIndex(rows: BookingLinkedRow[]): BookingSearchIndex {
+  const tokenBuckets = new Map<number, Set<string>>();
+  const normalizedTextById = new Map<string, string>();
+
+  for (const row of rows) {
+    const rowId = String(row.id);
+    const normalized = normalizeSearchText(getBookingSearchSource(row));
+    normalizedTextById.set(rowId, normalized);
+
+    const keys = buildSearchKeys(normalized);
+    for (const key of keys) {
+      const hash = hashToken(key);
+      const existing = tokenBuckets.get(hash);
+      if (existing) {
+        existing.add(rowId);
+      } else {
+        tokenBuckets.set(hash, new Set([rowId]));
+      }
+    }
+  }
+
+  return { tokenBuckets, normalizedTextById };
+}
+
+function findMatchingBookingIds(
+  rows: BookingLinkedRow[],
+  query: string,
+  searchIndex?: BookingSearchIndex
+): Set<string> | null {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return null;
+
+  const index = searchIndex ?? buildBookingSearchIndex(rows);
+  const queryKeys = buildSearchKeys(normalizedQuery);
+  if (queryKeys.length === 0) return new Set<string>();
+
+  let candidates: Set<string> | null = null;
+
+  for (const key of queryKeys) {
+    const bucket = index.tokenBuckets.get(hashToken(key));
+    if (!bucket || bucket.size === 0) return new Set<string>();
+
+    if (!candidates) {
+      candidates = new Set(bucket);
+      continue;
+    }
+
+    for (const id of Array.from(candidates)) {
+      if (!bucket.has(id)) candidates.delete(id);
+    }
+
+    if (candidates.size === 0) return candidates;
+  }
+
+  if (!candidates) return new Set<string>();
+
+  const queryTerms = normalizedQuery.split(' ').filter(Boolean);
+  const verified = new Set<string>();
+  for (const rowId of candidates) {
+    const text = index.normalizedTextById.get(rowId);
+    if (!text) continue;
+    if (queryTerms.every((term) => text.includes(term))) {
+      verified.add(rowId);
+    }
+  }
+
+  return verified;
+}
+
 /**
  * Filter booking rows by searchName, propertyType, location, and date range (check-in/check-out overlap).
  */
-export function filterBookingRows(rows: BookingLinkedRow[], filters: SalesReportFilters): BookingLinkedRow[] {
-  const q = filters.searchName.trim().toLowerCase();
+export function filterBookingRows(
+  rows: BookingLinkedRow[],
+  filters: SalesReportFilters,
+  searchIndex?: BookingSearchIndex
+): BookingLinkedRow[] {
+  const matchedIds = findMatchingBookingIds(rows, filters.searchName, searchIndex);
   const dateRange = getDateRangeFromFilters(filters);
 
   return rows.filter((row) => {
-    if (q) {
-      const match =
-        matchesSearch(row.bookingId, filters.searchName) ||
-        matchesSearch(row.unit, filters.searchName) ||
-        matchesSearch(row.agent, filters.searchName) ||
-        matchesSearch(row.guest, filters.searchName);
-      if (!match) return false;
+    if (matchedIds && !matchedIds.has(String(row.id))) {
+      return false;
     }
     if (filters.propertyType && filters.propertyType !== 'All') {
       if (row.unitType != null && row.unitType !== filters.propertyType) return false;
