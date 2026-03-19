@@ -1,12 +1,14 @@
 'use client';
 
 import React from 'react';
+import type { HolidayPricingRule } from '@/types/listing';
 
 export type CalendarUnit = {
   id: string;
   title: string;
   imageUrl?: string;
   basePrice?: number;
+  holidayPricingRules?: HolidayPricingRule[];
   occupancyPct?: number;
   blockedDays?: number;
   hasPricing?: boolean;

@@ -641,8 +641,7 @@ export default function CleanerDTRPage() {
   };
 
   useEffect(() => {
-    if (!PAYROLL_API) { setLoadingEmp(false); return; }
-    fetch(`${PAYROLL_API}/api/dtr/public/employees`)
+    fetch(`/api/payroll-proxy/api/dtr/public/employees`)
       .then(r => r.json())
       .then((data: Cleaner[]) => setEmployees(data))
       .catch(() => {})

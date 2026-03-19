@@ -8,6 +8,7 @@ const FEATURE_LINKS: InventoryFeatureLink[] = [
     { href: '/sales-report/inventory/purchase-orders', title: 'Purchase Orders', icon: 'purchaseOrders' },
     { href: '/sales-report/inventory/booking-item-requests', title: 'Booking Item Requests', icon: 'bookingItemRequests' },
     { href: '/sales-report/inventory/items', title: 'Inventory items', icon: 'items' },
+    { href: '/sales-report/inventory/booking-requests', title: 'Booking Requests', icon: 'bookingRequests' },
     { href: '/sales-report/inventory/damage-reports', title: 'Damage Reports', icon: 'damageReports' },
     { href: '/sales-report/inventory/suppliers', title: 'Supplier Directory', icon: 'suppliers' },
     { href: '/sales-report/inventory/warehouses', title: 'Warehouse Directory', icon: 'warehouses' },

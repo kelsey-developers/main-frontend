@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BookingFormData, GuestEntry } from '@/types/booking';
+import type { Listing } from '@/types/listing';
 import { BookingSummarySidebar } from './BookingSummarySidebar';
 import { NeedHelpCard } from './NeedHelpCard';
 
 interface ClientInfoStepProps {
   formData: BookingFormData;
   listingId?: string;
+  listing?: Listing | null;
   onUpdate: (data: Partial<BookingFormData>) => void;
   onUpdateField?: (key: keyof BookingFormData, value: any) => void;
   onNext: () => void;
@@ -683,7 +685,7 @@ const GuestListSection: React.FC<{
   );
 };
 
-const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, listingId, onUpdate, onUpdateField, onNext, onBack, onCancel }) => {
+const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, listingId, listing, onUpdate, onUpdateField, onNext, onBack, onCancel }) => {
   const updateField = (k: keyof BookingFormData, v: any) => {
     if (typeof onUpdateField === 'function') {
       try {
@@ -907,7 +909,7 @@ const ClientInfoStep: React.FC<ClientInfoStepProps> = ({ formData, listingId, on
 
         <aside className="lg:col-span-1">
           <div className="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4">
-            <BookingSummarySidebar formData={formData} listingId={listingId} />
+            <BookingSummarySidebar formData={formData} listingId={listingId} listing={listing} />
             <NeedHelpCard />
           </div>
         </aside>

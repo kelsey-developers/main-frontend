@@ -14,15 +14,24 @@ interface BookingDetails {
   total_guests: number;
   excess_pax_charge?: number;
   unit_charge: number;
+  /** Accommodation subtotal before stay-length discount (includes holiday pricing) */
+  subtotal_before_discount?: number;
   amenities_charge?: number;
   service_charge?: number;
   discount?: number;
   total_amount: number;
   currency: string;
   status: 'pending' | 'pending-payment' | 'booked' | 'ongoing' | 'completed' | 'declined' | 'cancelled';
-  landmark: string;
-  parking_info: string;
-  notes: string;
+  landmark?: string;
+  parking_info?: string;
+  notes?: string;
+  request_description?: string;
+  add_ons?: Array<{
+    id: string;
+    name: string;
+    quantity: number;
+    charge: number;
+  }>;
   listing: {
     id: string;
     title: string;
@@ -63,7 +72,6 @@ function BookingDetailsContent() {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
-  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!reference) {
@@ -170,12 +178,37 @@ function BookingDetailsContent() {
     return trimmed !== '' && trimmed !== 'null' && trimmed !== 'undefined';
   };
 
-  const handleImageError = (errorKey: string) => {
-    setImageErrors(prev => ({ ...prev, [errorKey]: true }));
-  };
+  const handleImageError = (_errorKey: string) => {};
 
   const formatCurrency = (value: number) =>
     `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const bookingRecord = booking as unknown as Record<string, unknown>;
+  const guestAddOnsRaw =
+    Array.isArray(bookingRecord['add_ons'])
+      ? bookingRecord['add_ons']
+      : Array.isArray(bookingRecord['addOns'])
+        ? bookingRecord['addOns']
+        : [];
+
+  const guestAddOns = (guestAddOnsRaw as unknown[]).map((a) => {
+    const rec = a as Record<string, unknown>;
+    return {
+      id: String(rec['id'] ?? ''),
+      name: String(rec['name'] ?? ''),
+      quantity: Number(rec['quantity'] ?? 0),
+      charge: Number(rec['charge'] ?? 0),
+    };
+  }).filter((a) => Boolean(a.id) && a.quantity > 0);
+
+  const addOnsSubtotal = guestAddOns.reduce((sum, a) => sum + a.quantity * a.charge, 0);
+
+  const requestDescription = String(
+    bookingRecord['request_description'] ??
+      bookingRecord['requestDescription'] ??
+      booking.notes ??
+      ''
+  ).trim();
 
   const formatDate = (dateString: string) => {
     const d = new Date(dateString);
@@ -330,7 +363,7 @@ function BookingDetailsContent() {
                 <div className="text-sm text-gray-700 space-y-3" style={{ fontFamily: 'Poppins' }}>
                   <div className="flex justify-between">
                     <span>Unit Charge ({booking.nights} night{booking.nights !== 1 ? 's' : ''})</span>
-                    <span>{formatCurrency(booking.unit_charge * booking.nights)}</span>
+                    <span>{formatCurrency(booking.subtotal_before_discount ?? booking.unit_charge * booking.nights)}</span>
                   </div>
 
                   {(booking.excess_pax_charge ?? 0) > 0 && (
@@ -357,6 +390,60 @@ function BookingDetailsContent() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Guest Add-ons */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-white">
+                <h4 className="text-base font-semibold text-gray-800 mb-3" style={{ fontFamily: 'Poppins' }}>
+                  Guest Add-ons
+                </h4>
+
+                {guestAddOns.length > 0 ? (
+                  <div className="text-sm text-gray-700 space-y-3" style={{ fontFamily: 'Poppins' }}>
+                    <ul className="space-y-2">
+                      {guestAddOns.map((addon) => (
+                        <li key={addon.id} className="flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-800 break-words" style={{ wordBreak: 'break-word' }}>
+                              {addon.name || 'Item'}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {addon.quantity} × {formatCurrency(addon.charge)}
+                            </div>
+                          </div>
+                          <div className="font-medium text-gray-900 whitespace-nowrap">
+                            {formatCurrency(addon.quantity * addon.charge)}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="flex justify-between items-center border-t border-gray-200 pt-3">
+                      <span className="text-gray-600">Add-ons subtotal</span>
+                      <span className="font-semibold text-gray-900">{formatCurrency(addOnsSubtotal)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                    No guest add-ons.
+                  </p>
+                )}
+              </div>
+
+              {/* Guest Request */}
+              <div className="border border-gray-200 rounded-lg p-4 bg-white">
+                <h4 className="text-base font-semibold text-gray-800 mb-3" style={{ fontFamily: 'Poppins' }}>
+                  Guest Request
+                </h4>
+                {requestDescription ? (
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap break-words" style={{ fontFamily: 'Poppins', wordBreak: 'break-word' }}>
+                    {requestDescription}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500" style={{ fontFamily: 'Poppins' }}>
+                    No special requests provided.
+                  </p>
+                )}
               </div>
 
               {/* Client / Agent / Payment Info Grid */}

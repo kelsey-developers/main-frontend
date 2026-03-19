@@ -9,6 +9,16 @@ import SpecialPricingModal from './components/SpecialPricingModal';
 import UnitCalendarTabs, { type CalendarUnit } from './components/UnitCalendarTabs';
 import { useDragSelect } from './hooks/useDragSelect';
 import { getMyBookings, type MyBookingItem } from '@/lib/api/bookings';
+import { listUnitsForManage } from '@/lib/api/units';
+import {
+  getBlockedRanges,
+  getPricingRules,
+  createBlockedRange,
+  deleteBlockedRange,
+  createPricingRule,
+  deletePricingRule,
+} from '@/lib/api/calendar';
+import { getNightPriceWithHoliday } from '@/lib/utils/unitPricing';
 import type { BlockedRangeScope, BlockedRangeSource } from '@/types/booking';
 
 type Booking = {
@@ -18,6 +28,7 @@ type Booking = {
   checkInDateString: string;
   checkOutDateString: string;
   title: string;
+  unitId?: string;
   location?: string;
   time: string;
   startHour: number;
@@ -64,62 +75,11 @@ type SpecialPricingRule = {
   note?: string;
   scope?: 'global' | 'unit';
   unit_id?: string;
+  adjustmentMode?: 'percentage' | 'fixed';
+  adjustmentType?: 'increase' | 'decrease';
+  adjustmentPercent?: number;
+  adjustmentAmount?: number;
 };
-
-/** Mock units for the unit calendar tabs */
-const MOCK_UNITS: CalendarUnit[] = [
-  { id: 'unit-1', title: 'Ocean View Villa', imageUrl: '/heroimage.png', basePrice: 8500 },
-  { id: 'unit-2', title: 'Mountain Cabin', basePrice: 6500 },
-  { id: 'unit-3', title: 'City Apartment', basePrice: 5500 },
-  { id: 'unit-4', title: 'Beach House', imageUrl: '/heroimage.png', basePrice: 12000 },
-  { id: 'unit-5', title: 'Lakeside Retreat', basePrice: 7000 },
-];
-
-/** Mock blocked ranges — global + per-unit */
-function generateMockBlockedRanges(): BlockedDateRange[] {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  return [
-    {
-      id: 'blocked-g1',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-24`,
-      end_date: `${y}-${String(m + 1).padStart(2, '0')}-26`,
-      reason: 'Holiday maintenance',
-      scope: 'global',
-      source: 'manual',
-    },
-    {
-      id: 'blocked-u1',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-05`,
-      end_date: `${y}-${String(m + 1).padStart(2, '0')}-07`,
-      reason: 'Booked via Airbnb — Guest: Sarah M.',
-      scope: 'unit',
-      source: 'airbnb',
-      guest_name: 'Sarah M.',
-      unit_ids: ['unit-1'],
-    },
-    {
-      id: 'blocked-u2',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-12`,
-      end_date: `${y}-${String(m + 1).padStart(2, '0')}-14`,
-      reason: 'Booked via Booking.com — Guest: James K.',
-      scope: 'unit',
-      source: 'booking.com',
-      guest_name: 'James K.',
-      unit_ids: ['unit-2'],
-    },
-    {
-      id: 'blocked-u3',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-18`,
-      end_date: `${y}-${String(m + 1).padStart(2, '0')}-20`,
-      reason: 'Private event',
-      scope: 'unit',
-      source: 'manual',
-      unit_ids: ['unit-3', 'unit-4'],
-    },
-  ];
-}
 
 /** Mock bookings so the calendar is usable without auth/backend */
 function generateMockBookings(): Booking[] {
@@ -213,40 +173,6 @@ function generateMockBookings(): Booking[] {
   ];
 }
 
-/** Mock special pricing rules — global + per-unit */
-function generateMockPricingRules(): SpecialPricingRule[] {
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  return [
-    {
-      id: 'pricing-g1',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-20`,
-      end_date: `${y}-${String(m + 1).padStart(2, '0')}-25`,
-      price: 8500,
-      note: 'Holiday pricing',
-      scope: 'global',
-    },
-    {
-      id: 'pricing-u1',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-10`,
-      end_date: `${y}-${String(m + 1).padStart(2, '0')}-12`,
-      price: 15000,
-      note: 'Peak season - Ocean View',
-      scope: 'unit',
-      unit_id: 'unit-1',
-    },
-    {
-      id: 'pricing-u2',
-      start_date: `${y}-${String(m + 1).padStart(2, '0')}-28`,
-      end_date: `${y}-${String(m + 2 > 12 ? 1 : m + 2).padStart(2, '0')}-02`,
-      price: 12000,
-      note: 'Weekend premium',
-      scope: 'unit',
-      unit_id: 'unit-4',
-    },
-  ];
-}
 
 const HOUR_ROW_PX = 48;
 const DOT_SIZE = 12;
@@ -272,6 +198,7 @@ function myBookingToCalendarBooking(item: MyBookingItem): Booking {
     checkInDateString: item.check_in_date,
     checkOutDateString: item.check_out_date,
     title: item.listing?.title || 'Unit',
+    unitId: item.unit_id,
     location: item.listing?.location,
     time: '2:00 PM – 12:00 PM',
     startHour: 14,
@@ -324,11 +251,12 @@ export function CalendarView({ embedded }: CalendarViewProps) {
   const toastRef = useRef<HTMLDivElement | null>(null);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [units, setUnits] = useState<CalendarUnit[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [allBlockedRanges, setAllBlockedRanges] = useState<BlockedDateRange[]>(() => generateMockBlockedRanges());
-  const [allPricingRules, setAllPricingRules] = useState<SpecialPricingRule[]>(() => generateMockPricingRules());
+  const [allBlockedRanges, setAllBlockedRanges] = useState<BlockedDateRange[]>([]);
+  const [allPricingRules, setAllPricingRules] = useState<SpecialPricingRule[]>([]);
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
   const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
   const [editingBlockedRange, setEditingBlockedRange] = useState<BlockedDateRange | null>(null);
@@ -369,12 +297,26 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     [allPricingRules]
   );
 
+  /** Units to display: real from API (no mock fallback) */
+  const displayUnits = units;
+
+  /** Bookings filtered by selected unit — when unit selected, show only that unit's bookings */
+  const scopedBookings = useMemo(() => {
+    if (!activeUnitId) return bookings;
+    const unit = displayUnits.find((u) => u.id === activeUnitId);
+    return bookings.filter((b) =>
+      b.unitId ? b.unitId === activeUnitId : (unit && b.title === unit.title)
+    );
+  }, [bookings, activeUnitId, displayUnits]);
+
   /** Occupancy stats per unit for current month */
   const unitOccupancyMap = useMemo(() => {
     const map: Record<string, number> = {};
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-    MOCK_UNITS.forEach((unit) => {
-      const unitBookings = bookings.filter((b) => b.title === unit.title);
+    displayUnits.forEach((unit) => {
+      const unitBookings = bookings.filter((b) =>
+        b.unitId ? b.unitId === unit.id : b.title === unit.title
+      );
       let bookedDays = 0;
       for (let d = 1; d <= daysInMonth; d++) {
         const day = new Date(currentDate.getFullYear(), currentDate.getMonth(), d);
@@ -388,12 +330,12 @@ export function CalendarView({ embedded }: CalendarViewProps) {
       map[unit.id] = Math.round((bookedDays / daysInMonth) * 100);
     });
     return map;
-  }, [bookings, currentDate]);
+  }, [bookings, currentDate, displayUnits]);
 
   /** Per-unit blocked days count */
   const unitBlockedDaysMap = useMemo(() => {
     const map: Record<string, number> = {};
-    MOCK_UNITS.forEach((unit) => {
+    displayUnits.forEach((unit) => {
       const ranges = allBlockedRanges.filter(
         (r) => r.scope === 'global' || (r.scope === 'unit' && r.unit_ids?.includes(unit.id))
       );
@@ -411,17 +353,17 @@ export function CalendarView({ embedded }: CalendarViewProps) {
       map[unit.id] = blocked;
     });
     return map;
-  }, [allBlockedRanges, currentDate]);
+  }, [allBlockedRanges, currentDate, displayUnits]);
 
   /** Enriched units with occupancy data for tabs */
   const enrichedUnits = useMemo((): CalendarUnit[] =>
-    MOCK_UNITS.map((u) => ({
+    displayUnits.map((u) => ({
       ...u,
       occupancyPct: unitOccupancyMap[u.id] ?? 0,
       blockedDays: unitBlockedDaysMap[u.id] ?? 0,
-      hasPricing: allPricingRules.some((r) => r.scope === 'unit' && r.unit_id === u.id),
+      hasPricing: allPricingRules.some((r) => r.scope === 'unit' && r.unit_id === u.id) || (u.holidayPricingRules?.length ?? 0) > 0,
     })),
-  [unitOccupancyMap, unitBlockedDaysMap, allPricingRules]);
+  [displayUnits, unitOccupancyMap, unitBlockedDaysMap, allPricingRules]);
 
   /** Legacy alias so existing isDateBlocked / getBlockedDateTooltip still work */
   const globalBlockedRanges = scopedBlockedRanges;
@@ -445,6 +387,88 @@ export function CalendarView({ embedded }: CalendarViewProps) {
 
   const usingMockData = useRef(false);
 
+  const fetchUnits = useCallback(async () => {
+    try {
+      const list = await listUnitsForManage();
+      const calendarUnits: CalendarUnit[] = list.map((u) => ({
+        id: u.id,
+        title: u.title,
+        imageUrl: u.main_image_url,
+        basePrice: u.price,
+        holidayPricingRules: u.holiday_pricing_rules,
+      }));
+      setUnits(calendarUnits);
+      return calendarUnits.map((u) => u.id);
+    } catch {
+      setUnits([]);
+      return [];
+    }
+  }, []);
+
+  const fetchBlockedRanges = useCallback(async (unitIds: string[]) => {
+    if (unitIds.length === 0) {
+      setAllBlockedRanges([]);
+      return;
+    }
+    try {
+      const data = await getBlockedRanges(undefined, unitIds);
+      const ranges = (Array.isArray(data) ? data : []) as BlockedDateRange[];
+      setAllBlockedRanges(ranges.map((r) => ({
+        id: String((r as { id?: string }).id ?? r),
+        start_date: (r as { start_date?: string }).start_date ?? (r as { startDate?: string }).startDate ?? '',
+        end_date: (r as { end_date?: string }).end_date ?? (r as { endDate?: string }).endDate ?? '',
+        reason: (r as { reason?: string }).reason,
+        scope: ((r as { unit_id?: number | null }).unit_id == null ? 'global' : 'unit') as BlockedRangeScope,
+        source: (r as { source?: string }).source as BlockedRangeSource | undefined,
+        guest_name: (r as { guest_name?: string }).guest_name,
+        unit_ids: (r as { unit_ids?: string[] }).unit_ids ?? ((r as { unit_id?: number }).unit_id != null ? [String((r as { unit_id?: number }).unit_id)] : undefined),
+      })));
+    } catch {
+      setAllBlockedRanges([]);
+    }
+  }, []);
+
+  const fetchPricingRules = useCallback(async (unitIds: string[]) => {
+    if (unitIds.length === 0) {
+      setAllPricingRules([]);
+      return;
+    }
+    try {
+      const data = await getPricingRules(undefined, unitIds);
+      const rules = (Array.isArray(data) ? data : []) as Array<{
+        id?: string;
+        start_date?: string;
+        startDate?: string;
+        end_date?: string;
+        endDate?: string;
+        name?: string;
+        note?: string;
+        price?: number;
+        adjustmentPercent?: number;
+        adjustmentAmount?: number;
+        adjustmentMode?: string;
+        adjustmentType?: string;
+        unit_id?: string;
+        scope?: string;
+      }>;
+      setAllPricingRules(rules.map((r) => ({
+        id: String(r.id ?? r),
+        start_date: r.start_date ?? r.startDate ?? '',
+        end_date: r.end_date ?? r.endDate ?? '',
+        price: r.price ?? (r.adjustmentMode === 'fixed' ? (r.adjustmentAmount ?? 0) : 0),
+        note: r.name ?? r.note,
+        scope: (r.unit_id ? 'unit' : 'global') as 'global' | 'unit',
+        unit_id: r.unit_id,
+        adjustmentMode: (r.adjustmentMode === 'fixed' ? 'fixed' : 'percentage') as 'percentage' | 'fixed',
+        adjustmentType: (r.adjustmentType === 'decrease' ? 'decrease' : 'increase') as 'increase' | 'decrease',
+        adjustmentPercent: r.adjustmentPercent ?? undefined,
+        adjustmentAmount: r.adjustmentAmount ?? undefined,
+      })));
+    } catch {
+      setAllPricingRules([]);
+    }
+  }, []);
+
   const fetchBookings = useCallback(async () => {
     setLoading(true);
     try {
@@ -455,21 +479,35 @@ export function CalendarView({ embedded }: CalendarViewProps) {
         return allowed.includes(status);
       });
       const mapped = filtered.map(myBookingToCalendarBooking);
-      if (mapped.length > 0) {
-        usingMockData.current = false;
-        setBookings(mapped);
-      } else {
-        usingMockData.current = true;
-        setBookings(generateMockBookings());
-      }
+      usingMockData.current = false;
+      setBookings(mapped);
       setHasInitiallyLoaded(true);
     } catch {
       usingMockData.current = true;
-      setBookings(generateMockBookings());
+      setBookings([]);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchUnits().then((unitIds) => {
+      if (mounted && unitIds.length > 0) {
+        fetchBlockedRanges(unitIds);
+        fetchPricingRules(unitIds);
+      }
+    });
+    return () => { mounted = false; };
+  }, [fetchUnits, fetchBlockedRanges, fetchPricingRules]);
+
+  const refetchBlockedAndPricing = useCallback(() => {
+    const unitIds = units.map((u) => u.id);
+    if (unitIds.length > 0) {
+      fetchBlockedRanges(unitIds);
+      fetchPricingRules(unitIds);
+    }
+  }, [units, fetchBlockedRanges, fetchPricingRules]);
 
   useEffect(() => {
     fetchBookings();
@@ -603,22 +641,32 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     return dates;
   };
 
-  /** Returns unit titles for the timeline — always includes MOCK_UNITS so all rows render even without bookings */
+  /** Unit titles for timeline — from displayUnits + bookings. When unit selected, only that unit. */
   const getUniqueUnits = (): string[] => {
-    const unitSet = new Set<string>(MOCK_UNITS.map((u) => u.title));
+    const unitSet = new Set<string>(displayUnits.map((u) => u.title));
     bookings.forEach((b) => { if (b.title) unitSet.add(b.title); });
-    return Array.from(unitSet).sort();
+    const all = Array.from(unitSet).sort();
+    if (activeUnitId) {
+      const unit = displayUnits.find((u) => u.id === activeUnitId);
+      return unit ? [unit.title] : all;
+    }
+    return all;
   };
 
-  /** Image URL for a unit row (prefer MOCK_UNITS, fall back to first booking) */
+  /** Image URL for a unit row (prefer displayUnits, fall back to first booking) */
   const getUnitImage = (unitTitle: string): string | undefined => {
-    const mockUnit = MOCK_UNITS.find((u) => u.title === unitTitle);
-    if (mockUnit?.imageUrl) return mockUnit.imageUrl;
+    const unit = displayUnits.find((u) => u.title === unitTitle);
+    if (unit?.imageUrl) return unit.imageUrl;
     const firstBooking = bookings.find((b) => b.title === unitTitle);
     return firstBooking?.mainImageUrl;
   };
 
-  const getBookingsForUnit = (unitTitle: string): Booking[] => bookings.filter((b) => b.title === unitTitle);
+  const getBookingsForUnit = (unitTitle: string): Booking[] => {
+    const unit = displayUnits.find((u) => u.title === unitTitle);
+    return bookings.filter((b) =>
+      unit && b.unitId ? b.unitId === unit.id : b.title === unitTitle
+    );
+  };
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -652,7 +700,7 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     return d >= start && d < end;
   };
 
-  const getBookingsForDate = (date: Date) => bookings.filter((b) => isDateInStay(date, b));
+  const getBookingsForDate = (date: Date) => scopedBookings.filter((b) => isDateInStay(date, b));
 
   const getBookingBarPosition = (booking: Booking, dateRange: Date[], dayWidth: number): { left: number; width: number; visible: boolean } => {
     if (dateRange.length === 0) return { left: 0, width: 0, visible: false };
@@ -750,7 +798,7 @@ export function CalendarView({ embedded }: CalendarViewProps) {
     }, 2200);
   };
 
-  const handleBlockRangeSave = useCallback((range: Omit<BlockedDateRange, 'id'>) => {
+  const handleBlockRangeSave = useCallback(async (range: Omit<BlockedDateRange, 'id'> & { source?: string; guest_name?: string }) => {
     const dragSelectedUnitIds = viewMode === 'weekly' ? dragSelect.getSelectedUnitIds() : [];
     const dragSelectedUnitId = dragSelect.getSelectedUnitId();
     
@@ -767,75 +815,130 @@ export function CalendarView({ embedded }: CalendarViewProps) {
       finalUnitIds = activeUnitId ? [activeUnitId] : undefined;
     }
     
-    const newRange: BlockedDateRange = {
-      ...range,
-      id: `blocked-${Date.now()}`,
-      scope: finalUnitIds && finalUnitIds.length > 0 ? 'unit' : 'global',
-      unit_ids: finalUnitIds,
-    };
-    setAllBlockedRanges((prev) => [...prev, newRange]);
-    dragSelect.clearSelection();
-    
-    const message = newRange.scope === 'global' 
-      ? 'Dates blocked globally for all units'
-      : newRange.unit_ids && newRange.unit_ids.length > 1
-        ? `Dates blocked for ${newRange.unit_ids.length} units`
-        : newRange.unit_ids && newRange.unit_ids.length === 1
-          ? `Dates blocked for ${MOCK_UNITS.find((u) => u.id === newRange.unit_ids![0])?.title ?? 'unit'}`
-          : 'Dates blocked';
-    
-    showToast(message, 'success');
-  }, [activeUnitId, viewMode, dragSelect]);
+    const scope = finalUnitIds && finalUnitIds.length > 0 ? 'unit' as const : 'global' as const;
+    try {
+      const created = await createBlockedRange({
+        start_date: range.start_date,
+        end_date: range.end_date,
+        reason: range.reason || 'Blocked',
+        source: range.source,
+        guest_name: range.guest_name,
+        scope,
+        unit_ids: scope === 'unit' ? finalUnitIds : undefined,
+      });
+      const res = Array.isArray(created) ? created[0] : created;
+      const newRange: BlockedDateRange = {
+        id: String((res as { id?: string }).id),
+        start_date: range.start_date,
+        end_date: range.end_date,
+        reason: range.reason,
+        scope,
+        source: (res as { source?: string }).source as BlockedRangeSource | undefined,
+        guest_name: (res as { guest_name?: string }).guest_name,
+        unit_ids: finalUnitIds,
+      };
+      setAllBlockedRanges((prev) => [...prev, newRange]);
+      dragSelect.clearSelection();
+      const unitTitle = finalUnitIds && finalUnitIds.length === 1 ? displayUnits.find((u) => u.id === finalUnitIds![0])?.title : null;
+      const message = scope === 'global'
+        ? 'Dates blocked globally for all units'
+        : finalUnitIds && finalUnitIds.length > 1
+          ? `Dates blocked for ${finalUnitIds.length} units`
+          : `Dates blocked for ${unitTitle ?? 'unit'}`;
+      showToast(message, 'success');
+    } catch (err) {
+      showToast((err as Error).message || 'Failed to block dates', 'error');
+    }
+  }, [activeUnitId, viewMode, dragSelect, displayUnits]);
 
-  const handleRemoveBlockedRange = useCallback((rangeId: string) => {
-    setAllBlockedRanges((prev) => prev.filter((r) => r.id !== rangeId));
-    showToast('Blocked range removed', 'success');
+  const handleRemoveBlockedRange = useCallback(async (rangeId: string) => {
+    const numericId = rangeId.startsWith('block-') ? rangeId.replace('block-', '') : rangeId;
+    try {
+      await deleteBlockedRange(numericId);
+      setAllBlockedRanges((prev) => prev.filter((r) => r.id !== rangeId && r.id !== numericId));
+      showToast('Blocked range removed', 'success');
+    } catch (err) {
+      showToast((err as Error).message || 'Failed to remove block', 'error');
+    }
   }, []);
 
-  const handleSpecialPricingSave = useCallback((rule: Omit<SpecialPricingRule, 'id'>) => {
+  const handleSpecialPricingSave = useCallback(async (rule: Omit<SpecialPricingRule, 'id'> & { name?: string; adjustmentMode?: 'percentage' | 'fixed'; adjustmentPercent?: number }) => {
     const dragUnitIds = dragSelect.getSelectedUnitIds();
     const dragUnitId = dragSelect.getSelectedUnitId();
     
-    // Determine scope based on context
     let scope: 'global' | 'unit' = rule.scope ?? 'global';
-    let unitId: string | undefined = rule.unit_id;
+    let unitIds: string[] = [];
     
     if (viewMode === 'weekly' && dragUnitIds.length > 0 && dragUnitId !== 'header') {
-      // Timeline drag: create a rule per unit
-      dragUnitIds.forEach((uid) => {
-        const newRule: SpecialPricingRule = {
-          ...rule,
-          id: `pricing-${Date.now()}-${uid}`,
-          scope: 'unit',
-          unit_id: uid,
-        };
-        setAllPricingRules((prev) => [...prev, newRule]);
-      });
-      const unitCount = dragUnitIds.length;
-      showToast(`Pricing rule applied to ${unitCount} unit${unitCount !== 1 ? 's' : ''}`, 'success');
-      dragSelect.clearSelection();
-      return;
-    }
-    
-    if (!unitId && activeUnitId && viewMode === 'monthly') {
+      unitIds = dragUnitIds;
       scope = 'unit';
-      unitId = activeUnitId;
+    } else if (rule.unit_id) {
+      unitIds = [rule.unit_id];
+      scope = 'unit';
+    } else if (activeUnitId && viewMode === 'monthly') {
+      unitIds = [activeUnitId];
+      scope = 'unit';
+    } else {
+      unitIds = displayUnits.map((u) => u.id);
+      scope = 'global';
     }
     
-    const newRule: SpecialPricingRule = {
-      ...rule,
-      id: `pricing-${Date.now()}`,
-      scope,
-      unit_id: unitId,
+    const isFixed = rule.adjustmentMode === 'fixed' || (rule.price != null && rule.price > 0 && rule.adjustmentPercent == null);
+    const pct = rule.adjustmentPercent ?? 0;
+    const adjustmentType = (pct < 0 ? 'decrease' : 'increase') as 'increase' | 'decrease';
+    const payload = {
+      unit_ids: scope === 'global' ? displayUnits.map((u) => u.id) : unitIds,
+      start_date: rule.start_date,
+      end_date: rule.end_date,
+      name: rule.name || rule.note || 'Special pricing',
+      adjustmentType,
+      adjustmentMode: isFixed ? 'fixed' as const : 'percentage' as const,
+      ...(isFixed ? { price: rule.price ?? 0 } : { percentage: Math.abs(pct) }),
     };
-    setAllPricingRules((prev) => [...prev, newRule]);
-    showToast('Pricing rule saved', 'success');
-    dragSelect.clearSelection();
-  }, [activeUnitId, viewMode, dragSelect]);
+    
+    try {
+      const created = await createPricingRule(payload);
+      const createdList = Array.isArray(created) ? created : [created];
+      const isFixed = payload.adjustmentMode === 'fixed';
+      const newRules = createdList.map((r) => {
+        const res = r as { id?: string; unit_id?: string; start_date?: string; end_date?: string; name?: string; adjustmentAmount?: number; adjustmentPercent?: number; adjustmentType?: string; adjustmentMode?: string };
+        const price = res.adjustmentAmount ?? rule.price ?? 0;
+        const resAdjustmentMode = res.adjustmentMode as 'percentage' | 'fixed' | undefined;
+        const resAdjustmentType = res.adjustmentType as 'increase' | 'decrease' | undefined;
+        const resAdjustmentPercent = res.adjustmentPercent;
+        return {
+          id: String(res.id),
+          start_date: res.start_date ?? rule.start_date,
+          end_date: res.end_date ?? rule.end_date,
+          price,
+          note: res.name ?? rule.note,
+          scope: (res.unit_id ? 'unit' : 'global') as 'global' | 'unit',
+          unit_id: res.unit_id,
+          adjustmentMode: resAdjustmentMode ?? (isFixed ? 'fixed' : 'percentage'),
+          adjustmentType: resAdjustmentType ?? adjustmentType,
+          adjustmentPercent: resAdjustmentPercent != null ? resAdjustmentPercent : (isFixed ? undefined : Math.abs(pct)),
+        };
+      });
+      setAllPricingRules((prev) => [...prev, ...newRules]);
+      const unitCount = createdList.length;
+      showToast(unitCount > 1 ? `Pricing rule applied to ${unitCount} units` : 'Pricing rule saved', 'success');
+      dragSelect.clearSelection();
+      // Refetch pricing rules so UI stays in sync with server (handles any API response format differences)
+      const unitIds = displayUnits.map((u) => u.id);
+      if (unitIds.length > 0) fetchPricingRules(unitIds);
+    } catch (err) {
+      showToast((err as Error).message || 'Failed to save pricing rule', 'error');
+    }
+  }, [activeUnitId, viewMode, dragSelect, displayUnits, fetchPricingRules]);
 
-  const handleSpecialPricingRemove = useCallback((id: string) => {
-    setAllPricingRules((prev) => prev.filter((r) => r.id !== id));
-    showToast('Pricing rule removed', 'success');
+  const handleSpecialPricingRemove = useCallback(async (id: string) => {
+    try {
+      await deletePricingRule(id);
+      setAllPricingRules((prev) => prev.filter((r) => r.id !== id));
+      showToast('Pricing rule removed', 'success');
+    } catch (err) {
+      showToast((err as Error).message || 'Failed to remove pricing rule', 'error');
+    }
   }, []);
 
   const closeDrawer = () => {
@@ -975,7 +1078,7 @@ export function CalendarView({ embedded }: CalendarViewProps) {
   const UNIT_COL_WIDTH = isMobile ? 120 : 350;
   const numDays = Math.ceil((timelineEndDate.getTime() - timelineStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const dateRange = generateDateRange(timelineStartDate, numDays);
-  const units = getUniqueUnits();
+  const timelineUnitTitles = getUniqueUnits();
 
   return (
     <div className={embedded ? 'bg-white rounded-lg' : 'min-h-screen bg-white'} style={{ ['--booking-color' as string]: '#E66E85' }}>
@@ -1294,7 +1397,10 @@ export function CalendarView({ embedded }: CalendarViewProps) {
                                   }
                                   return;
                                 }
-                                if (bookingsForDay.length > 0 && day.isCurrentMonth && !isBlocked) openSlideForDate(day.fullDate);
+                                if (bookingsForDay.length > 0 && day.isCurrentMonth && !isBlocked) {
+                                  setFocusedDate(day.fullDate);
+                                  openSlideForDate(day.fullDate);
+                                }
                               }}
                             >
                               <div className="flex items-center justify-between mb-0.5 sm:mb-1">
@@ -1335,11 +1441,28 @@ export function CalendarView({ embedded }: CalendarViewProps) {
                                 </div>
                               )}
 
-                              {!inDragRange && day.isCurrentMonth && (() => {
-                                const activeUnit = activeUnitId ? MOCK_UNITS.find((u) => u.id === activeUnitId) : null;
-                                const displayPrice = activePricingRule ? activePricingRule.price : activeUnit?.basePrice;
-                                const isSpecial = !!activePricingRule;
-                                if (!displayPrice) return null;
+                              {!inDragRange && day.isCurrentMonth && activeUnitId && (() => {
+                                const activeUnit = displayUnits.find((u) => u.id === activeUnitId) ?? null;
+                                const dateStr = `${day.fullDate.getFullYear()}-${String(day.fullDate.getMonth() + 1).padStart(2, '0')}-${String(day.fullDate.getDate()).padStart(2, '0')}`;
+                                const basePrice = activeUnit?.basePrice ?? 0;
+                                const holidayPrice = activeUnit?.holidayPricingRules?.length
+                                  ? getNightPriceWithHoliday(basePrice, dateStr, activeUnit.holidayPricingRules)
+                                  : basePrice;
+                                let displayPrice: number | undefined;
+                                if (activePricingRule) {
+                                  if (activePricingRule.adjustmentMode === 'fixed' && (activePricingRule.price ?? 0) > 0) {
+                                    displayPrice = activePricingRule.price;
+                                  } else if (activePricingRule.adjustmentMode === 'percentage' && activePricingRule.adjustmentPercent != null && basePrice > 0) {
+                                    const pct = activePricingRule.adjustmentType === 'decrease' ? -activePricingRule.adjustmentPercent : activePricingRule.adjustmentPercent;
+                                    displayPrice = Math.round(basePrice * (1 + pct / 100));
+                                  } else {
+                                    displayPrice = activePricingRule.price > 0 ? activePricingRule.price : undefined;
+                                  }
+                                } else {
+                                  displayPrice = activeUnit ? holidayPrice : (basePrice > 0 ? basePrice : undefined);
+                                }
+                                const isSpecial = !!activePricingRule || (holidayPrice !== basePrice && basePrice > 0);
+                                if (displayPrice == null || displayPrice <= 0) return null;
                                 return (
                                   <div className="mt-auto pb-0.5">
                                     <span className={`text-xs font-bold ${isSpecial ? 'text-[#0B5858]' : 'text-gray-900'}`} style={{ fontFamily: 'var(--font-poppins)' }}>
@@ -1454,10 +1577,10 @@ export function CalendarView({ embedded }: CalendarViewProps) {
                           return blockedTooltip ? <Tooltip key={idx} content={blockedTooltip}>{dateHeader}</Tooltip> : dateHeader;
                         })}
                       </div>
-                      {units.length > 0 ? (
-                        units.map((unitTitle, unitIdx) => {
+                      {timelineUnitTitles.length > 0 ? (
+                        timelineUnitTitles.map((unitTitle, unitIdx) => {
                           const unitBookings = getBookingsForUnit(unitTitle);
-                          const unitId = MOCK_UNITS.find((u) => u.title === unitTitle)?.id;
+                          const unitId = displayUnits.find((u) => u.title === unitTitle)?.id;
                           return (
                             <div key={unitIdx} style={{ display: 'flex', height: `${ROW_HEIGHT}px`, borderBottom: '1px solid #E5E7EB', position: 'relative' }}>
                               <div style={{ width: isMobile ? '120px' : '350px', minWidth: isMobile ? '120px' : '350px', padding: isMobile ? '12px 8px' : '12px 16px', borderRight: '1px solid #E5E7EB', backgroundColor: '#F9FAFB', position: 'sticky', left: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1899,8 +2022,8 @@ export function CalendarView({ embedded }: CalendarViewProps) {
         const selStrings = dragSelect.selectionAsStrings();
         const isGlobal = activeUnitId === null;
         const affectedUnits = isGlobal
-          ? MOCK_UNITS
-          : MOCK_UNITS.filter((u) => u.id === activeUnitId);
+          ? displayUnits
+          : displayUnits.filter((u) => u.id === activeUnitId);
         const startStr = selStrings?.start ?? '';
         const endStr = selStrings?.end ?? '';
         const dayCount = startStr && endStr
@@ -2006,17 +2129,18 @@ export function CalendarView({ embedded }: CalendarViewProps) {
         endDate={editingBlockedRange?.end_date ?? dragSelect.selectionAsStrings()?.end ?? ''}
         onSave={(range) => {
           if (editingBlockedRange) {
-            handleRemoveBlockedRange(editingBlockedRange.id);
+            void handleRemoveBlockedRange(editingBlockedRange.id);
           }
-          handleBlockRangeSave(range);
+          void handleBlockRangeSave(range as Parameters<typeof handleBlockRangeSave>[0]);
           setEditingBlockedRange(null);
         }}
         preselectedUnitIds={editingBlockedRange?.unit_ids ?? dragSelect.getSelectedUnitIds()}
         editingRange={editingBlockedRange}
         onRemove={(id) => {
-          handleRemoveBlockedRange(id);
+          void handleRemoveBlockedRange(id);
           setEditingBlockedRange(null);
         }}
+        units={displayUnits.map((u) => ({ id: u.id, title: u.title, imageUrl: u.imageUrl }))}
       />
 
       <SpecialPricingModal
@@ -2031,6 +2155,7 @@ export function CalendarView({ embedded }: CalendarViewProps) {
         preselectedUnitId={activeUnitId}
         startDate={dragSelect.selectionAsStrings()?.start}
         endDate={dragSelect.selectionAsStrings()?.end}
+        units={displayUnits.map((u) => ({ id: u.id, title: u.title, imageUrl: u.imageUrl, basePrice: u.basePrice }))}
       />
     </div>
   );

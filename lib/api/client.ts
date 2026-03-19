@@ -17,13 +17,22 @@ const BACKEND_ENDPOINT_PREFIXES = [
   '/api/admin',
   '/api/agents',
   '/api/upload',
+  '/api/calendar',
 ];
 
 const DEV_AUTH_USER_ID = process.env.NEXT_PUBLIC_DEV_AUTH_USER_ID || 'mock-1';
 const DEV_AUTH_EMAIL = process.env.NEXT_PUBLIC_DEV_AUTH_EMAIL || 'admin@example.com';
 const DEV_AUTH_ROLE = process.env.NEXT_PUBLIC_DEV_AUTH_ROLE || 'admin';
+const UNITS_API_SOURCE = (
+  process.env.NEXT_PUBLIC_UNITS_API_SOURCE ||
+  process.env.UNITS_API_SOURCE ||
+  ''
+).toLowerCase();
 
 function shouldUseBackendFallback(endpoint: string): boolean {
+  if (endpoint.startsWith('/api/units')) {
+    return UNITS_API_SOURCE !== 'api';
+  }
   return BACKEND_ENDPOINT_PREFIXES.some((prefix) => endpoint.startsWith(prefix));
 }
 
@@ -87,8 +96,10 @@ function getBaseUrl(endpoint: string): string {
 
   // Server-side fetches need absolute URLs. Route inventory/market endpoints to MARKET_API_URL.
   if (shouldUseBackendFallback(endpoint)) {
+    const apiUrl = process.env.API_URL || '';
+    if (apiUrl) return apiUrl;
     const marketUrl = process.env.MARKET_API_URL || '';
-    if (!marketUrl) throw new Error('Market API URL is not configured. Set MARKET_API_URL.');
+    if (!marketUrl) throw new Error('API URL is not configured. Set API_URL.');
     return marketUrl;
   }
 

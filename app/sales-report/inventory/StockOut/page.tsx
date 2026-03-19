@@ -1,14 +1,19 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import StockOutModal from '../components/StockOutModal';
 
 export default function StockOutPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [modalMode, setModalMode] = useState<'warehouse' | 'unit' | 'damage' | null>(null);
-  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+
+  const forcedMode = useMemo(() => {
+    const mode = searchParams.get('mode');
+    return mode === 'warehouse' || mode === 'unit' || mode === 'damage' ? mode : null;
+  }, [searchParams]);
 
   const unitPrefill = useMemo(
     () => ({
@@ -16,6 +21,23 @@ export default function StockOutPage() {
       confirmedBy: searchParams.get('confirmedBy') || '',
       idNumber: searchParams.get('idNumber') || '',
       itemId: searchParams.get('itemId') || '',
+      bookingId: searchParams.get('bookingId') || '',
+      reason: searchParams.get('reason') || '',
+      reference: searchParams.get('reference') || '',
+      referenceType: searchParams.get('referenceType') || '',
+      notes: searchParams.get('notes') || '',
+      items: (() => {
+        const ids = searchParams.getAll('itemId');
+        const qtys = searchParams.getAll('qty');
+        const out: Array<{ productId: string; quantity: string }> = [];
+        for (let i = 0; i < ids.length; i += 1) {
+          const productId = ids[i] || '';
+          const quantity = qtys[i] || '1';
+          if (!productId) continue;
+          out.push({ productId, quantity });
+        }
+        return out;
+      })(),
     }),
     [searchParams]
   );
@@ -23,18 +45,36 @@ export default function StockOutPage() {
   const warehousePrefill = useMemo(
     () => ({
       warehouseId: searchParams.get('warehouseId') || '',
+      reason: searchParams.get('reason') || '',
+      reference: searchParams.get('reference') || '',
+      referenceType: searchParams.get('referenceType') || '',
+      notes: searchParams.get('notes') || '',
+      items: (() => {
+        const ids = searchParams.getAll('itemId');
+        const qtys = searchParams.getAll('qty');
+        const out: Array<{ productId: string; quantity: string }> = [];
+        for (let i = 0; i < ids.length; i += 1) {
+          const productId = ids[i] || '';
+          const quantity = qtys[i] || '1';
+          if (!productId) continue;
+          out.push({ productId, quantity });
+        }
+        return out;
+      })(),
     }),
     [searchParams]
   );
 
   const returnTo = searchParams.get('returnTo') || '/sales-report/inventory/items';
 
-  useEffect(() => {
-    const mode = searchParams.get('mode');
-    if (mode === 'warehouse' || mode === 'unit' || mode === 'damage') {
-      setModalMode(mode);
-    }
-  }, [searchParams]);
+  const effectiveMode = forcedMode ?? modalMode;
+
+  const clearForcedMode = () => {
+    if (!forcedMode) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('mode');
+    router.replace(`/sales-report/inventory/StockOut?${params.toString()}`);
+  };
 
   const cards = [
     {
@@ -153,8 +193,6 @@ export default function StockOutPage() {
           <button
             key={card.mode}
             onClick={() => setModalMode(card.mode)}
-            onMouseEnter={() => setHoveredCard(card.mode)}
-            onMouseLeave={() => setHoveredCard(null)}
             className="card-wrapper bg-white border-2 border-gray-200 rounded-[20px] p-7 cursor-pointer text-left shadow-sm relative overflow-hidden"
             style={{
               '--hover-shadow':
@@ -228,12 +266,18 @@ export default function StockOutPage() {
       </div>
 
       {/* ── Modal pop-up ── */}
-      {modalMode && (
+      {effectiveMode && (
         <StockOutModal
-          mode={modalMode}
-          onClose={() => setModalMode(null)}
-          unitPrefill={modalMode === 'unit' ? unitPrefill : undefined}
-          warehousePrefill={modalMode === 'warehouse' ? warehousePrefill : undefined}
+          mode={effectiveMode}
+          onClose={() => {
+            if (forcedMode) {
+              clearForcedMode();
+            } else {
+              setModalMode(null);
+            }
+          }}
+          unitPrefill={effectiveMode === 'unit' ? unitPrefill : undefined}
+          warehousePrefill={effectiveMode === 'warehouse' ? warehousePrefill : undefined}
           returnTo={returnTo}
         />
       )}

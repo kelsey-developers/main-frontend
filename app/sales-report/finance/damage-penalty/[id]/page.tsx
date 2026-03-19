@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useRef, useCallback, useState, useEffect } from 'react';
+import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 import type { DamagePenalty } from '../../types';
 import { formatPHP, formatDateLong } from '../../lib/format';
+import { fetchFinanceDamageIncidentById, fetchFinanceDamageIncidents } from '../../lib/financeDataService';
 
 const SLUG_SEP = '__';
 
@@ -74,12 +76,17 @@ export default function DamagePenaltyDetailPage() {
   const params = useParams();
   const id = params?.id as string | undefined;
   const parsed = id ? parseDamageSlug(id) : null;
+  const { user } = useAuth();
+  const currentUser = user
+    ? { userId: user.id, email: user.email, role: user.roles?.[0] }
+    : null;
   const [isLoading, setIsLoading] = useState(true);
   const [incident, setIncident] = useState<DamagePenalty | null>(null);
   const proofScrollRef = useRef<HTMLDivElement>(null);
   const [showImageModal, setshowImageModal] = useState(false);
   const [currentProofIndex, setCurrentProofIndex] = useState(0);
   const [isProofTransitioning, setIsProofTransitioning] = useState(false);
+  const [failedProofUrls, setFailedProofUrls] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!id) {
@@ -87,19 +94,60 @@ export default function DamagePenaltyDetailPage() {
       return;
     }
     let mounted = true;
-    const timer = setTimeout(() => {
-      if (mounted) {
-        setIncident(null);
+    (async () => {
+      try {
+        let found: DamagePenalty | null = null;
+        if (parsed) {
+          const list = await fetchFinanceDamageIncidents(currentUser);
+          found =
+            list.find((entry) => entry.bookingId === parsed.bookingId && entry.unit === parsed.unit) ?? null;
+        } else {
+          found = await fetchFinanceDamageIncidentById(id, currentUser);
+        }
+        if (mounted) setIncident(found);
+      } finally {
+        if (mounted) setIsLoading(false);
       }
-      if (mounted) setIsLoading(false);
-    }, 350);
+    })();
     return () => {
       mounted = false;
-      clearTimeout(timer);
     };
-  }, [id, parsed]);
+  }, [id, parsed?.bookingId ?? null, parsed?.unit ?? null, currentUser?.userId ?? null, currentUser?.email ?? null, currentUser?.role ?? null]);
+
+  useEffect(() => {
+    setFailedProofUrls(new Set());
+    setCurrentProofIndex(0);
+  }, [incident?.damageId ?? null]);
 
   const proofUrls = incident?.proofUrls ?? [];
+  const galleryProofUrls = useMemo(() => {
+    const base = proofUrls
+      .map((url) => String(url ?? '').trim())
+      .filter((url) => url.length > 0)
+      .filter((url) => !failedProofUrls.has(url));
+    return Array.from(new Set(base));
+  }, [proofUrls, failedProofUrls]);
+
+  useEffect(() => {
+    if (galleryProofUrls.length === 0) {
+      if (showImageModal) setshowImageModal(false);
+      if (currentProofIndex !== 0) setCurrentProofIndex(0);
+      return;
+    }
+    if (currentProofIndex > galleryProofUrls.length - 1) {
+      setCurrentProofIndex(galleryProofUrls.length - 1);
+    }
+  }, [galleryProofUrls, currentProofIndex, showImageModal]);
+
+  const handleProofImageError = useCallback((url: string) => {
+    setFailedProofUrls((prev) => {
+      if (prev.has(url)) return prev;
+      const next = new Set(prev);
+      next.add(url);
+      return next;
+    });
+  }, []);
+
   const openProofModal = useCallback((index: number) => {
     setCurrentProofIndex(index);
     setshowImageModal(true);
@@ -107,21 +155,21 @@ export default function DamagePenaltyDetailPage() {
   
   const closeProofModal = useCallback(() => setshowImageModal(false), []);
   const nextProof = useCallback(() => {
-    if (proofUrls.length <= 1 || isProofTransitioning) return;
+    if (galleryProofUrls.length <= 1 || isProofTransitioning) return;
     setIsProofTransitioning(true);
     setTimeout(() => {
-      setCurrentProofIndex((prev) => (prev + 1) % proofUrls.length);
+      setCurrentProofIndex((prev) => (prev + 1) % galleryProofUrls.length);
       setIsProofTransitioning(false);
     }, 150);
-  }, [proofUrls.length, isProofTransitioning]);
+  }, [galleryProofUrls.length, isProofTransitioning]);
   const prevProof = useCallback(() => {
-    if (proofUrls.length <= 1 || isProofTransitioning) return;
+    if (galleryProofUrls.length <= 1 || isProofTransitioning) return;
     setIsProofTransitioning(true);
     setTimeout(() => {
-      setCurrentProofIndex((prev) => (prev - 1 + proofUrls.length) % proofUrls.length);
+      setCurrentProofIndex((prev) => (prev - 1 + galleryProofUrls.length) % galleryProofUrls.length);
       setIsProofTransitioning(false);
     }, 150);
-  }, [proofUrls.length, isProofTransitioning]);
+  }, [galleryProofUrls.length, isProofTransitioning]);
 
   const scrollProof = useCallback((direction: 'left' | 'right') => {
     const el = proofScrollRef.current;
@@ -162,7 +210,7 @@ export default function DamagePenaltyDetailPage() {
                 <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
               </svg>
               <span className="text-sm text-gray-500">
-                {incident.bookingId} – {incident.unit}
+                Damage ID: {incident.damageId ?? '—'} • {incident.bookingId} – {incident.unit}
               </span>
             </div>
           </div>
@@ -243,17 +291,17 @@ export default function DamagePenaltyDetailPage() {
           {/* Proof of damage (pictures) */}
           <div className="border border-gray-200 rounded-lg p-4 bg-white">
             <h5 className="text-sm font-semibold text-gray-800 mb-3">Proof of damage/loss</h5>
-            {incident.proofUrls && incident.proofUrls.length > 0 ? (
-              incident.proofUrls.length > 2 ? (
+            {galleryProofUrls.length > 0 ? (
+              galleryProofUrls.length > 2 ? (
                 <div className="relative">
                   <div
                     ref={proofScrollRef}
                     className="proof-gallery-scroll overflow-x-auto rounded-lg snap-x snap-mandatory flex gap-3 -mx-1 px-1"
                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                   >
-                    {incident.proofUrls.map((url, i) => (
+                    {galleryProofUrls.map((url, i) => (
                       <div
-                        key={i}
+                        key={`${url}-${i}`}
                         role="button"
                         tabIndex={0}
                         onClick={() => openProofModal(i)}
@@ -264,6 +312,7 @@ export default function DamagePenaltyDetailPage() {
                           src={url}
                           alt={`Proof of damage ${i + 1}`}
                           className="w-full h-42 object-cover rounded-lg hover:opacity-90 transition-opacity"
+                          onError={() => handleProofImageError(url)}
                         />
                         <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs">
                           Photo {i + 1}
@@ -294,9 +343,9 @@ export default function DamagePenaltyDetailPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {incident.proofUrls.map((url, i) => (
+                  {galleryProofUrls.map((url, i) => (
                     <div
-                      key={i}
+                      key={`${url}-${i}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => openProofModal(i)}
@@ -307,6 +356,7 @@ export default function DamagePenaltyDetailPage() {
                         src={url}
                         alt={`Proof of damage ${i + 1}`}
                         className="w-full h-full object-cover"
+                        onError={() => handleProofImageError(url)}
                       />
                       <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-xs">
                         Photo {i + 1}
@@ -358,14 +408,14 @@ export default function DamagePenaltyDetailPage() {
             <h5 className="text-lg font-semibold text-gray-800 mb-2">Status</h5>
             <span
               className={`inline-flex items-center px-3 py-1.5 rounded-full text-md font-medium ${
-                incident.status === 'Paid'
+                incident.status === 'resolved'
                   ? 'bg-green-100 text-green-800'
-                  : incident.status === 'Pending'
+                  : incident.status === 'open'
                     ? 'bg-amber-100 text-amber-800'
                     : 'bg-gray-100 text-gray-800'
               }`}
             >
-              {incident.status}
+              {incident.status === 'resolved' ? 'Resolved' : incident.status === 'open' ? 'Open' : incident.status}
             </span>
           </div>
 
@@ -398,7 +448,7 @@ export default function DamagePenaltyDetailPage() {
       </div>
 
       {/* Proof image lightbox (same as unit page) */}
-      {showImageModal && proofUrls.length > 0 && (
+      {showImageModal && galleryProofUrls.length > 0 && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000]">
           <div className="relative w-full h-full flex items-center justify-center">
             <button
@@ -413,7 +463,7 @@ export default function DamagePenaltyDetailPage() {
               </svg>
             </button>
 
-            {proofUrls.length > 1 && (
+            {galleryProofUrls.length > 1 && (
               <>
                 <button
                   type="button"
@@ -442,16 +492,20 @@ export default function DamagePenaltyDetailPage() {
 
             <div className="absolute inset-0 flex items-center justify-center p-0">
               <img
-                src={proofUrls[currentProofIndex]}
+                src={galleryProofUrls[currentProofIndex]}
                 alt={`Proof of damage ${currentProofIndex + 1}`}
                 className={`w-full h-full transition-all duration-300 ease-in-out ${isProofTransitioning ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
                 style={{ objectFit: 'contain', width: '70%', height: '80%' }}
+                onError={() => {
+                  const currentUrl = galleryProofUrls[currentProofIndex];
+                  if (currentUrl) handleProofImageError(currentUrl);
+                }}
               />
             </div>
 
-            {proofUrls.length > 1 && (
+            {galleryProofUrls.length > 1 && (
               <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-sm bg-black/50 px-3 py-1 rounded-full transition-all duration-300 ${isProofTransitioning ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
-                {currentProofIndex + 1} / {proofUrls.length}
+                {currentProofIndex + 1} / {galleryProofUrls.length}
               </div>
             )}
           </div>

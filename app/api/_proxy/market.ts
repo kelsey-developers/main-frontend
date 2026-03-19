@@ -418,10 +418,11 @@ export async function proxyMarketApiBinary(
   request: NextRequest,
   upstreamPath: string
 ): Promise<NextResponse> {
-  const baseCandidates = getMarketBaseCandidates();
+  const primaryBaseUrl = process.env.API_URL;
+  const fallbackBaseUrl = process.env.MARKET_API_URL;
 
-  if (baseCandidates.length === 0) {
-    return new NextResponse('MARKET_API_URL not configured', {
+  if (!primaryBaseUrl && !fallbackBaseUrl) {
+    return new NextResponse('API_URL and MARKET_API_URL are not configured', {
       status: 503,
       headers: { 'Content-Type': 'text/plain' },
     });
@@ -487,8 +488,9 @@ export async function proxyMarketApiBinary(
     }
   }
 
+  const bases = [primaryBaseUrl, fallbackBaseUrl].filter(Boolean) as string[];
   let lastUpstreamStatus: number | undefined;
-  for (const base of baseCandidates) {
+  for (const base of bases) {
     const result = await fetchBinary(base);
     if (result.ok) {
       return new NextResponse(result.buffer, {
@@ -526,20 +528,11 @@ export async function proxyMarketApi(
   upstreamPath: string,
   options: ProxyMarketApiOptions = {}
 ): Promise<NextResponse> {
-  const providedBaseCandidates = Array.isArray(options.baseCandidates)
-    ? options.baseCandidates
-        .map((candidate) => candidate?.trim())
-        .filter((candidate): candidate is string => Boolean(candidate))
-        .map((candidate) => candidate.replace(/\/+$/, ''))
-    : [];
+  const primaryBaseUrl = process.env.API_URL;
+  const fallbackBaseUrl = process.env.MARKET_API_URL;
 
-  const baseCandidates =
-    providedBaseCandidates.length > 0
-      ? Array.from(new Set(providedBaseCandidates))
-      : getMarketBaseCandidates();
-
-  if (baseCandidates.length === 0) {
-    return NextResponse.json({ error: 'MARKET_API_URL not configured' }, { status: 503 });
+  if (!primaryBaseUrl && !fallbackBaseUrl) {
+    return NextResponse.json({ error: 'API_URL and MARKET_API_URL are not configured' }, { status: 503 });
   }
 
   // Read body once — request body can only be consumed once; reuse for retries.
@@ -567,53 +560,76 @@ export async function proxyMarketApi(
     });
   };
 
-  let sawHtml = false;
-  let lastStatusResult: { status: number; data: unknown } | null = null;
-
-  for (const base of baseCandidates) {
-    try {
-      const result = await tryForward(base);
-
-      if (result.isHtml) {
-        sawHtml = true;
-        continue;
+  try {
+    // If we have a primary base URL, try it first
+    if (primaryBaseUrl) {
+      try {
+        const primary = await tryForward(primaryBaseUrl);
+        if (!primary.isHtml) {
+          return NextResponse.json(primary.data, { status: primary.status });
+        }
+        // Primary returned HTML error page; try fallback if available
+        if (fallbackBaseUrl) {
+          try {
+            const fallback = await tryForward(fallbackBaseUrl);
+            if (!fallback.isHtml) {
+              return NextResponse.json(fallback.data, { status: fallback.status });
+            }
+          } catch {
+            // Fall through to error response below
+          }
+        }
+        return NextResponse.json(
+          {
+            error: 'Primary upstream is unreachable or returned HTML.',
+            upstream: primaryBaseUrl,
+          },
+          { status: 502 }
+        );
+      } catch (err) {
+        if (fallbackBaseUrl && isNetworkError(err)) {
+          try {
+            const fallback = await tryForward(fallbackBaseUrl);
+            if (!fallback.isHtml) {
+              return NextResponse.json(fallback.data, { status: fallback.status });
+            }
+          } catch {
+            // Fall through to error response below
+          }
+        }
+        throw err;
       }
-
-      // Keep trying candidate fallbacks for likely route/auth mismatches.
-      if (shouldTryNextCandidate(result.status)) {
-        lastStatusResult = { status: result.status, data: result.data };
-        continue;
-      }
-
-      return NextResponse.json(result.data, { status: result.status });
-    } catch (err) {
-      if (isNetworkError(err)) {
-        continue;
-      }
-      throw err;
     }
-  }
 
-  if (lastStatusResult) {
-    return NextResponse.json(lastStatusResult.data, { status: lastStatusResult.status });
-  }
+    // No API_URL configured; use MARKET_API_URL as a best-effort fallback
+    if (fallbackBaseUrl) {
+      const result = await tryForward(fallbackBaseUrl);
+      if (result.isHtml) {
+        return NextResponse.json(
+          { error: 'Upstream returned HTML (unexpected).', upstream: fallbackBaseUrl },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json(result.data, { status: result.status });
+    }
 
-  if (sawHtml) {
     return NextResponse.json(
       {
-        error: 'Market upstream is unreachable or returned HTML (ngrok/error page).',
-        upstreams: baseCandidates,
+        error: 'No API_URL or MARKET_API_URL configured.',
       },
-      { status: 502 }
+      { status: 503 }
     );
+  } catch (err) {
+    if (isNetworkError(err)) {
+      return NextResponse.json(
+        {
+          error: 'Upstream backend is unreachable. Ensure API_URL is correct.',
+          upstream: primaryBaseUrl || fallbackBaseUrl,
+        },
+        { status: 503 }
+      );
+    }
+    throw err;
   }
-
-  return NextResponse.json(
-    {
-      error: 'Market backend is unreachable. Ensure it is running and MARKET_API_URL is correct.',
-      upstreams: baseCandidates,
-    },
-    { status: 503 }
-  );
 }
 

@@ -3,6 +3,8 @@ import type {
   BookingRecord,
   BookingStatus,
   CreateBookingInput,
+  AdditionalService,
+  PaymentMethod,
 } from '@/types/booking';
 import {
   appendCatalogItemsToBookingCharges,
@@ -44,48 +46,80 @@ function normalizeStatus(value: unknown, fallback: BookingStatus = 'pending'): B
   }
 }
 
-function normalizeRecord(raw: any): BookingRecord {
+function normalizeRecord(raw: unknown): BookingRecord {
   const now = toIsoNow();
-  const checkIn = String(raw?.check_in_date ?? raw?.checkInDate ?? now);
-  const checkOut = String(raw?.check_out_date ?? raw?.checkOutDate ?? now);
-  const addOns = Array.isArray(raw?.add_ons) ? raw.add_ons : Array.isArray(raw?.addOns) ? raw.addOns : [];
+  const r = raw as Record<string, unknown>;
+
+  const checkIn = String(r['check_in_date'] ?? r['checkInDate'] ?? now);
+  const checkOut = String(r['check_out_date'] ?? r['checkOutDate'] ?? now);
+
+  const addOnsRaw = Array.isArray(r['add_ons'])
+    ? r['add_ons']
+    : Array.isArray(r['addOns'])
+      ? r['addOns']
+      : [];
+
+  // Normalize add-on lines to a stable schema used across the UI + inventory sync.
+  // Note: we treat `id` as the inventory product/item id.
+  const normalizedAddOns: AdditionalService[] = (addOnsRaw as unknown[]).map((a) => {
+    const rec = a as Record<string, unknown>;
+    const idVal = rec['id'] ?? rec['productId'] ?? rec['inventory_product_id'];
+    const nameVal = rec['name'] ?? rec['productName'];
+    const quantityVal = rec['quantity'] ?? rec['qty'];
+    const chargeVal = rec['charge'] ?? rec['unitPrice'] ?? rec['unit_price'] ?? rec['unitCost'] ?? rec['unit_cost'];
+
+    return {
+      id: String(idVal ?? ''),
+      name: String(nameVal ?? ''),
+      quantity: parseNumber(quantityVal, 0),
+      charge: parseNumber(chargeVal, 0),
+    };
+  }).filter((a) => Boolean(a.id) && a.quantity > 0);
 
   return {
-    id: String(raw?.id ?? raw?.booking_id ?? `BK-${Date.now()}`),
-    reference_code: raw?.reference_code ? String(raw.reference_code) : undefined,
-    listing_id: String(raw?.listing_id ?? raw?.listingId ?? ''),
+    id: String(r['id'] ?? r['booking_id'] ?? `BK-${Date.now()}`),
+    reference_code: r['reference_code'] ? String(r['reference_code']) : undefined,
+    listing_id: String(r['listing_id'] ?? r['listingId'] ?? ''),
     check_in_date: checkIn,
     check_out_date: checkOut,
     total_guests: parseNumber(
-      raw?.total_guests ?? raw?.totalGuests ?? (raw?.num_guests ?? raw?.numGuests ?? 1) + (raw?.extra_guests ?? raw?.extraGuests ?? 0),
+      r['total_guests'] ??
+        r['totalGuests'] ??
+        // handle older/alternate property names
+        ((r['num_guests'] ?? r['numGuests'] ?? 1) as number) + ((r['extra_guests'] ?? r['extraGuests'] ?? 0) as number),
       1
     ),
-    add_ons: addOns,
-    landmark: raw?.landmark ? String(raw.landmark) : undefined,
-    parking_info: raw?.parking_info ? String(raw.parking_info) : undefined,
-    notes: raw?.notes ? String(raw.notes) : undefined,
-    request_description: raw?.request_description ? String(raw.request_description) : undefined,
-    payment_method: raw?.payment_method,
-    require_payment: raw?.require_payment !== false,
-    total_amount: parseNumber(raw?.total_amount ?? raw?.totalAmount, 0),
-    status: normalizeStatus(raw?.status, 'pending'),
-    transaction_number: String(raw?.transaction_number ?? raw?.transactionNumber ?? `TXN-${Date.now()}`),
-    assigned_agent_id: raw?.assigned_agent_id ? String(raw.assigned_agent_id) : undefined,
-    assigned_agent_email: raw?.assigned_agent_email ? String(raw.assigned_agent_email) : undefined,
-    assigned_agent_name: raw?.assigned_agent_name ? String(raw.assigned_agent_name) : undefined,
-    client: {
-      first_name: String(raw?.client?.first_name ?? raw?.client?.firstName ?? ''),
-      last_name: String(raw?.client?.last_name ?? raw?.client?.lastName ?? ''),
-      nickname: raw?.client?.nickname ? String(raw.client.nickname) : undefined,
-      email: String(raw?.client?.email ?? ''),
-      contact_number: raw?.client?.contact_number ? String(raw.client.contact_number) : undefined,
-      gender: raw?.client?.gender ? String(raw.client.gender) : undefined,
-      birth_date: raw?.client?.birth_date ? String(raw.client.birth_date) : undefined,
-      preferred_contact: raw?.client?.preferred_contact ? String(raw.client.preferred_contact) : undefined,
-      referred_by: raw?.client?.referred_by ? String(raw.client.referred_by) : undefined,
-    },
-    created_at: String(raw?.created_at ?? raw?.createdAt ?? now),
-    updated_at: String(raw?.updated_at ?? raw?.updatedAt ?? now),
+    add_ons: normalizedAddOns,
+    landmark: r['landmark'] ? String(r['landmark']) : undefined,
+    parking_info: r['parking_info'] ? String(r['parking_info']) : undefined,
+    notes: r['notes'] ? String(r['notes']) : undefined,
+    request_description: r['request_description'] ? String(r['request_description']) : undefined,
+    payment_method:
+      typeof r['payment_method'] === 'string' ? (r['payment_method'] as PaymentMethod) : undefined,
+    require_payment: r['require_payment'] !== false,
+    total_amount: parseNumber(r['total_amount'] ?? r['totalAmount'], 0),
+    status: normalizeStatus(r['status'], 'pending'),
+    transaction_number: String(r['transaction_number'] ?? r['transactionNumber'] ?? `TXN-${Date.now()}`),
+    assigned_agent_id: r['assigned_agent_id'] ? String(r['assigned_agent_id']) : undefined,
+    assigned_agent_email: r['assigned_agent_email'] ? String(r['assigned_agent_email']) : undefined,
+    assigned_agent_name: r['assigned_agent_name'] ? String(r['assigned_agent_name']) : undefined,
+    client: (() => {
+      const c = r['client'] as Record<string, unknown> | undefined;
+      if (!c) return { first_name: '', last_name: '', email: '' };
+      return {
+        first_name: String(c['first_name'] ?? c['firstName'] ?? ''),
+        last_name: String(c['last_name'] ?? c['lastName'] ?? ''),
+        nickname: c['nickname'] ? String(c['nickname']) : undefined,
+        email: String(c['email'] ?? ''),
+        contact_number: c['contact_number'] ? String(c['contact_number']) : undefined,
+        gender: c['gender'] ? String(c['gender']) : undefined,
+        birth_date: c['birth_date'] ? String(c['birth_date']) : undefined,
+        preferred_contact: c['preferred_contact'] ? String(c['preferred_contact']) : undefined,
+        referred_by: c['referred_by'] ? String(c['referred_by']) : undefined,
+      };
+    })(),
+    created_at: String(r['created_at'] ?? r['createdAt'] ?? now),
+    updated_at: String(r['updated_at'] ?? r['updatedAt'] ?? now),
   };
 }
 

@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import type { AdditionalService, ClientDetailsInput, PaymentMethod } from '@/types/booking';
 
 export interface BookingListItem {
   id: string;
@@ -9,6 +10,7 @@ export interface BookingListItem {
 
 export interface MyBookingItem {
   id: string;
+  unit_id?: string;
   reference_code?: string;
   check_in_date: string;
   check_out_date: string;
@@ -37,29 +39,27 @@ export interface CreateBookingInput {
   check_in_date: string;
   check_out_date: string;
   total_guests: number;
-  add_ons?: unknown[];
+  /**
+   * Guest add-ons selected in the reserve flow.
+   *
+   * Contract expectation (inventory sync):
+   * - `id` must correspond to the inventory product/item id the inventory module stocks.
+   * - `quantity` is the amount to consume on booking confirmation.
+   * - `charge` is the per-unit price captured at booking time (used for totals in booking details).
+   */
+  add_ons?: AdditionalService[];
   landmark?: string;
   parking_info?: string;
   notes?: string;
   request_description?: string;
-  payment_method?: string;
+  payment_method?: PaymentMethod;
   require_payment?: boolean;
   total_amount?: number;
   guest_user_id?: number;
   assigned_agent_id?: string;
   assigned_agent_email?: string;
   assigned_agent_name?: string;
-  client?: {
-    first_name: string;
-    last_name: string;
-    nickname?: string;
-    email: string;
-    contact_number?: string;
-    gender?: string;
-    birth_date?: string;
-    preferred_contact?: string;
-    referred_by?: string;
-  };
+  client?: ClientDetailsInput;
 }
 
 export interface CatalogBookingAddon {
