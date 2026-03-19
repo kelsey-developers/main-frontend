@@ -30,7 +30,7 @@ function pickPrimaryRole(roles: string[]): string | null {
 }
 
 export async function GET(request: NextRequest) {
-  if (!BASE_URL) {
+  if (!API_URL) {
     return NextResponse.json({ error: 'API_URL not configured for bookings' }, { status: 503 });
   }
 
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     status: res.status,
     headers: {
       'Cache-Control': 'no-store',
-      'x-bookings-upstream': BASE_URL || '',
+      'x-bookings-upstream': API_URL || '',
     },
   });
 }

@@ -15,10 +15,6 @@ async function proxyUnits(
 
   const { path = [] } = await ctx.params;
 
-  if (path[0] === 'manage') {
-    return proxyManageUnitsToApi(request);
-  }
-
   const upstreamPath = `/api/units/${path.join('/')}`.replace(/\/$/, '');
   const search = request.nextUrl.searchParams.toString();
   const url = `${API_URL.replace(/\/+$/, '')}${upstreamPath}${search ? `?${search}` : ''}`;
