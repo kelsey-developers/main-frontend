@@ -6,7 +6,10 @@
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --turbo",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "backends:up": "docker compose -f docker/docker-compose.yml up -d --build",
+    "backends:down": "docker compose -f docker/docker-compose.yml down",
+    "backends:logs": "docker compose -f docker/docker-compose.yml logs -f"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

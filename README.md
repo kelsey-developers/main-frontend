@@ -1,5 +1,33 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Running the backends with Docker
+
+`docker/docker-compose.yml` starts every backend at once: MySQL (`kelseydb`, schema loaded on first
+start), auth-service-backend on 3001, points-system-backend on 3002 and ai-chatbot-backend on 3003.
+It builds the backend repositories from folders next to this one:
+
+```
+kelsey/
+  main-frontend/          <- this repo
+  auth-service-backend/
+  points-system-backend/
+  ai-chatbot-backend/
+```
+
+```bash
+cp docker/env.example docker/.env   # fill in passwords, JWT_SECRET, GROQ_API_KEY
+npm run backends:up                 # build and start in the background
+npm run backends:logs               # follow the logs
+npm run backends:down               # stop (add -v to the compose command to also wipe the database)
+```
+
+Then point the frontend at them: copy the "Local backends" lines from `env.example` into
+`.env.local` and run the frontend as usual with `npm run dev`. MySQL is on `127.0.0.1:3307` from the host.
+
+The schema files only run when the database volume is empty. After pulling schema changes, apply the
+new file from `auth-service-backend/migrations/`, or reset with
+`docker compose -f docker/docker-compose.yml down -v` (deletes all data).
+
 ## Getting Started
 
 First, run the development server:
